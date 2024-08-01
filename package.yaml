@@ -1,37 +1,86 @@
-# DON'T EDIT THIS!
-#
-# Codecrafters relies on this file being intact to run tests successfully. Any changes
-# here will not reflect when CodeCrafters tests your code, and might even cause build
-# failures.
-#
-# DON'T EDIT THIS!
+name: hs-redis-clone
+version: 0.1.0.0
+license: BSD3
 
-name:                hs-redis-clone
-version:             0.1.0.0
-license:             BSD3
-
+language: GHC2021
 dependencies:
-- base >= 4.7 && < 5
-- network-simple  # establish a simple TCP network
-- bytestring  # useful to send bytes over the network
-- network  # required when using bytestring
-- text  # use Text rather than String
-- stm  # may help with a concurrent database
-- containers  # may help with the database structure and debugging
-- time  # may help with the expiry function
-- async  # may help with concurrency
-- mtl  # may help with structuring
-# Parsing libs
-- megaparsec
-- parser-combinators
-- parsec
-- attoparsec
+  - base
+
+default-extensions:
+  - TypeApplications
+  - ImportQualifiedPost
+  - NoStarIsType
+  - LambdaCase
+  - QuasiQuotes
+  - OverloadedStrings
+  - NoFieldSelectors
+  - OverloadedRecordDot
+  - DuplicateRecordFields
+  - BlockArguments
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wno-unused-top-binds
 
 executables:
   hs-redis-clone-exe:
-    main:                Main.hs
-    source-dirs:         app
+    main: Main.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hs-redis-clone
+
+library:
+  source-dirs: src
+  dependencies:
+    - containers
+    - text
+    - split
+    - PyF
+    - lens
+    - semialign
+    - vector
+    - errors
+    - megaparsec
+    - these
+    - time
+    - mtl # may help with structuring
+    - network-simple # establish a simple TCP network
+    - bytestring # useful to send bytes over the network
+    - network # required when using bytestring
+    - stm # may help with a concurrent database
+    - async # may help with concurrency
+    # - parser-combinators
+    # - attoparsec
+# -------
+# tests:
+#   hs-redis-clone-test:
+#     main: Driver.hs
+#     source-dirs: test
+#     ghc-options:
+#       - -threaded
+#       - -rtsopts
+#       - -with-rtsopts=-N
+#     dependencies:
+#       - hs-redis-clone
+#       - tasty
+#       - tasty-hspec
+#       - tasty-discover
+#       - tasty-hedgehog # Work to remove this dependency
+#       - hedgehog # Work to remove this dependency
+#       - QuickCheck
+#       - tasty-quickcheck
+#       - hspec
+#       - text
+#       - PyF
+#       - tasty-expected-failure
