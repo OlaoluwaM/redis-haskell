@@ -13,8 +13,8 @@ main = do
     putStrLn "Logs from your program will appear here"
 
     -- Uncomment this block to pass stage 1
-    -- let port = "6379"
-    -- putStrLn $ "Redis server listening on port " ++ port
-    -- serve HostAny port $ \(socket, address) -> do
-    --     putStrLn $ "successfully connected client: " ++ show address
-    --     closeSock socket
+    let port = "6379"
+    putStrLn $ "Redis server listening on port " ++ port
+    serve HostAny port $ \(socket, address) -> do
+        putStrLn $ "successfully connected client: " ++ show address
+        closeSock socket
