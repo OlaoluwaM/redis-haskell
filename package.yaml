@@ -38,32 +38,30 @@ executables:
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      # - hs-redis-clone
-      - network
-      - network-simple
-# -----
-# library:
-#   source-dirs: src
-#   dependencies:
-#     - containers
-#     - text
-#     - split
-#     - PyF
-#     - lens
-#     - semialign
-#     - vector
-#     - errors
-#     - megaparsec
-#     - these
-#     - time
-#     - mtl # may help with structuring
-#     - network-simple # establish a simple TCP network
-#     - bytestring # useful to send bytes over the network
-#     - network # required when using bytestring
-#     - stm # may help with a concurrent database
-#     - async # may help with concurrency
-# - parser-combinators
-# - attoparsec
+      - hs-redis-clone
+
+library:
+  source-dirs: src
+  dependencies:
+    - containers
+    - text
+    - split
+    - PyF
+    - lens
+    - semialign
+    - vector
+    - errors
+    - megaparsec
+    - these
+    - time
+    - mtl # may help with structuring
+    - network-simple # establish a simple TCP network
+    - bytestring # useful to send bytes over the network
+    - network # required when using bytestring
+    - stm # may help with a concurrent database
+    - async # may help with concurrency
+    # - parser-combinators
+    # - attoparsec
 # -------
 # tests:
 #   hs-redis-clone-test:
