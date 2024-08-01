@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Stage1.Code (simpleServer)
+import Stage1 (simpleServer)
 
 main :: IO ()
 main = simpleServer

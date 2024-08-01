@@ -1,4 +1,4 @@
-module Stage1.Code (simpleServer) where
+module Stage1 (simpleServer) where
 
 import Network.Simple.TCP (HostPreference (HostAny), closeSock, serve)
 
