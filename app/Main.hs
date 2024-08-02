@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Stage1 (simpleServer)
+import Lib qualified
 
 main :: IO ()
-main = simpleServer
+main = Lib.main
