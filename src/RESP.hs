@@ -7,11 +7,14 @@ import Data.Vector (Vector)
 
 import Control.Applicative.Combinators
 import Control.Monad (when)
+import Control.Monad.Except (MonadError (throwError), MonadTrans (lift), runExceptT)
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.Char qualified as Char
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Utils (myTrace, myTraceM)
+import Helpers (withCustomError)
+import PyF (fmt)
+import Utils (fromEither)
 
 -- SPEC: https://redis.io/docs/latest/develop/reference/protocol-spec/#arrays
 -- Info on commands: https://redis.io/docs/latest/commands/
@@ -33,12 +36,12 @@ newtype Hello = Hello ByteString deriving (Eq, Show)
 -- We want types for each response type for our commands
 -- Smart constructors will be necessary here for proper formatting when creating terms for these types
 newtype SimpleString = SimpleString Text deriving (Eq, Show)
-newtype BulkString = BulkString Text deriving (Eq, Show)
+data BulkString = BulkString Text | NullBulkString deriving (Eq, Show)
 
 -- We use ByteString here because an array can contain elements of different RESP value types so we don't want to parse them yet, maybe?
 -- Maybe it should be a vector of Response?
 -- This type represents an RESP array as a return value, NOT as a carrier for a command/request. For that, we need no type and the parsing semantics would be slightly different
-newtype Array = Array (Vector Response) deriving (Eq, Show)
+data Array = Array (Vector Response) | NullArray deriving (Eq, Show)
 
 -- TODO We want to be able to parse RESP integers so we can test with "*5\r\n:1\r\n:2\r\n:3\r\n:4\r\n$5\r\nhello\r\n" and "*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Hello\r\n-World\r\n"
 newtype RESPInteger = RESPInteger Int deriving (Eq, Show)
@@ -60,25 +63,25 @@ newtype RESPInteger = RESPInteger Int deriving (Eq, Show)
 -- I think for now, let's work with the assumption that a request can only have one command at any given time even when pipelining
 -- parseCommand :: Parser Command
 
+parseArrayOnly :: Parser Array
+parseArrayOnly = parseArray <* AC.endOfInput
+
 parseArray :: Parser Array
-parseArray = do
+parseArray = (fromEither <$>) $ runExceptT $ do
     -- We want to perform validation for when the array might be empty. We have two pieces of data to draw a conclusion from, arrLength being 0 and AC.atEnd being true.
     -- How can we check in a straightforward manner, not requiring too many ternaries? Pattern matching perhaps case (arrLength == 0, AC.atEnd) of ...
     -- After emptiness checks then perhaps checks for nesting?
-    arrLength <- AC.char '*' *> AC.decimal <* terminatorSeqParser
-    isEndOfInput <- AC.atEnd
+    arrLength <- lift $ withCustomError (AC.char '*' *> AC.signed AC.decimal <* terminatorSeqParser) "Invalid RESP Array string"
+    when (arrLength < 0) $ throwError NullArray
 
-    let shouldBeEmptyArray = arrLength == 0
-    case (shouldBeEmptyArray, isEndOfInput) of
+    isEndOfInput <- lift AC.atEnd
+
+    case (arrLength == 0, isEndOfInput) of
         (False, True) -> fail "Array is not supposed to be empty"
         (True, False) -> fail "Array is supposed to be empty"
         _ -> pure ()
 
-    -- TODO we need to support null array
-    arrElems <- count arrLength parseResponse
-    -- when (shouldBeEmptyArray && isEndOfInput) $ pure (Array V.empty)
-    -- carrt on parsing
-    -- terminatorSeqParser
+    arrElems <- lift $ withCustomError (count arrLength parseResponse) [fmt|There seems to be mismatch between the purported array length ({arrLength}) and it's actual length|]
     pure (Array (V.fromList arrElems))
 
 terminatorSeqParser :: Parser ()
@@ -90,13 +93,20 @@ parseResponse = (MkBulkStringResponse <$> parseBulkString) <|> (MkSimpleStringRe
 parseBulkStringOnly :: Parser BulkString
 parseBulkStringOnly = parseBulkString <* AC.endOfInput
 
--- TODO We need to support null bulk strings
 parseBulkString :: Parser BulkString
-parseBulkString = do
-    strLength <- AC.char '$' *> AC.decimal
-    terminatorSeqParser
-    mainStr <- count strLength AC.anyChar
-    terminatorSeqParser
+parseBulkString = (fromEither <$>) $ runExceptT $ do
+    strLength <- lift $ withCustomError (AC.char '$' *> AC.signed AC.decimal <* terminatorSeqParser) "Invalid RESP BulkString string"
+    when (strLength < 0) $ throwError NullBulkString
+
+    isEndOfInput <- lift AC.atEnd
+
+    case (strLength == 0, isEndOfInput) of
+        (False, True) -> fail "BulkString is not supposed to be empty"
+        (True, False) -> fail "BulkString is supposed to be empty"
+        _ -> pure ()
+
+    mainStr <- lift $ withCustomError (count strLength AC.anyChar) [fmt|There seems to be mismatch between the purported BulkString length ({strLength}) and it's actual length|]
+    lift terminatorSeqParser
     pure $ BulkString $ T.pack mainStr
 
 parseSimpleStringOnly :: Parser SimpleString

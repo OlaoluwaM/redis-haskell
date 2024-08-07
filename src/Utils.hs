@@ -7,3 +7,6 @@ myTrace str' a = trace (str' <> show a) a
 
 myTraceM :: (Show a, Applicative f) => String -> a -> f ()
 myTraceM str a = traceShowM (str <> show a)
+
+fromEither :: Either a a -> a
+fromEither = either id id

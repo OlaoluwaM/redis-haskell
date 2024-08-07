@@ -55,6 +55,7 @@ library:
     - these
     - time
     - mtl # may help with structuring
+    - transformers
     - network-simple # establish a simple TCP network
     - bytestring # useful to send bytes over the network
     - network # required when using bytestring
