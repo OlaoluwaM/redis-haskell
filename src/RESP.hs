@@ -29,7 +29,7 @@ data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args ::
 
 -- all the command types
 -- Each command that we support is a constructor of this type
-data Command = Ping (Maybe Text) | InvalidCommand Text deriving (Eq, Show)
+data Command = Ping (Maybe Text) | Echo Text | InvalidCommand Text deriving (Eq, Show)
 
 -- all the response types
 data Response = MkSimpleStringResponse SimpleString | MkBulkStringResponse BulkString | MkArrayResponse Array | MkIntegerResponse RESPInteger deriving (Eq, Show)
@@ -47,8 +47,9 @@ handleReq :: RawCommandRequest -> RawCommandResponse
 handleReq = serializeResponse . execCommand . either InvalidCommand id . mapLeft T.pack . A.parseOnly parseReqToCommand
 
 execCommand :: Command -> Response
-execCommand (Ping (Just str)) = MkBulkStringResponse $ BulkString str
+execCommand (Ping (Just txt)) = MkBulkStringResponse $ BulkString txt
 execCommand (Ping Nothing) = MkSimpleStringResponse $ SimpleString "PONG"
+execCommand (Echo txt) = MkBulkStringResponse $ BulkString txt
 execCommand (InvalidCommand msg) = MkBulkStringResponse $ BulkString [fmt|Invalid Command: {msg}|]
 
 -- NOTE: For now, we're working with the assumption that a request can only have one command at any given time even when pipelining
@@ -76,9 +77,12 @@ toCommand :: ParsedCommandRequest -> Either Text Command
 toCommand (ParsedCommandRequest (BulkString "PING") []) = Right $ Ping Nothing
 toCommand (ParsedCommandRequest (BulkString "PING") [BulkString arg]) = Right $ Ping $ Just arg
 toCommand (ParsedCommandRequest (BulkString "PING") _) = Left "PING command does not currently support multiple arguments"
+toCommand (ParsedCommandRequest (BulkString "ECHO") [BulkString arg]) = Right $ Echo arg
+toCommand (ParsedCommandRequest (BulkString "ECHO") []) = Left "ECHO command requires an argument. None was provided"
+toCommand (ParsedCommandRequest (BulkString "ECHO") _) = Left "ECHO command requires only 1 argument. Too many were passed"
 toCommand (ParsedCommandRequest NullBulkString _) = Left "A null bulk string is not a valid command"
 toCommand (ParsedCommandRequest (BulkString unimplementedCommandStr) _) =
-    let validButNotImplementedCmds = ["ECHO"]
+    let validButNotImplementedCmds = []
      in if unimplementedCommandStr `elem` validButNotImplementedCmds
             then Left [fmt|The command '{unimplementedCommandStr}' has not yet been implemented|]
             else Left [fmt|The command '{unimplementedCommandStr}' is invalid|]
