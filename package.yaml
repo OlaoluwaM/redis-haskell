@@ -39,6 +39,13 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - hs-redis-clone
+      - bytestring # useful to send bytes over the network
+      - network # required when using bytestring
+      - PyF
+      - text
+      - split
+      - containers
+      - network-run
 
 library:
   source-dirs: src
@@ -56,32 +63,29 @@ library:
     - time
     - mtl # may help with structuring
     - transformers
-    - network-simple # establish a simple TCP network
     - bytestring # useful to send bytes over the network
     - network # required when using bytestring
     - stm # may help with a concurrent database
     - async # may help with concurrency
     - attoparsec
     - parser-combinators
-# -------
-# tests:
-#   hs-redis-clone-test:
-#     main: Driver.hs
-#     source-dirs: test
-#     ghc-options:
-#       - -threaded
-#       - -rtsopts
-#       - -with-rtsopts=-N
-#     dependencies:
-#       - hs-redis-clone
-#       - tasty
-#       - tasty-hspec
-#       - tasty-discover
-#       - tasty-hedgehog # Work to remove this dependency
-#       - hedgehog # Work to remove this dependency
-#       - QuickCheck
-#       - tasty-quickcheck
-#       - hspec
-#       - text
-#       - PyF
-#       - tasty-expected-failure
+
+tests:
+  hs-redis-clone-test:
+    main: Driver.hs
+    source-dirs: test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hs-redis-clone
+      - tasty
+      - tasty-hspec
+      - tasty-discover
+      - QuickCheck
+      - tasty-quickcheck
+      - hspec
+      - text
+      - PyF
+      - tasty-expected-failure

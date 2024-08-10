@@ -10,3 +10,6 @@ myTraceM str a = traceShowM (str <> show a)
 
 fromEither :: Either a a -> a
 fromEither = either id id
+
+mapLeft :: (a -> b) -> Either a c -> Either b c
+mapLeft f = either (Left . f) Right

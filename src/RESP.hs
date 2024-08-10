@@ -1,98 +1,92 @@
-module RESP where
-
-import Data.Attoparsec.ByteString (Parser)
-import Data.ByteString (ByteString)
-import Data.Text (Text)
-import Data.Vector (Vector)
+module RESP (handleReq) where
 
 import Control.Applicative.Combinators
-import Control.Monad (when)
-import Control.Monad.Except (MonadError (throwError), MonadTrans (lift), runExceptT)
+
+import Data.Attoparsec.ByteString qualified as A
 import Data.Attoparsec.ByteString.Char8 qualified as AC
-import Data.Char qualified as Char
+import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Data.Vector qualified as V
+
+import Control.Monad (when)
+import Control.Monad.Except (MonadError (throwError), MonadTrans (lift), liftEither, runExceptT)
+import Data.Attoparsec.ByteString (Parser)
+import Data.ByteString (ByteString)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Text (Text)
+import Data.Vector (Vector)
 import Helpers (withCustomError)
 import PyF (fmt)
-import Utils (fromEither)
+import Utils (fromEither, mapLeft)
 
 -- SPEC: https://redis.io/docs/latest/develop/reference/protocol-spec/#arrays
 -- Info on commands: https://redis.io/docs/latest/commands/
 
-type Request = ByteString
+type RawCommandRequest = ByteString
+type RawCommandResponse = ByteString
+
+data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args :: [BulkString]} deriving (Eq, Show)
 
 -- all the command types
-data Command = MkPingCommand PING | MkHelloCommand Hello deriving (Eq, Show)
+-- Each command that we support is a constructor of this type
+data Command = Ping (Maybe Text) | InvalidCommand Text deriving (Eq, Show)
 
 -- all the response types
 data Response = MkSimpleStringResponse SimpleString | MkBulkStringResponse BulkString | MkArrayResponse Array | MkIntegerResponse RESPInteger deriving (Eq, Show)
 
--- Individual Command types
--- We want type for each command we wish to support
-newtype PING = PING ByteString deriving (Eq, Show)
-newtype Hello = Hello ByteString deriving (Eq, Show)
-
 -- Individual RESP data types
--- We want types for each response type for our commands
--- Smart constructors will be necessary here for proper formatting when creating terms for these types
+-- Smart constructors might be necessary for some of these types
 newtype SimpleString = SimpleString Text deriving (Eq, Show)
 data BulkString = BulkString Text | NullBulkString deriving (Eq, Show)
-
--- We use ByteString here because an array can contain elements of different RESP value types so we don't want to parse them yet, maybe?
--- Maybe it should be a vector of Response?
--- This type represents an RESP array as a return value, NOT as a carrier for a command/request. For that, we need no type and the parsing semantics would be slightly different
-data Array = Array (Vector Response) | NullArray deriving (Eq, Show)
-
--- TODO We want to be able to parse RESP integers so we can test with "*5\r\n:1\r\n:2\r\n:3\r\n:4\r\n$5\r\nhello\r\n" and "*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Hello\r\n-World\r\n"
 newtype RESPInteger = RESPInteger Int deriving (Eq, Show)
 
--- Here is how I think we should go about parsing a request. We'll use the following bytestring as an example: *2\r\n$4\r\nLLEN\r\n$6\r\nmylist\r\n
--- We know from the spec that requests come in the form of RESP arrays with elements as bulk strings. We know that the the sequence of control characters, "\r\n", are the protocol's terminator, so they separate parts
--- We know that a request will only have a single command as the first-ish element of the array. The arguments for the request, if any, come after.
--- The numbers we see in the example request also serve a purpose. The 2 at the start tells us that the request array has two elements, the second number 4, tells us the length of the command bulk string, while the 6 is the length of the command's argument (also a bulk string). I think these numbers could be useful to validate parsing
--- Now that I think about it, I think it would make sense to always parse a request type (ByteString) to an RESPArray type
+-- This type represents an RESP array as a response value, NOT as a carrier for a command/request.
+data Array = Array (Vector Response) | NullArray deriving (Eq, Show)
 
--- Req parser type should look something like `Request -> Command`
--- We will need parsers for the arguments of each command type
+handleReq :: RawCommandRequest -> RawCommandResponse
+handleReq = serializeResponse . execCommand . either InvalidCommand id . mapLeft T.pack . A.parseOnly parseReqToCommand
 
--- This is where we will do, where X is some alternative to show
--- instance X Array where
+execCommand :: Command -> Response
+execCommand (Ping (Just str)) = MkBulkStringResponse $ BulkString str
+execCommand (Ping Nothing) = MkSimpleStringResponse $ SimpleString "PONG"
+execCommand (InvalidCommand msg) = MkBulkStringResponse $ BulkString [fmt|Invalid Command: {msg}|]
 
--- * 2\r\n$4\r\nLLEN\r\n$6\r\nmylist\r\n
-
--- I think for now, let's work with the assumption that a request can only have one command at any given time even when pipelining
--- parseCommand :: Parser Command
-
-parseArrayOnly :: Parser Array
-parseArrayOnly = parseArray <* AC.endOfInput
-
-parseArray :: Parser Array
-parseArray = (fromEither <$>) $ runExceptT $ do
-    -- We want to perform validation for when the array might be empty. We have two pieces of data to draw a conclusion from, arrLength being 0 and AC.atEnd being true.
-    -- How can we check in a straightforward manner, not requiring too many ternaries? Pattern matching perhaps case (arrLength == 0, AC.atEnd) of ...
-    -- After emptiness checks then perhaps checks for nesting?
-    arrLength <- lift $ withCustomError (AC.char '*' *> AC.signed AC.decimal <* terminatorSeqParser) "Invalid RESP Array string"
-    when (arrLength < 0) $ throwError NullArray
-
+-- NOTE: For now, we're working with the assumption that a request can only have one command at any given time even when pipelining
+parseReqToCommand :: Parser Command
+parseReqToCommand = (either InvalidCommand id <$>) $ runExceptT $ do
+    arrLength <- lift $ withCustomError (AC.char '*' *> (AC.signed @Int) AC.decimal <* terminatorSeqParser) "Invalid RESP Command"
     isEndOfInput <- lift AC.atEnd
 
     case (arrLength == 0, isEndOfInput) of
-        (False, True) -> fail "Array is not supposed to be empty"
-        (True, False) -> fail "Array is supposed to be empty"
+        (False, True) -> lift $ fail @Parser "RESP command string input ended too early"
+        (True, False) -> lift $ fail @Parser "RESP command string input ended too early"
+        (True, True) -> lift $ fail @Parser "RESP command string should not be empty"
         _ -> pure ()
 
-    arrElems <- lift $ withCustomError (count arrLength parseResponse) [fmt|There seems to be mismatch between the purported array length ({arrLength}) and it's actual length|]
-    pure (Array (V.fromList arrElems))
+    commandInfo <- lift (withCustomError (NE.fromList <$> count arrLength parseBulkString) [fmt|Mismatch between purported RESP array length ({arrLength}) and actual length|]) >>= liftEither . toParsedCommandReq
+    liftEither $ toCommand commandInfo
+  where
+    toParsedCommandReq :: NonEmpty BulkString -> Either Text ParsedCommandRequest
+    toParsedCommandReq (NullBulkString NE.:| _) = Left "A null bulk string is an invalid command"
+    toParsedCommandReq (bulkStr NE.:| bulkStrs)
+        | NullBulkString `elem` bulkStrs = Left "Command arguments cannot contain null bulk strings"
+        | otherwise = Right $ ParsedCommandRequest bulkStr bulkStrs
+
+toCommand :: ParsedCommandRequest -> Either Text Command
+toCommand (ParsedCommandRequest (BulkString "PING") []) = Right $ Ping Nothing
+toCommand (ParsedCommandRequest (BulkString "PING") [BulkString arg]) = Right $ Ping $ Just arg
+toCommand (ParsedCommandRequest (BulkString "PING") _) = Left "PING command does not currently support multiple arguments"
+toCommand (ParsedCommandRequest NullBulkString _) = Left "A null bulk string is not a valid command"
+toCommand (ParsedCommandRequest (BulkString unimplementedCommandStr) _) =
+    let validButNotImplementedCmds = ["ECHO"]
+     in if unimplementedCommandStr `elem` validButNotImplementedCmds
+            then Left [fmt|The command '{unimplementedCommandStr}' has not yet been implemented|]
+            else Left [fmt|The command '{unimplementedCommandStr}' is invalid|]
 
 terminatorSeqParser :: Parser ()
 terminatorSeqParser = AC.endOfLine
 
-parseResponse :: Parser Response
-parseResponse = (MkBulkStringResponse <$> parseBulkString) <|> (MkSimpleStringResponse <$> parseSimpleString) <|> (MkArrayResponse <$> parseArray)
-
-parseBulkStringOnly :: Parser BulkString
-parseBulkStringOnly = parseBulkString <* AC.endOfInput
-
+-- NOTE: We only need parsers for the things coming FROM the client (excluding arrays) bulk strings
 parseBulkString :: Parser BulkString
 parseBulkString = (fromEither <$>) $ runExceptT $ do
     strLength <- lift $ withCustomError (AC.char '$' *> AC.signed AC.decimal <* terminatorSeqParser) "Invalid RESP BulkString string"
@@ -109,11 +103,16 @@ parseBulkString = (fromEither <$>) $ runExceptT $ do
     lift terminatorSeqParser
     pure $ BulkString $ T.pack mainStr
 
-parseSimpleStringOnly :: Parser SimpleString
-parseSimpleStringOnly = parseSimpleString <* AC.endOfInput
+serializeResponse :: Response -> ByteString
+serializeResponse (MkSimpleStringResponse (SimpleString txt)) = [fmt|+{txt}{seqTerminator}|]
+serializeResponse (MkBulkStringResponse (BulkString txt)) = let len = T.length txt in [fmt|${len}{seqTerminator}{txt}{seqTerminator}|]
+serializeResponse (MkBulkStringResponse NullBulkString) = [fmt|$-1{seqTerminator}|]
+serializeResponse (MkIntegerResponse (RESPInteger int)) = if int >= 0 then [fmt|:{int}{seqTerminator}|] else [fmt|:-{int}{seqTerminator}|]
+serializeResponse (MkArrayResponse NullArray) = [fmt|*-1{seqTerminator}|]
+serializeResponse (MkArrayResponse (Array otherResTypes)) =
+    let arrLen = V.length otherResTypes
+        serializedElems = V.foldr (\a b -> serializeResponse a <> b) "" otherResTypes
+     in [fmt|*{arrLen}{seqTerminator}{serializedElems}|]
 
-parseSimpleString :: Parser SimpleString
-parseSimpleString = do
-    mainStr <- AC.char '+' *> many (AC.satisfy Char.isAlpha)
-    terminatorSeqParser
-    pure $ SimpleString $ T.pack mainStr
+seqTerminator :: ByteString
+seqTerminator = "\r\n"
