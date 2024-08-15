@@ -7,7 +7,7 @@ import Data.ByteString qualified as B
 import Control.Monad (unless)
 import Network.Run.TCP (runTCPServer)
 import PyF (fmt)
-import RESP (handleReq)
+import Commands.Handler (handleCommand)
 
 main :: IO ()
 main = do
@@ -18,7 +18,7 @@ main = do
     handleServer sock = do
         cmdReq <- recv sock 1024
         unless (B.null cmdReq) $ do
-            let response = handleReq cmdReq
+            let response = handleCommand cmdReq
             print @String [fmt|Req: "{cmdReq}", and Resp: "{response}"|]
             sendAll sock response
             handleServer sock
