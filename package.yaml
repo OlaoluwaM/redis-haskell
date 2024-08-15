@@ -28,6 +28,8 @@ ghc-options:
   - -Wpartial-fields
   - -Wredundant-constraints
   - -Wno-unused-top-binds
+  - -fplugin=LiquidHaskell
+  - -fplugin-opt=LiquidHaskell:--max-case-expand=4
 
 executables:
   hs-redis-clone-exe:
@@ -46,6 +48,8 @@ executables:
       - split
       - containers
       - network-run
+      - stm
+      - async
 
 library:
   source-dirs: src
@@ -69,6 +73,9 @@ library:
     - async # may help with concurrency
     - attoparsec
     - parser-combinators
+    - unordered-containers
+    - liquidhaskell
+    - liquid-prelude
 
 tests:
   hs-redis-clone-test:

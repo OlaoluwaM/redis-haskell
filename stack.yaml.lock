@@ -3,7 +3,63 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: rest-rewrite-0.4.3@sha256:915fb98b8c0a0f518c1a4b75bcf3ae27a3ebd5b10d60cc16a216c2fca2148ab0,3929
+    pantry-tree:
+      sha256: 4de44fbeb7bd655caeafe605406c0bc5fe1788d9cf37cdac2f18b018ee4cf5e6
+      size: 4075
+  original:
+    hackage: rest-rewrite-0.4.3
+- completed:
+    hackage: smtlib-backends-0.3@sha256:a947aead99f6a314833bddca9b502d5faea8d3bd2fc76ffb53c34d5c5b7557bc,1211
+    pantry-tree:
+      sha256: 97b88a647ac996808a93b2eab62e9e8574d9b9a451ee37a9103e209b63be012d
+      size: 275
+  original:
+    hackage: smtlib-backends-0.3
+- completed:
+    hackage: smtlib-backends-process-0.3@sha256:26f6b0fbb1f1fc2a9b82f3ebaedaaaac4fc5c49aa4a86659f7e8df4c073189cd,1676
+    pantry-tree:
+      sha256: 9137a4316bd14a4fb968c50f5d45a7d94385b3fc98b5e0310fa83e81fb112592
+      size: 461
+  original:
+    hackage: smtlib-backends-process-0.3
+- completed:
+    hackage: liquidhaskell-0.9.4.7.0@sha256:31866a28d6f3ef540ba8da75ec0459223b8ab445e0b6873075bd21b4ed76f6df,3559
+    pantry-tree:
+      sha256: 4ce2d1af2f25a60139e772b3492a76c05b2b698a10c150fc8f9df68b042b6990
+      size: 3367
+  original:
+    hackage: liquidhaskell-0.9.4.7.0
+- completed:
+    hackage: liquidhaskell-boot-0.9.4.7.0@sha256:0de0c907e361d491454efc7e824ce72fb066ec8cc6b435766fc5beb9139ef22e,9835
+    pantry-tree:
+      sha256: 7f3f00a09178d52e99650b0b0f43fc307de4cd5cb33c0096961c589b451bb16b
+      size: 7768
+  original:
+    hackage: liquidhaskell-boot-0.9.4.7.0
+- completed:
+    hackage: liquid-fixpoint-0.9.4.7@sha256:63926bdb1f780c827c235e00358d0dfbe624d748670a694db6cd5c01c17ca55a,9478
+    pantry-tree:
+      sha256: 03b2d32a0c0dc822e40865ecdfbd58baaa4954bb495c229c8db644b987cee9b9
+      size: 16089
+  original:
+    hackage: liquid-fixpoint-0.9.4.7
+- completed:
+    hackage: liquid-prelude-0.9.2.8.1@sha256:cda0011af90b7464270146ba39ebd540d0d6390af80e17fe65c15d19ecbdfc23,1510
+    pantry-tree:
+      sha256: ff5104a1bcac244c6709ed6603e13312598e2551a74322ecd4d31526012df84e
+      size: 882
+  original:
+    hackage: liquid-prelude-0.9.2.8.1
+- completed:
+    hackage: liquid-vector-0.12.3.1.2@sha256:940268dec6a7902408b85377c3abca72831d119ad89d1e3f870374db0ab0eb4a,1105
+    pantry-tree:
+      sha256: f0be404b64d9baa7c2b657885cae555f23ad713633aa9ec6fef5e2e9582e5bb4
+      size: 231
+  original:
+    hackage: liquid-vector-0.12.3.1.2
 snapshots:
 - completed:
     sha256: 64d66303f927e87ffe6b8ccf736229bf608731e80d7afdf62bdd63c59f857740

@@ -1,0 +1,6 @@
+1:1-1:1::Commands.Types.$trModule :: "GHC.Types.Module"
+10:51-10:58::lq_anf$##7205759403792821167 :: "Commands.Types.ParsedCommandRequest"
+10:74-10:78::lq_anf$##7205759403792821166 :: "Commands.Types.ParsedCommandRequest"
+16:23-16:26::lq_anf$##7205759403792821169 :: "Commands.Types.SetCmd"
+16:36-16:39::lq_anf$##7205759403792821168 :: "Commands.Types.SetCmd"
+17:26-17:29::Commands.Types.$sel:key:GetCmd :: "x1:Commands.Types.GetCmd -> {VV : Data.Text.Internal.Text | VV ~~ x1}"

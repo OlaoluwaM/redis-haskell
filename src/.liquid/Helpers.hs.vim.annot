@@ -1,0 +1,7 @@
+1:1-1:1::Helpers.$trModule :: "GHC.Types.Module"
+7:1-7:16::Helpers.withCustomError :: "forall a b .\n(Data.Attoparsec.Internal.Types.Parser a b) -> [GHC.Types.Char] -> (Data.Attoparsec.Internal.Types.Parser a b)"
+7:17-7:18::p :: "(Data.Attoparsec.Internal.Types.Parser a b)"
+7:19-7:20::s :: "[GHC.Types.Char]"
+7:23-7:24::p :: "{v : (Data.Attoparsec.Internal.Types.Parser a b) | v == p##aWa}"
+7:29-7:35::lq_anf$##7205759403792801624 :: "(Data.Attoparsec.Internal.Types.Parser a b)"
+7:34-7:35::s :: "{v : [GHC.Types.Char] | v == s##aWb\n                        && len v >= 0}"

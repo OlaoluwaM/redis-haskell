@@ -1,0 +1,36 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+<head>
+<title>src/Commands/Types.hs</title>
+</head>
+<head>
+<link type='text/css' rel='stylesheet' href='liquid.css' />
+</head>
+
+<body>
+<hr>
+Put mouse over identifiers to see inferred types
+<pre><span class=hs-linenum> 1: </span><a class=annot href="#"><span class=annottext>{VV##1333 : GHC.Types.Module | $k_##1334}</span><span class='hs-keyword'>module</span></a> <span class='hs-conid'>Commands.Types</span> <span class='hs-keyword'>where</span>
+<span class=hs-linenum> 2: </span>
+<span class=hs-linenum> 3: </span><span class='hs-keyword'>import</span> <span class='hs-conid'>Data.ByteString</span> <span class='hs-layout'>(</span><span class='hs-conid'>ByteString</span><span class='hs-layout'>)</span>
+<span class=hs-linenum> 4: </span><span class='hs-keyword'>import</span> <span class='hs-conid'>Data.Text</span> <span class='hs-layout'>(</span><span class='hs-conid'>Text</span><span class='hs-layout'>)</span>
+<span class=hs-linenum> 5: </span><span class='hs-keyword'>import</span> <span class='hs-conid'>RESP.Types</span> <span class='hs-layout'>(</span><span class='hs-conid'>BulkString</span><span class='hs-layout'>)</span>
+<span class=hs-linenum> 6: </span>
+<span class=hs-linenum> 7: </span><span class='hs-keyword'>type</span> <span class='hs-conid'>RawCommandRequest</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>ByteString</span>
+<span class=hs-linenum> 8: </span><span class='hs-keyword'>type</span> <span class='hs-conid'>RawCommandResponse</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>ByteString</span>
+<span class=hs-linenum> 9: </span>
+<span class=hs-linenum>10: </span><span class='hs-keyword'>data</span> <span class='hs-conid'>ParsedCommandRequest</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>ParsedCommandRequest</span> <span class='hs-layout'>{</span><a class=annot href="#"><span class=annottext>{lq_tmp$x##1247 : Commands.Types.ParsedCommandRequest | lq_tmp$x##1247 == ds_d76Q
+                                                        &amp;&amp; $k_##1243[VV##1242:=lq_tmp$x##1247]}</span><span class='hs-varid'>command</span></a> <span class='hs-keyglyph'>::</span> <span class='hs-conid'>BulkString</span><span class='hs-layout'>,</span> <a class=annot href="#"><span class=annottext>{lq_tmp$x##1209 : Commands.Types.ParsedCommandRequest | lq_tmp$x##1209 == ds_d76T
+                                                        &amp;&amp; $k_##1200[VV##1199:=lq_tmp$x##1209]}</span><span class='hs-varid'>args</span></a> <span class='hs-keyglyph'>::</span> <span class='hs-keyglyph'>[</span><span class='hs-conid'>BulkString</span><span class='hs-keyglyph'>]</span><span class='hs-layout'>}</span> <span class='hs-keyword'>deriving</span> <span class='hs-layout'>(</span><span class='hs-conid'>Eq</span><span class='hs-layout'>,</span> <span class='hs-conid'>Show</span><span class='hs-layout'>)</span>
+<span class=hs-linenum>11: </span>
+<span class=hs-linenum>12: </span><span class='hs-comment'>-- All the commands</span>
+<span class=hs-linenum>13: </span><span class='hs-comment'>-- https://redis.io/docs/latest/commands/</span>
+<span class=hs-linenum>14: </span><span class='hs-keyword'>data</span> <span class='hs-conid'>Command</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>Ping</span> <span class='hs-layout'>(</span><span class='hs-conid'>Maybe</span> <span class='hs-conid'>Text</span><span class='hs-layout'>)</span> <span class='hs-keyglyph'>|</span> <span class='hs-conid'>Echo</span> <span class='hs-conid'>Text</span> <span class='hs-keyglyph'>|</span> <span class='hs-conid'>Set</span> <span class='hs-conid'>SetCmd</span> <span class='hs-keyglyph'>|</span> <span class='hs-conid'>Get</span> <span class='hs-conid'>GetCmd</span> <span class='hs-keyglyph'>|</span> <span class='hs-conid'>InvalidCommand</span> <span class='hs-conid'>Text</span> <span class='hs-keyword'>deriving</span> <span class='hs-layout'>(</span><span class='hs-conid'>Eq</span><span class='hs-layout'>,</span> <span class='hs-conid'>Show</span><span class='hs-layout'>)</span>
+<span class=hs-linenum>15: </span>
+<span class=hs-linenum>16: </span><span class='hs-keyword'>data</span> <span class='hs-conid'>SetCmd</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>SetCmd</span> <span class='hs-layout'>{</span><a class=annot href="#"><span class=annottext>{lq_tmp$x##1307 : Commands.Types.SetCmd | lq_tmp$x##1307 == ds_d76K
+                                          &amp;&amp; $k_##1303[VV##1302:=lq_tmp$x##1307]}</span><span class='hs-varid'>key</span></a> <span class='hs-keyglyph'>::</span> <span class='hs-conid'>Text</span><span class='hs-layout'>,</span> <a class=annot href="#"><span class=annottext>{lq_tmp$x##1281 : Commands.Types.SetCmd | lq_tmp$x##1281 == ds_d76N
+                                          &amp;&amp; $k_##1277[VV##1276:=lq_tmp$x##1281]}</span><span class='hs-varid'>val</span></a> <span class='hs-keyglyph'>::</span> <span class='hs-conid'>Text</span><span class='hs-layout'>}</span> <span class='hs-keyword'>deriving</span> <span class='hs-layout'>(</span><span class='hs-conid'>Eq</span><span class='hs-layout'>,</span> <span class='hs-conid'>Show</span><span class='hs-layout'>)</span>
+<span class=hs-linenum>17: </span><span class='hs-keyword'>newtype</span> <span class='hs-conid'>GetCmd</span> <span class='hs-keyglyph'>=</span> <span class='hs-conid'>GetCmd</span> <span class='hs-layout'>{</span><a class=annot href="#"><span class=annottext>ds_d76I:{VV##1328 : Commands.Types.GetCmd | $k_##1329} -&gt; {VV : Data.Text.Internal.Text | VV ~~ ds_d76I}</span><span class='hs-varid'>key</span></a> <span class='hs-keyglyph'>::</span> <span class='hs-conid'>Text</span><span class='hs-layout'>}</span> <span class='hs-keyword'>deriving</span> <span class='hs-layout'>(</span><span class='hs-conid'>Eq</span><span class='hs-layout'>,</span> <span class='hs-conid'>Show</span><span class='hs-layout'>)</span>
+</pre>
+</body>
+</html>
