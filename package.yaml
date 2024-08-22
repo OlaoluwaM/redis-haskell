@@ -5,6 +5,7 @@ license: BSD3
 language: GHC2021
 dependencies:
   - base
+  - bytestring # useful to send bytes over the network
 
 default-extensions:
   - TypeApplications
@@ -17,6 +18,7 @@ default-extensions:
   - OverloadedRecordDot
   - DuplicateRecordFields
   - BlockArguments
+  - PackageImports
 
 ghc-options:
   - -Wall
@@ -28,8 +30,6 @@ ghc-options:
   - -Wpartial-fields
   - -Wredundant-constraints
   - -Wno-unused-top-binds
-  - -fplugin=LiquidHaskell
-  - -fplugin-opt=LiquidHaskell:--max-case-expand=4
 
 executables:
   hs-redis-clone-exe:
@@ -41,7 +41,6 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - hs-redis-clone
-      - bytestring # useful to send bytes over the network
       - network # required when using bytestring
       - PyF
       - text
@@ -67,15 +66,12 @@ library:
     - time
     - mtl # may help with structuring
     - transformers
-    - bytestring # useful to send bytes over the network
     - network # required when using bytestring
     - stm # may help with a concurrent database
     - async # may help with concurrency
     - attoparsec
     - parser-combinators
     - unordered-containers
-    - liquidhaskell
-    - liquid-prelude
 
 tests:
   hs-redis-clone-test:
@@ -96,3 +92,4 @@ tests:
       - text
       - PyF
       - tasty-expected-failure
+      - attoparsec
