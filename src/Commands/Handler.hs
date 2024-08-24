@@ -10,9 +10,9 @@ import Data.Text qualified as T
 import Commands.Parser (commandParser)
 import Control.Concurrent.STM (STM, TVar)
 import Data.Attoparsec.ByteString (parseOnly)
-import Data.Text (Text)
+import Data.ByteString (ByteString)
 import PyF (fmt)
-import Store.Store (Store)
+import Store.Types (Store)
 import Utils (fromEither, mapLeft)
 
 type StoreState = TVar Store
@@ -27,10 +27,11 @@ mkCmdRunner :: Command -> CmdRunner
 mkCmdRunner (Ping args) = pingCmdRunner args
 mkCmdRunner (Echo args) = echoCmdRunner args
 mkCmdRunner (InvalidCommand msg) = pure $ MkBulkStringResponse $ BulkString [fmt|Invalid Command: {msg}|]
+mkCmdRunner _ = undefined
 
-pingCmdRunner :: Maybe Text -> CmdRunner
-pingCmdRunner (Just txt) = pure $ MkBulkStringResponse $ BulkString txt
+pingCmdRunner :: Maybe ByteString -> CmdRunner
+pingCmdRunner (Just txt) = pure . MkBulkStringResponse . BulkString $ txt
 pingCmdRunner Nothing = pure $ SimpleString "PONG"
 
-echoCmdRunner :: Text -> CmdRunner
+echoCmdRunner :: ByteString -> CmdRunner
 echoCmdRunner = pure . MkBulkStringResponse . BulkString

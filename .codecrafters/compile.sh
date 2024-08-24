@@ -9,4 +9,4 @@
 set -e # Exit on failure
 
 # This compiles the program into $(stack path --local-install-root)/bin/hs-redis-clone-exe.
-stack build
+stack build --pedantic --test

@@ -6,6 +6,9 @@ language: GHC2021
 dependencies:
   - base
   - bytestring # useful to send bytes over the network
+  - containers
+  - text
+  - PyF
 
 default-extensions:
   - TypeApplications
@@ -42,10 +45,7 @@ executables:
     dependencies:
       - hs-redis-clone
       - network # required when using bytestring
-      - PyF
-      - text
       - split
-      - containers
       - network-run
       - stm
       - async
@@ -53,10 +53,7 @@ executables:
 library:
   source-dirs: src
   dependencies:
-    - containers
-    - text
     - split
-    - PyF
     - lens
     - semialign
     - vector
@@ -89,7 +86,6 @@ tests:
       - QuickCheck
       - tasty-quickcheck
       - hspec
-      - text
-      - PyF
       - tasty-expected-failure
       - attoparsec
+      - vector

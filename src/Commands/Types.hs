@@ -11,7 +11,7 @@ data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args ::
 
 -- All the commands
 -- https://redis.io/docs/latest/commands/
-data Command = Ping (Maybe Text) | Echo Text | Set SetCmd | Get GetCmd | InvalidCommand Text deriving (Eq, Show)
+data Command = Ping (Maybe ByteString) | Echo ByteString | Set SetCmd | Get GetCmd | InvalidCommand Text deriving (Eq, Show)
 
 data SetCmd = SetCmd {key :: Text, val :: Text} deriving (Eq, Show)
 newtype GetCmd = GetCmd {key :: Text} deriving (Eq, Show)
