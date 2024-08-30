@@ -1,15 +1,15 @@
-module Commands.ParserSpec where
+module Commands.General.ParserSpec where
 
 import Test.Hspec
 
-import Commands.Parser
-import Commands.Types
+import Commands.General.Parser
+import Commands.General.Types
 
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.Foldable (for_)
+import Data.String.Interpolate (i)
 import Data.Text
 import Helpers
-import PyF (fmt)
 import RESP.Types
 
 isPingCommand :: Command -> Bool
@@ -19,6 +19,14 @@ isPingCommand _ = False
 isEchoCommand :: Command -> Bool
 isEchoCommand (Echo _) = True
 isEchoCommand _ = False
+
+isGetCommand :: Command -> Bool
+isGetCommand (Get _) = True
+isGetCommand _ = False
+
+isSetCommand :: Command -> Bool
+isSetCommand (Set _) = True
+isSetCommand _ = False
 
 isInvalidCommand :: Command -> Bool
 isInvalidCommand (InvalidCommand _) = True
@@ -49,7 +57,7 @@ spec_tests = do
             , ("despite casing (4)", mkCmdReqStr [mkCmdRESPRepr "Ping", mkBulkString "arg"])
             ]
             $ \(testDesc, input) ->
-                it [fmt|Can parse a PING command string {testDesc}|] do
+                it [i|Can parse a PING command string #{testDesc}|] do
                     let result = parseOnly commandParser input
                     either (const False) isPingCommand result
 
@@ -62,7 +70,7 @@ spec_tests = do
                 )
             ]
             $ \(tesDesc, input) ->
-                it [fmt|Fails to parse a PING command string {tesDesc}|] do
+                it [i|Fails to parse a PING command string #{tesDesc}|] do
                     let result = parseOnly commandParser input
                     either (const True) isInvalidCommand result
 
@@ -76,7 +84,7 @@ spec_tests = do
             , ("despite casing (3)", mkCmdReqStr [mkCmdRESPRepr "echo", mkBulkString "Hello"])
             ]
             $ \(testDesc, input) ->
-                it [fmt|Can parse an ECHO command string {testDesc}|] do
+                it [i|Can parse an ECHO command string #{testDesc}|] do
                     let result = parseOnly commandParser input
                     either (const False) isEchoCommand result
 
@@ -91,7 +99,7 @@ spec_tests = do
             , ("when command is not provided any arguments", mkCmdReqStr [echoCmd])
             ]
             $ \(testDesc, input) ->
-                it [fmt|Fails to parse an ECHO command string {testDesc}|] do
+                it [i|Fails to parse an ECHO command string #{testDesc}|] do
                     let result = parseOnly commandParser input
                     either (const True) isInvalidCommand result
 
@@ -104,16 +112,12 @@ spec_tests = do
             , ("despite casing (2)", mkCmdReqStr [mkCmdRESPRepr "sET", mkBulkString "state", mkBulkString "Georgia"])
             ]
             $ \(testDesc, input) ->
-                xit [fmt|Can parse a SET command string {testDesc}|] do
+                it [i|Can parse a SET command string #{testDesc}|] do
                     let result = parseOnly commandParser input
-                    either (const False) isEchoCommand result
+                    either (const False) isSetCommand result
 
         for_
             [
-                ( "if command is supplied too many arguments" :: Text
-                , mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "val", mkBulkString "NX", mkBulkString "GET", mkBulkString "KEEPTTL", mkBulkString "9394"]
-                )
-            ,
                 ( "if command is supplied too few arguments" :: Text
                 , mkCmdReqStr [setCmd, mkBulkString "key"]
                 )
@@ -122,7 +126,7 @@ spec_tests = do
             , ("when command is not provided any arguments", mkCmdReqStr [setCmd])
             ]
             $ \(testDesc, input) ->
-                xit [fmt|Fails to parse a SET command string {testDesc}|] do
+                it [i|Fails to parse a SET command string #{testDesc}|] do
                     let result = parseOnly commandParser input
                     either (const True) isInvalidCommand result
 
@@ -135,9 +139,9 @@ spec_tests = do
             , ("despite casing (2)", mkCmdReqStr [mkCmdRESPRepr "gET", mkBulkString "state"])
             ]
             $ \(testDesc, input) ->
-                xit [fmt|Can parse a GET command string {testDesc}|] do
+                it [i|Can parse a GET command string #{testDesc}|] do
                     let result = parseOnly commandParser input
-                    either (const False) isEchoCommand result
+                    either (const False) isGetCommand result
 
         for_
             [
@@ -149,6 +153,6 @@ spec_tests = do
             , ("when command is not provided any arguments", mkCmdReqStr [getCmd])
             ]
             $ \(testDesc, input) ->
-                xit [fmt|Fails to parse a GET command string {testDesc}|] do
+                it [i|Fails to parse a GET command string #{testDesc}|] do
                     let result = parseOnly commandParser input
                     either (const True) isInvalidCommand result

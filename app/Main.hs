@@ -8,7 +8,7 @@ module Main where
 import Control.Concurrent.STM.TVar (newTVarIO)
 -- import Control.Monad (unless)
 import Network.Run.TCP (runTCPServer)
--- import PyF (fmt)
+-- import Data.String.Interpolate ( i )
 import Store.Operations (initialStore)
 
 main :: IO ()
@@ -23,6 +23,6 @@ main = do
         undefined
         -- unless (B.null cmdReq) $ do
         --     let response = handleCommandReq cmdReq
-        --     print @String [fmt|Req: "{cmdReq}", and Resp: "{response}"|]
+        --     print @String [i|Req: "#{cmdReq}", and Resp: "#{response}"|]
         --     sendAll sock response
         --     handleServer sock

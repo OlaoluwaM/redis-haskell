@@ -7,7 +7,7 @@ import Data.Vector (Vector)
 -- Spec: https://redis.io/docs/latest/develop/reference/protocol-spec/
 
 -- All supported RESP data types
-data RESPDataType = SimpleString Text | MkBulkStringResponse BulkString | MkArrayResponse Array | RESPInteger Int deriving (Eq, Show)
+data RESPDataType = SimpleString Text | MkBulkStringResponse BulkString | MkArrayResponse Array | RESPInteger Int | Null deriving (Eq, Show)
 
 data BulkString = BulkString ByteString | NullBulkString deriving (Eq, Show)
 

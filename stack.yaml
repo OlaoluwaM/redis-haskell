@@ -35,14 +35,9 @@ packages:
 # forks / in-progress versions pinned to a git hash. For example:
 #
 extra-deps:
-  - rest-rewrite-0.4.3
-  - smtlib-backends-0.3
-  - smtlib-backends-process-0.3
-  - liquidhaskell-0.9.4.7.0
-  - liquidhaskell-boot-0.9.4.7.0
-  - liquid-fixpoint-0.9.4.7
-  - liquid-prelude-0.9.2.8.1
-  - liquid-vector-0.12.3.1.2
+  - mtl-2.3.1
+  - exceptions-0.10.8@sha256:c31fd9b35d36196cbb14ffa5fca4de49868fd39acfeddd601fb77e742554aa67,2892
+  - parsec-3.1.17.0@sha256:8407cbd428d7f640a0fff8891bd2f7aca13cebe70a5e654856f8abec9a648b56,5149
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a

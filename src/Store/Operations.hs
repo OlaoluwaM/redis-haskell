@@ -4,18 +4,18 @@ import Store.Types
 
 import Data.HashMap.Strict qualified as HashMap
 
-import Data.Text (Text)
+import Data.ByteString (ByteString)
 
 storeValueWithNoExpiryInfo :: StoreValue
-storeValueWithNoExpiryInfo = StoreValue{ttl = Nothing, insertDate = Nothing, value = Str ""}
+storeValueWithNoExpiryInfo = StoreValue{ttl = Nothing, insertTime = Nothing, value = Str ""}
 
 initialStore :: Store
 initialStore = HashMap.empty
 
-retrieveItem :: Text -> Store -> Maybe StoreValue
+retrieveItem :: ByteString -> Store -> Maybe StoreValue
 retrieveItem = HashMap.lookup
 
-setItem :: Text -> StoreValue -> Store -> Store
+setItem :: ByteString -> StoreValue -> Store -> Store
 setItem = HashMap.insert
 
 -- This signature and implementation are temporary until we begin implementing expiry
