@@ -6,8 +6,10 @@ module Main where
 
 -- import Commands.Handler (handleCommandReq)
 import Control.Concurrent.STM.TVar (newTVarIO)
+
 -- import Control.Monad (unless)
 import Network.Run.TCP (runTCPServer)
+
 -- import Data.String.Interpolate ( i )
 import Store.Operations (initialStore)
 
@@ -21,8 +23,9 @@ main = do
     handleServer _ = do
         -- cmdReq <- recv sock 1024
         undefined
-        -- unless (B.null cmdReq) $ do
-        --     let response = handleCommandReq cmdReq
-        --     print @String [i|Req: "#{cmdReq}", and Resp: "#{response}"|]
-        --     sendAll sock response
-        --     handleServer sock
+
+-- unless (B.null cmdReq) $ do
+--     let response = handleCommandReq cmdReq
+--     print @String [i|Req: "#{cmdReq}", and Resp: "#{response}"|]
+--     sendAll sock response
+--     handleServer sock

@@ -1,9 +1,6 @@
-module Commands.String.ParserSpec where
+module Commands.String.SetSpec where
 
-import Commands.General.Types
 import Commands.String.Set
-import Helpers
-import RESP.Types
 import Test.Hspec
 
 import Data.Attoparsec.ByteString (parseOnly)
@@ -12,6 +9,8 @@ import Data.Default (Default (def))
 import Data.Foldable (for_)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Helpers (bulkStrToOptionString)
+import RESP.Types (BulkString (BulkString))
 
 spec_tests :: Spec
 spec_tests = do

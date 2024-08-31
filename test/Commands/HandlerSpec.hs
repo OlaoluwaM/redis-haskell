@@ -1,16 +1,15 @@
-module Commands.General.ParserSpec where
+module Commands.HandlerSpec where
 
 import Test.Hspec
 
-import Commands.General.Parser
-import Commands.General.Types
+import Commands.Handler
 
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.Foldable (for_)
 import Data.String.Interpolate (i)
-import Data.Text
-import Helpers
-import RESP.Types
+import Data.Text (Text)
+import Helpers (mkBulkString, mkCmdRESPRepr, mkCmdReqStr)
+import RESP.Types (RESPDataType (RESPInteger))
 
 isPingCommand :: Command -> Bool
 isPingCommand (Ping _) = True

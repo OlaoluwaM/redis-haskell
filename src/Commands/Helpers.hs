@@ -1,4 +1,4 @@
-module Commands.General.Helpers where
+module Commands.Helpers where
 
 import Data.Data (Data (toConstr))
 import Data.Function (on)

@@ -1,6 +1,6 @@
 module Commands.Connection.Ping where
 
-import Commands.General.Types (CmdRunner)
+import Commands.Types (CmdRunner)
 import Data.ByteString (ByteString)
 import RESP.Helpers (mkNonNullBulkString)
 import RESP.Types (RESPDataType (SimpleString))
