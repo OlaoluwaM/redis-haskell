@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Commands.Handler (
     handleCommandReq,
 
@@ -47,6 +49,7 @@ handleCommandReq cmdReq = do
 mkCmdRunner :: Command -> CmdRunner
 mkCmdRunner (Ping arg) = mkPingCmdRunner arg
 mkCmdRunner (Echo arg) = mkEchoCmdRunner arg
+mkCmdRunner (Get (GetCmd key)) = mkGetCmdRunner key
 mkCmdRunner (Set (SetCmd key val cmdOpts)) = mkSetCmdRunner key val cmdOpts
 mkCmdRunner (InvalidCommand msg) = pure . mkNonNullBulkString $ [i|Invalid Command: #{msg}|]
 mkCmdRunner _ = undefined
@@ -77,22 +80,26 @@ toCommand (ParsedCommandRequest NullBulkString _) = throwError "A null bulk stri
 toCommand (ParsedCommandRequest (BulkString rawCmdStr) parsedArgs) =
     let normalizedCmdStr = BS.map toUpper rawCmdStr
      in case (normalizedCmdStr, parsedArgs) of
+            -- PING
             ("PING", []) -> pure . Ping $ Nothing
             ("PING", [BulkString arg]) -> pure . Ping . Just $ arg
             ("PING", _) -> throwError "PING command does accept multiple arguments"
+            -- ECHO
             ("ECHO", []) -> throwError "ECHO command requires at least 1 argument. None were provided"
             ("ECHO", [BulkString arg]) -> pure . Echo $ arg
             ("ECHO", _) -> throwError "ECHO command requires only 1 argument"
+            -- GET
             ("GET", []) -> throwError "GET command requires at least 1 argument. None were provided"
-            ("GET", [BulkString arg]) -> pure . Get . GetCmd $ arg
+            ("GET", [BulkString key]) -> Get <$> mkGetCmd key
             ("GET", _) -> throwError "GET command requires only 1 argument"
+            -- SET
             ("SET", args) | length args < 2 -> throwError "SET command requires at least 2 arguments. None were provided"
-            ("SET", [BulkString key, BulkString val]) -> pure . Set . SetCmd key val $ (def @SetCmdOpts)
-            ("SET", BulkString key : BulkString val : otherArgs) -> fmap (Set . SetCmd key val) . liftEither . mapLeft T.pack . AC.parseOnly parseSetCmdOptions . toOptionString $ otherArgs
-            (unimplementedCommandStr, _) -> handleUnimplementedCmdStrConversion unimplementedCommandStr
+            ("SET", [BulkString key, BulkString val]) -> Set <$> mkSetCmd key val (def @SetCmdOpts)
+            ("SET", BulkString key : BulkString val : otherArgs) -> (liftEither . mapLeft T.pack . AC.parseOnly parseSetCmdOptions . toOptionString $ otherArgs) >>= fmap Set . mkSetCmd key val
+            (unimplementedCommandStr, _) -> handleUnimplementedCmd unimplementedCommandStr
 
-handleUnimplementedCmdStrConversion :: (MonadError Text m) => ByteString -> m Command
-handleUnimplementedCmdStrConversion unimplementedCommandStr =
+handleUnimplementedCmd :: (MonadError Text m) => ByteString -> m Command
+handleUnimplementedCmd unimplementedCommandStr =
     let validButNotImplementedCmds = []
      in if unimplementedCommandStr `elem` validButNotImplementedCmds
             then throwError [i|The command '#{unimplementedCommandStr}' has not yet been implemented|]

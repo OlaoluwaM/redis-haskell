@@ -23,7 +23,7 @@ default-extensions:
   - DuplicateRecordFields
   - BlockArguments
   - PackageImports
-  - PatternGuards
+  - PatternSynonyms
 
 ghc-options:
   - -Wall
@@ -51,6 +51,8 @@ executables:
       - network-run
       - stm
       - async
+      - mtl
+      - time
 
 library:
   source-dirs: src

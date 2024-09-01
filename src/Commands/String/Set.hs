@@ -1,15 +1,20 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Commands.String.Set (
     mkSetCmdRunner,
     parseSetCmdOptions,
-    SetCmd (..),
+    mkSetCmd,
+    SetCmd,
+    pattern SetCmd,
     SetCmdOpts,
 ) where
 
 import Commands.String.Set.Internal
 
 import Data.Attoparsec.ByteString.Char8 qualified as AC
+import Data.ByteString qualified as BS
 
-import Commands.Helpers (isCmdValidForKeyDataType)
+import Commands.Helpers (isCmdDataTypeValidForKey)
 import Commands.String.Helpers (serializeStoreValueForStringCmds, stringCmdTypeMismatchError)
 import Commands.Types (CmdRunner, Env (..), StoreStateTVar)
 import Control.Applicative (Alternative (some, (<|>)))
@@ -20,7 +25,7 @@ import Control.Applicative.Permutations (
  )
 import Control.Concurrent.STM (STM, modifyTVar, readTVar)
 import Control.Monad (unless)
-import Control.Monad.Except (throwError)
+import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Attoparsec.ByteString (Parser)
@@ -29,10 +34,15 @@ import Data.Default (Default (def))
 import Data.Functor (($>))
 import Data.Maybe (isJust)
 import Data.String (IsString (fromString))
+import Data.Text (Text)
 import RESP.Helpers (mkNonNullBulkString)
 import RESP.Types (RESPDataType (Null, SimpleString))
 import Store.Operations (mkStoreValue, retrieveItem, setItem)
 import Store.Types (RedisDataType (Str), StoreValue (value))
+
+-- Allows us use `SetCmd` for pattern matching but not for constructing values since we have the smart constructor `mkSetCmd` for that
+pattern SetCmd :: ByteString -> ByteString -> SetCmdOpts -> SetCmd
+pattern SetCmd key val opts <- InternalSetCmd key val opts
 
 parseSetCmdOptions :: Parser SetCmdOpts
 parseSetCmdOptions =
@@ -59,29 +69,30 @@ parseSetCmdOptions =
 
     ttlOptionParser = exOptionParser <|> pxOptionParser <|> exatOptionParser <|> pxatOptionParser <|> keepTTLFlagParser
 
+mkSetCmd :: (MonadError Text m) => ByteString -> ByteString -> SetCmdOpts -> m SetCmd
+mkSetCmd key val opts
+    | BS.length key < 1 = throwError "Error: cannot use SET command with an empty key"
+    | otherwise = pure $ InternalSetCmd key val opts
+
 mkSetCmdRunner :: ByteString -> ByteString -> SetCmdOpts -> CmdRunner
 mkSetCmdRunner key val cmdOpts = do
     (Env storeStateTVar _) <- ask
     let liftCompletely = lift . lift
     currentStoreState <- liftCompletely . readTVar $ storeStateTVar
 
-    let keyDataTypeIsAStringValue = isCmdValidForKeyDataType Str
     let mCurrentStoreVal = retrieveItem key currentStoreState
 
-    unless (keyDataTypeIsAStringValue ((.value) <$> mCurrentStoreVal)) $ throwError stringCmdTypeMismatchError
+    unless (isCmdDataTypeValidForKey Str ((.value) <$> mCurrentStoreVal)) $ throwError stringCmdTypeMismatchError
 
-    let performSetCmdOperation = mkSetCmdHandler mCurrentStoreVal
     let keyAlreadyHasVal = isJust mCurrentStoreVal
 
     liftCompletely $ case (keyAlreadyHasVal, cmdOpts.setCondition) of
         (True, OnlyIfKeyDoesNotExist) -> pure Null
-        (False, OnlyIfKeyDoesNotExist) -> performSetCmdOperation storeStateTVar
-        (True, OnlyIfKeyExists) -> performSetCmdOperation storeStateTVar
         (False, OnlyIfKeyExists) -> pure Null
-        (_, Always) -> performSetCmdOperation storeStateTVar
+        _ -> performSetCmdOperation mCurrentStoreVal storeStateTVar
   where
-    mkSetCmdHandler :: Maybe StoreValue -> StoreStateTVar -> STM RESPDataType
-    mkSetCmdHandler mOldVal storeStateTVar = do
+    performSetCmdOperation :: Maybe StoreValue -> StoreStateTVar -> STM RESPDataType
+    performSetCmdOperation mOldVal storeStateTVar = do
         let newStoreVal = mkStoreValue (Str val)
         modifyTVar storeStateTVar (setItem key newStoreVal)
         case (cmdOpts.returnOldVal, mOldVal) of

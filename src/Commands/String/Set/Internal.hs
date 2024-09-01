@@ -3,7 +3,7 @@ module Commands.String.Set.Internal where
 import Data.ByteString (ByteString)
 import Data.Default (Default(def))
 
-data SetCmd = SetCmd {key :: ByteString, val :: ByteString, opts :: SetCmdOpts} deriving (Eq, Show)
+data SetCmd = InternalSetCmd {key :: ByteString, val :: ByteString, opts :: SetCmdOpts} deriving (Eq, Show)
 
 data SetCmdOpts = SetCmdOpts {setCondition :: SetCondition, returnOldVal :: Bool, ttl :: TTL} deriving (Eq, Show)
 
