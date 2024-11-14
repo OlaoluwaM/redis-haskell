@@ -13,7 +13,7 @@ import Commands.Types (CmdRunner, Env (..))
 import Control.Concurrent.STM (readTVar)
 import Control.Monad (unless)
 import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.Reader (MonadReader (ask))
+import Control.Monad.Reader (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.ByteString (ByteString)
 import Data.Text (Text)
@@ -28,12 +28,12 @@ newtype GetCmd = InternalGetCmd {key :: ByteString} deriving (Eq, Show)
 
 mkGetCmd :: (MonadError Text m) => ByteString -> m GetCmd
 mkGetCmd key
-    | BS.length key < 1 = throwError "Error: cannot use GET command with an empty key"
+    | BS.null key = throwError "Error: cannot use GET command with an empty key"
     | otherwise = pure $ InternalGetCmd key
 
 mkGetCmdRunner :: ByteString -> CmdRunner
 mkGetCmdRunner key = do
-    (Env storeStateTVar _) <- ask
+    storeStateTVar <- asks (.storeState)
     let liftCompletely = lift . lift
     currentStoreState <- liftCompletely . readTVar $ storeStateTVar
     let mCurrentStoreVal = (.value) <$> retrieveItem key currentStoreState

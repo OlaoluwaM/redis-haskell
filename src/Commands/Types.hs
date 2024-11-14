@@ -1,10 +1,10 @@
 module Commands.Types where
 
-import RESP.Types (RESPDataType)
 import Control.Concurrent.STM (STM, TVar)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Reader (ReaderT)
 import Data.Time (UTCTime)
+import RESP.Types (RESPDataType)
 import Store.Types (Store)
 
 type StoreStateTVar = TVar Store

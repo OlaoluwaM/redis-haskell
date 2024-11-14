@@ -21,43 +21,43 @@ spec_tests = do
         for_
             [
                 ( "All options set" :: Text
-                , bulkStrToOptionString [BulkString "NX", BulkString "GET", BulkString "KEEPTTL", BulkString "9394"]
-                , SetCmdOpts{setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True, ttl = KeepTTL}
+                , bulkStrToOptionString [BulkString "nx", BulkString "GET", BulkString "keepttl"]
+                , SetCmdOpts{setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True, ttlOption = KeepTTL}
                 )
             ,
                 ( "All options set out of order" :: Text
-                , bulkStrToOptionString [BulkString "GET", BulkString "EX            90", BulkString "NX"]
-                , SetCmdOpts{setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True, ttl = EX (Seconds 90)}
+                , bulkStrToOptionString [BulkString "get", BulkString "EX            90", BulkString "NX"]
+                , SetCmdOpts{setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True, ttlOption = EX (Seconds 90)}
                 )
             ,
                 ( "Some options set" :: Text
-                , bulkStrToOptionString [BulkString "XX", BulkString "EX", BulkString "60"]
-                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = False, ttl = EX (Seconds 60)}
+                , bulkStrToOptionString [BulkString "XX", BulkString "ex", BulkString "60"]
+                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = False, ttlOption = EX (Seconds 60)}
                 )
             ,
                 ( "Some options set (2)" :: Text
-                , bulkStrToOptionString [BulkString "XX", BulkString "PX", BulkString "610"]
-                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = False, ttl = PX (MilliSeconds 610)}
+                , bulkStrToOptionString [BulkString "xx", BulkString "PX", BulkString "610"]
+                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = False, ttlOption = PX (MilliSeconds 610)}
                 )
             ,
                 ( "Some options set (3)" :: Text
                 , bulkStrToOptionString [BulkString "EXAT", BulkString "100"]
-                , SetCmdOpts{setCondition = Always, returnOldVal = False, ttl = EXAT (UnixTimeSeconds 100)}
+                , SetCmdOpts{setCondition = Always, returnOldVal = False, ttlOption = EXAT (UnixTimeSeconds 100)}
                 )
             ,
                 ( "Some options set (4)" :: Text
-                , bulkStrToOptionString [BulkString "NX", BulkString "XX", BulkString "EXAT", BulkString "100"]
+                , bulkStrToOptionString [BulkString "nx", BulkString "XX", BulkString "exat", BulkString "100"]
                 , (def @SetCmdOpts){setCondition = OnlyIfKeyDoesNotExist}
                 )
             ,
                 ( "Some options set out of order" :: Text
                 , bulkStrToOptionString [BulkString "GET", BulkString "EX", BulkString "60"]
-                , SetCmdOpts{setCondition = Always, returnOldVal = True, ttl = EX (Seconds 60)}
+                , SetCmdOpts{setCondition = Always, returnOldVal = True, ttlOption = EX (Seconds 60)}
                 )
             ,
                 ( "Some options set out of order (2)" :: Text
                 , bulkStrToOptionString [BulkString "GET", BulkString "XX"]
-                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = True, ttl = def @TTL}
+                , SetCmdOpts{setCondition = OnlyIfKeyExists, returnOldVal = True, ttlOption = def @TTLOption}
                 )
             ,
                 ( "no options set" :: Text
@@ -67,7 +67,7 @@ spec_tests = do
             ,
                 ( "one option set" :: Text
                 , bulkStrToOptionString [BulkString "PXAT", BulkString "160"]
-                , (def @SetCmdOpts){ttl = PXAT (UnixTimeMilliSeconds 160)}
+                , (def @SetCmdOpts){ttlOption = PXAT (UnixTimeMilliSeconds 160)}
                 )
             ]
             $ \(testDesc, input, expected) ->

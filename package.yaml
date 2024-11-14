@@ -10,6 +10,7 @@ dependencies:
   - text
   - string-interpolate
   - data-default
+  - concurrency
 
 default-extensions:
   - TypeApplications
@@ -75,6 +76,7 @@ library:
     - unix-time
     - mtl
     - optparse-applicative
+    - dejafu
 
 tests:
   hs-redis-clone-test:

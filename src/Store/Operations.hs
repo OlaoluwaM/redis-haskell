@@ -1,13 +1,11 @@
-module Store.Operations (initialStore, retrieveItem, setItem, mkStoreValue) where
+module Store.Operations where
 
 import Store.Types
 
 import Data.HashMap.Strict qualified as HashMap
 
 import Data.ByteString (ByteString)
-
-storeValueWithNoExpiryInfo :: StoreValue
-storeValueWithNoExpiryInfo = StoreValue{ttl = Nothing, insertTime = Nothing, value = Str ""}
+import Data.Time (UTCTime)
 
 initialStore :: Store
 initialStore = HashMap.empty
@@ -18,6 +16,5 @@ retrieveItem = HashMap.lookup
 setItem :: ByteString -> StoreValue -> Store -> Store
 setItem = HashMap.insert
 
--- This signature and implementation are temporary until we begin implementing expiry
-mkStoreValue :: RedisDataType -> StoreValue
-mkStoreValue newVal = storeValueWithNoExpiryInfo{value = newVal}
+mkStoreValue :: RedisDataType -> UTCTime -> UTCTime -> StoreValue
+mkStoreValue = InternalStoreValue

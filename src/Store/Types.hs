@@ -18,7 +18,6 @@ import Data.Time (UTCTime)
 -- Might require smart constructors
 data RedisDataType = Str ByteString | List [ByteString] | Hash (HashMap ByteString ByteString) deriving (Eq, Show, Typeable, Data)
 
--- TODO: remove these maybes once we begin implementing expiry in earnest
-data StoreValue = StoreValue {value :: RedisDataType, insertTime :: Maybe UTCTime, ttl :: Maybe UTCTime} deriving (Eq, Show)
+data StoreValue = InternalStoreValue {value :: RedisDataType, insertTime :: UTCTime, ttlTimestamp :: UTCTime} deriving (Eq, Show)
 
 type Store = HashMap ByteString StoreValue

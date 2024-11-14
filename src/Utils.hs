@@ -13,3 +13,9 @@ fromEither = either id id
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
+
+millisecondsToSeconds :: (Integral a) => a -> a
+millisecondsToSeconds = (`div` 1000)
+
+convergeEither :: (a -> b) -> Either a a -> b
+convergeEither f = either f f

@@ -16,6 +16,7 @@ import Data.Time (getCurrentTime)
 import Network.Run.TCP (runTCPServer)
 import RESP.Parser (serializeRESPDataType)
 import Store.Operations (initialStore)
+import Utils (convergeEither)
 
 main :: IO ()
 main = do
@@ -28,7 +29,7 @@ main = do
         cmdReq <- recv sock 1024
         unless (B.null cmdReq) $ do
             now <- getCurrentTime
-            let storeOperation = fmap (either serializeRESPDataType serializeRESPDataType) . runExceptT . runReaderT (handleCommandReq cmdReq) $ Env storeState now
+            let storeOperation = fmap (convergeEither serializeRESPDataType) . runExceptT . runReaderT (handleCommandReq cmdReq) $ Env storeState now
             response <- atomically storeOperation
             -- Naive logging
             print @String [i|Req: "#{cmdReq}", and Resp: "#{response}"|]
