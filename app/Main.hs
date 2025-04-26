@@ -1,11 +1,14 @@
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main (main) where
 
-import Network.Simple.TCP (serve, HostPreference(HostAny), closeSock)
-import System.IO (hSetBuffering, stdout, stderr, BufferMode(NoBuffering))
+import Control.Monad (unless)
+import Data.ByteString qualified as BS
+import Handler (handleCommandReq)
+import Network.Run.TCP
+import Network.Socket
+import Network.Socket.ByteString (recv)
+import Server (runServer)
+import Server.Env (Env (..))
+import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
 main = do
@@ -13,12 +16,15 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
-    -- You can use print statements as follows for debugging, they'll be visible when running tests.
-    putStrLn "Logs from your program will appear here"
-
-    -- Uncomment this block to pass stage 1
-    let port = "6379"
     putStrLn $ "Redis server listening on port " ++ port
-    serve HostAny port $ \(socket, address) -> do
-        putStrLn $ "successfully connected client: " ++ show address
-        closeSock socket
+    runTCPServer Nothing port handleRedisClientConnection
+  where
+    port :: String
+    port = "6379"
+
+handleRedisClientConnection :: Socket -> IO ()
+handleRedisClientConnection s = do
+    req <- recv s 1024
+    unless (BS.null req) $ do
+        runServer (handleCommandReq req) (Env s ())
+        handleRedisClientConnection s
