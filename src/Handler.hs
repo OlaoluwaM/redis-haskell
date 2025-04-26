@@ -6,8 +6,9 @@ import Data.Text qualified as T
 
 import Blammo.Logging (MonadLogger)
 import Blammo.Logging.Simple (Message ((:#)), logInfo, (.=))
+import Commands.Echo (handleEcho)
 import Commands.Parser (Command (..), commandParser, mkInvalidCommand)
-import Commands.Ping (handlePingReq)
+import Commands.Ping (handlePing)
 import Control.Lens (view)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader (ask))
@@ -26,7 +27,8 @@ handleCommandReq rawCmdReq = do
     dispatchCmd command
 
 dispatchCmd :: (HasClientSocket r Socket, MonadReader r m, MonadIO m) => Command -> m ()
-dispatchCmd (Ping pingCmdArgs) = handlePingReq pingCmdArgs
+dispatchCmd (Ping pingCmdArg) = handlePing pingCmdArg
+dispatchCmd (Echo echoCmdArg) = handleEcho echoCmdArg
 dispatchCmd (InvalidCommand msg) = do
     env <- ask
     let socket = view clientSocket env

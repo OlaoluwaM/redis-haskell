@@ -5,6 +5,7 @@ module Commands.Parser (
 ) where
 
 import Commands.Ping
+import Commands.Echo
 import RESP
 
 import Data.Attoparsec.ByteString.Char8 qualified as AC
@@ -25,7 +26,7 @@ import Helpers (withCustomError)
 data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args :: [BulkString]}
     deriving stock (Eq, Show)
 
-data Command = Ping PingCmdArg | InvalidCommand Text
+data Command = Ping PingCmdArg | Echo EchoCmdArg | InvalidCommand Text
     deriving stock (Eq, Show, Generic)
 
 instance ToJSON Command where
@@ -62,7 +63,8 @@ toCommand (ParsedCommandRequest NullBulkString _) = fail "A null bulk string is 
 toCommand (ParsedCommandRequest (BulkString rawCmdStr) parsedArgs) =
     let normalizedCmdStr = BS.map toUpper rawCmdStr
      in case (normalizedCmdStr, parsedArgs) of
-            ("PING", x) -> Ping <$> mkPingCmdArgs x
+            ("PING", x) -> Ping <$> mkPingCmdArg x
+            ("ECHO", x) -> Echo <$> mkEchoCmdArg x
             (unimplementedCommandStr, _) -> handleUnimplementedCmd unimplementedCommandStr
 
 handleUnimplementedCmd :: (MonadFail m) => ByteString -> m Command

@@ -1,4 +1,4 @@
-module Commands.Ping (PingCmdArg (..), handlePingReq, mkPingCmdArgs) where
+module Commands.Ping (PingCmdArg (..), handlePing, mkPingCmdArg) where
 
 import Control.Lens
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -20,15 +20,15 @@ newtype PingCmdArg = PingCmdArg (Maybe Text)
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON)
 
-handlePingReq :: (HasClientSocket r Socket, MonadReader r m, MonadIO m) => PingCmdArg -> m ()
-handlePingReq (PingCmdArg x) = do
+handlePing :: (HasClientSocket r Socket, MonadReader r m, MonadIO m) => PingCmdArg -> m ()
+handlePing (PingCmdArg x) = do
     env <- ask
     let socket = view clientSocket env
     case x of
         (Just txt) -> liftIO . sendAll socket . serializeRESPDataType . mkNonNullBulkString . encodeUtf8 $ txt
         Nothing -> liftIO . sendAll socket . serializeRESPDataType . SimpleString $ "PONG"
 
-mkPingCmdArgs :: (MonadFail m) => [BulkString] -> m PingCmdArg
-mkPingCmdArgs [] = pure . PingCmdArg $ Nothing
-mkPingCmdArgs [BulkString txt] = pure . PingCmdArg . eitherToMaybe $ decodeUtf8' txt
-mkPingCmdArgs _ = fail "PING command does accept multiple arguments"
+mkPingCmdArg :: (MonadFail m) => [BulkString] -> m PingCmdArg
+mkPingCmdArg [] = pure . PingCmdArg $ Nothing
+mkPingCmdArg [BulkString txt] = pure . PingCmdArg . eitherToMaybe $ decodeUtf8' txt
+mkPingCmdArg _ = fail "PING command does accept multiple arguments"
