@@ -1,7 +1,6 @@
 module Redis.Commands.Ping (PingCmdArg (..), handlePing, mkPingCmdArg) where
 
 import Control.Lens
-import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (ToJSON)
 import Data.Either.Extra (eitherToMaybe)
@@ -9,7 +8,6 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
-import Network.Socket.ByteString (sendAll)
 import Redis.RESP (BulkString (BulkString), RESPDataType (..), mkNonNullBulkString, serializeRESPDataType)
 import Redis.Server.Env
 import Redis.Server.ServerT (MonadSocket (..))
