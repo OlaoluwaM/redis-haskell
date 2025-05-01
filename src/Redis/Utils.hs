@@ -1,4 +1,4 @@
-module Utils (
+module Redis.Utils (
     myTrace,
     myTraceM,
     fromEither,

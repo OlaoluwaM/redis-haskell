@@ -1,12 +1,12 @@
-module Commands.Parser (
+module Redis.Commands.Parser (
     commandParser,
     mkInvalidCommand,
     Command (..),
 ) where
 
-import Commands.Ping
-import Commands.Echo
-import RESP
+import Redis.Commands.Ping
+import Redis.Commands.Echo
+import Redis.RESP
 
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.ByteString.Char8 qualified as BS
@@ -21,7 +21,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Helpers (withCustomError)
+import Redis.Helpers (withCustomError)
 
 data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args :: [BulkString]}
     deriving stock (Eq, Show)

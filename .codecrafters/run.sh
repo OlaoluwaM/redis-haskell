@@ -8,4 +8,5 @@
 
 set -e # Exit on failure
 
+export LOG_LEVEL=error
 exec $(stack path --local-install-root)/bin/codecrafters-redis-exe "$@"

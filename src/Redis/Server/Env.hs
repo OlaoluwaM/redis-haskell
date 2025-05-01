@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
-module Server.Env where
+module Redis.Server.Env where
 
 import Control.Lens (camelCaseFields, makeLensesWith)
 import Network.Socket (Socket)

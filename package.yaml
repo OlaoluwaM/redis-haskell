@@ -1,4 +1,4 @@
-name: codecrafters-redis
+name: redis-haskell
 version: 0.1.0.0
 license: BSD3
 author: Olaoluwa Mustapha
@@ -15,12 +15,14 @@ dependencies:
   - text
 
 default-extensions:
+  - AllowAmbiguousTypes
   - ApplicativeDo
   - BlockArguments
   - DeriveAnyClass
   - DerivingStrategies
   - DerivingVia
   - DuplicateRecordFields
+  - FunctionalDependencies
   - GADTs
   - ImportQualifiedPost
   - LambdaCase
@@ -50,7 +52,7 @@ ghc-options:
   - -Wno-unused-top-binds
 
 executables:
-  codecrafters-redis-exe:
+  redis-haskell-exe:
     main: Main.hs
     source-dirs: app
     ghc-options:
@@ -59,7 +61,7 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - async
-      - codecrafters-redis
+      - redis-haskell
       - mtl
       - network # required when using bytestring
       - network-run
@@ -77,7 +79,6 @@ library:
     - dejafu
     - errors
     - extra
-    - fast-logger
     - lens
     - monoidal-containers
     - mtl
@@ -97,21 +98,27 @@ library:
     - vector
 
 tests:
-  codecrafters-redis-test:
-    main: Driver.hs
+  redis-haskell-test:
+    main: Spec.hs
     source-dirs: test
     ghc-options:
+      - -Wno-missing-export-lists
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
       - attoparsec
-      - codecrafters-redis
+      - Blammo
+      - redis-haskell
       - hspec
-      - QuickCheck
+      - hedgehog
+      - lens
+      - mtl
+      - network
       - tasty
       - tasty-discover
       - tasty-expected-failure
       - tasty-hspec
-      - tasty-quickcheck
+      - tasty-hedgehog
+      - transformers
       - vector

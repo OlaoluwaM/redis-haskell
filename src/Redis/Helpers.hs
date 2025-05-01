@@ -1,4 +1,4 @@
-module Helpers (
+module Redis.Helpers (
     withCustomError,
 ) where
 

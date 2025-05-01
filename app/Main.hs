@@ -2,12 +2,12 @@ module Main (main) where
 
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
-import Handler (handleCommandReq)
+import Redis.Handler (handleCommandReq)
 import Network.Run.TCP
 import Network.Socket
 import Network.Socket.ByteString (recv)
-import Server (runServer)
-import Server.Env (Env (..))
+import Redis.Server (runServer)
+import Redis.Server.Env (Env (..))
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
@@ -15,7 +15,6 @@ main = do
     -- Disable output buffering
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
-
     putStrLn $ "Redis server listening on port " ++ port
     runTCPServer Nothing port handleRedisClientConnection
   where

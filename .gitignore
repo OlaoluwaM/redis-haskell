@@ -2,3 +2,5 @@
 .stack/
 codecrafters-redis.cabal
 *~
+!.env.example
+!.env.test
