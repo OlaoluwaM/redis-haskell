@@ -6,10 +6,11 @@ module Redis.Server.Env where
 
 import Control.Lens (camelCaseFields, makeLensesWith)
 import Network.Socket (Socket)
+import Redis.Store (StoreState)
 
 data Env = Env
     { envClientSocket :: Socket
-    , envStore :: ()
+    , envStore :: StoreState
     }
 
 makeLensesWith camelCaseFields ''Env

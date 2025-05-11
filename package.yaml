@@ -1,4 +1,4 @@
-name: redis-haskell
+name: codecrafters-redis
 version: 0.1.0.0
 license: BSD3
 author: Olaoluwa Mustapha
@@ -11,6 +11,7 @@ dependencies:
   - containers
   - concurrency
   - data-default
+  - stm
   - string-interpolate
   - text
 
@@ -18,6 +19,7 @@ default-extensions:
   - AllowAmbiguousTypes
   - ApplicativeDo
   - BlockArguments
+  - DataKinds
   - DeriveAnyClass
   - DerivingStrategies
   - DerivingVia
@@ -52,7 +54,7 @@ ghc-options:
   - -Wno-unused-top-binds
 
 executables:
-  redis-haskell-exe:
+  codecrafters-redis-exe:
     main: Main.hs
     source-dirs: app
     ghc-options:
@@ -61,12 +63,11 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - async
-      - redis-haskell
+      - codecrafters-redis
       - mtl
       - network # required when using bytestring
       - network-run
       - split
-      - stm
       - time
 
 library:
@@ -79,6 +80,7 @@ library:
     - dejafu
     - errors
     - extra
+    - heap
     - lens
     - monoidal-containers
     - mtl
@@ -89,6 +91,7 @@ library:
     - semialign
     - split
     - stm # may help with a concurrent database
+    - tagged
     - these
     - time
     - transformers
@@ -98,7 +101,7 @@ library:
     - vector
 
 tests:
-  redis-haskell-test:
+  codecrafters-redis-test:
     main: Spec.hs
     source-dirs: test
     ghc-options:
@@ -109,16 +112,19 @@ tests:
     dependencies:
       - attoparsec
       - Blammo
-      - redis-haskell
+      - codecrafters-redis
       - hspec
       - hedgehog
       - lens
       - mtl
       - network
+      - tagged
       - tasty
       - tasty-discover
       - tasty-expected-failure
       - tasty-hspec
       - tasty-hedgehog
+      - time
       - transformers
+      - unordered-containers
       - vector

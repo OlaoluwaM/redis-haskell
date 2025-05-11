@@ -4,6 +4,8 @@ module Redis.Helper (
     bulkStrToOptionString,
     pingCmd,
     echoCmd,
+    setCmd,
+    getCmd,
 ) where
 
 import Data.ByteString (ByteString)
@@ -25,8 +27,8 @@ pingCmd = mkBulkString "PING"
 echoCmd :: RESPDataType
 echoCmd = mkBulkString "ECHO"
 
--- setCmd :: RESPDataType
--- setCmd = mkBulkString "SET"
+setCmd :: RESPDataType
+setCmd = mkBulkString "SET"
 
--- getCmd :: RESPDataType
--- getCmd = mkBulkString "GET"
+getCmd :: RESPDataType
+getCmd = mkBulkString "GET"

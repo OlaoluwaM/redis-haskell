@@ -15,17 +15,22 @@ import Data.ByteString (ByteString)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe)
 import Network.Socket (AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType), AddrInfoFlag (..), Socket, SocketType (..), defaultHints, getAddrInfo, socket)
-import Redis.Server.Env (HasClientSocket (..))
+import Redis.Server.Env (HasClientSocket (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
+import Redis.Store (genInitialStore, StoreState)
+import Control.Concurrent.STM (newTVarIO)
 
 data TestEnv = TestEnv
     { testEnvClientSocket :: Socket
-    , testEnvStore :: ()
+    , testEnvStore :: StoreState
     , testEnvLogger :: Logger
     }
 
 instance HasClientSocket TestEnv Socket where
     clientSocket = lens testEnvClientSocket $ \x y -> x{testEnvClientSocket = y}
+
+instance HasStore TestEnv StoreState where
+    store = lens testEnvStore $ \x y -> x{testEnvStore = y}
 
 instance HasLogger TestEnv where
     loggerL = lens testEnvLogger $ \x y -> x{testEnvLogger = y}
@@ -37,11 +42,12 @@ newtype TestM a = TestM {unTestM :: ReaderT TestEnv IO a}
 instance MonadSocket TestM ByteString where
     sendThroughSocket _ = pure
 
-runTestM :: TestM a -> Maybe () -> IO a
+runTestM :: TestM a -> Maybe StoreState -> IO a
 runTestM action storeM = do
     loopbackSocket <- mkLoopbackSocket
-    let store = fromMaybe () storeM
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestEnv{testEnvClientSocket = loopbackSocket, testEnvStore = store, testEnvLogger = logger}
+    initialStoreState <- newTVarIO genInitialStore
+    let kvStoreState = fromMaybe initialStoreState storeM
+    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestEnv{testEnvClientSocket = loopbackSocket, testEnvStore = kvStoreState, testEnvLogger = logger}
 
 mkLoopbackSocket :: IO Socket
 mkLoopbackSocket = do

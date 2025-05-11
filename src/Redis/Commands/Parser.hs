@@ -4,10 +4,6 @@ module Redis.Commands.Parser (
     Command (..),
 ) where
 
-import Redis.Commands.Ping
-import Redis.Commands.Echo
-import Redis.RESP
-
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.ByteString.Char8 qualified as BS
 import Data.List.NonEmpty qualified as NE
@@ -21,12 +17,22 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import GHC.Generics (Generic)
+import Redis.Commands.Echo (EchoCmdArg, mkEchoCmdArg)
+import Redis.Commands.Ping (PingCmdArg, mkPingCmdArg)
+import Redis.Commands.Set (SetCmdArg, mkSetCmdArg)
 import Redis.Helpers (withCustomError)
+import Redis.RESP (
+    BulkString (..),
+    bulkStringParser,
+    terminatorSeqParser,
+ )
+import Redis.Commands.Get (GetCmdArg, mkGetCmdArg)
 
 data ParsedCommandRequest = ParsedCommandRequest {command :: BulkString, args :: [BulkString]}
     deriving stock (Eq, Show)
 
-data Command = Ping PingCmdArg | Echo EchoCmdArg | InvalidCommand Text
+-- NOTE: Remember to update toCommand if you add new commands
+data Command = Ping PingCmdArg | Echo EchoCmdArg | Set SetCmdArg | Get GetCmdArg | InvalidCommand Text
     deriving stock (Eq, Show, Generic)
 
 instance ToJSON Command where
@@ -65,6 +71,8 @@ toCommand (ParsedCommandRequest (BulkString rawCmdStr) parsedArgs) =
      in case (normalizedCmdStr, parsedArgs) of
             ("PING", x) -> Ping <$> mkPingCmdArg x
             ("ECHO", x) -> Echo <$> mkEchoCmdArg x
+            ("SET", x) -> Set <$> mkSetCmdArg x
+            ("GET", x) -> Get <$> mkGetCmdArg x
             (unimplementedCommandStr, _) -> handleUnimplementedCmd unimplementedCommandStr
 
 handleUnimplementedCmd :: (MonadFail m) => ByteString -> m Command
