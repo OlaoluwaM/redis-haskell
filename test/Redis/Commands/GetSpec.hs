@@ -2,6 +2,7 @@ module Redis.Commands.GetSpec where
 
 import Test.Hspec
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (atomically, newTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
@@ -18,7 +19,7 @@ import Redis.Commands.Get (GetCmdArg (..))
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (getCmd, mkBulkString, mkCmdReqStr, setCmd)
-import Redis.RESP (RESPDataType (..), serializeRESPDataType)
+import Redis.RESP (RESPDataType (..), nullBulkString, serializeRESPDataType)
 import Redis.Store (StoreState, mkStoreValue)
 import Redis.Store.Data
 import Redis.Test (runTestM)
@@ -141,6 +142,52 @@ spec_get_cmd_tests = do
                 let cmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 result `shouldSatisfy` BS.isPrefixOf "(error)"
+
+            context "Supports key expiry" $ do
+                it "should return a null bulkstring for a key with an expired TTL" $ \initialStoreState -> do
+                    let key = "expired:key"
+                    let value = "this-will-expire"
+                    -- Use a timestamp for May 10, 2025 (past date) - 1715385600000 milliseconds since epoch
+                    let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PXAT", mkBulkString "1715385600000"]
+
+                    -- Set the key with an already expired TTL
+                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
+
+                    -- Then try to GET the key - should return NULL since it's expired
+                    let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
+                    let expected = serializeRESPDataType nullBulkString
+
+                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result `shouldBe` expected
+
+                it "should return value for a key with non-expired TTL" $ \initialStoreState -> do
+                    -- Use car:2 which is set to expire in 1 hour from current time (not expired)
+                    let key = "car:2"
+                    let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
+                    let expected = serializeRESPDataType (mkBulkString "black")
+
+                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result `shouldBe` expected
+
+                it "should return an empty bulkstring when attempting to access a key with an expired TTL" $ \initialStoreState -> do
+                    -- Set a key with a very short expiry (100ms)
+                    let key = "very:short:ttl"
+                    let value = "gone-quickly"
+                    let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PX", mkBulkString "100"]
+
+                    -- Set the key with short TTL
+                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
+
+                    -- Wait for the TTL to expire
+                    -- threaDelay takes time in microseconds so we must convert from milliseconds to microseconds for it to work as we want
+                    liftIO $ threadDelay 150000 -- 150ms
+
+                    -- Then try to GET the key - should return NULL since it's expired
+                    let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
+                    let expected = serializeRESPDataType nullBulkString
+
+                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result `shouldBe` expected
 
 initializeStoreState :: IO StoreState
 initializeStoreState = do

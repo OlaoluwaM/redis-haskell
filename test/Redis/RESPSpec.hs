@@ -32,7 +32,7 @@ genValidRawBulkString :: (MonadGen m) => m RawBulkString
 genValidRawBulkString = do
     strLength <- Gen.frequency [(1, pure (-1)), (2, Gen.integral (Range.linear 1 1000))]
     if strLength == (-1)
-        then pure . NullRawBulkString $ [i|$-1#{seqTerminator}#{seqTerminator}|]
+        then pure . NullRawBulkString $ [i|$-1#{seqTerminator}|]
         else do
             mainStr <- Gen.filterT (BS.all notTerminatorSeq) (Gen.bytes (Range.singleton strLength))
             pure . NonNullRawBulkString $ [i|$#{strLength}#{seqTerminator}#{mainStr}#{seqTerminator}|]
@@ -42,7 +42,7 @@ genInvalidRawBulkString = do
     strLength <- Gen.integral (Range.linear (-100) 100)
 
     -- We derive the bytestring range from `strLength` to allow us avoid an overlap between the bytestring length and the `strLength` value without the need for a manual filter
-    mainStr <- Gen.bytes (Range.linear (negate (abs (strLength + 1))) (abs strLength * 100))
+    mainStr <- Gen.bytes (Range.linear (abs strLength + 1) (abs strLength * 100))
 
     let rawBulkString = [i|$#{strLength}#{seqTerminator}#{mainStr}#{seqTerminator}|]
     pure rawBulkString

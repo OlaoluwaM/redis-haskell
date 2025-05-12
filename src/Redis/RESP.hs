@@ -7,6 +7,7 @@ module Redis.RESP (
     terminatorSeqParser,
     mkNonNullRESPArray,
     toOptionString,
+    nullBulkString,
 
     -- ** Testing
     seqTerminator,
@@ -19,7 +20,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Vector qualified as V
 
 import Control.Applicative (Alternative ((<|>)))
-import Control.Monad (mfilter)
+import Control.Monad (mfilter, when)
 import Data.Attoparsec.ByteString (Parser)
 import Data.ByteString (ByteString)
 import Data.Functor (($>))
@@ -54,6 +55,7 @@ nullBulkStringParser = withCustomError (AC.char '$' *> (AC.char '-' *> AC.char '
 nonNullBulkStringParser :: Parser BulkString
 nonNullBulkStringParser = do
     len <- withCustomError (AC.char '$' *> AC.signed AC.decimal <* terminatorSeqParser) "Invalid RESP BulkString string"
+    when (len < 0) $ fail "Invalid. Expected a potential non-null bulkstring but found the beginnings of a null bulkstring instead"
 
     isEndOfInput <- AC.atEnd
 
@@ -88,6 +90,9 @@ seqTerminator = "\r\n"
 
 mkNonNullBulkString :: ByteString -> RESPDataType
 mkNonNullBulkString = MkBulkStringResponse . BulkString
+
+nullBulkString :: RESPDataType
+nullBulkString = MkBulkStringResponse NullBulkString
 
 mkNonNullRESPArray :: [RESPDataType] -> RESPDataType
 mkNonNullRESPArray = MkArrayResponse . Array . V.fromList

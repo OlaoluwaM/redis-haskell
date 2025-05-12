@@ -11,14 +11,16 @@ import Control.Lens (view)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (ToJSON (..))
+import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.Either (fromRight)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8')
+import Data.Time (getCurrentTime)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
-import Redis.RESP (BulkString (BulkString), RESPDataType (Null), mkNonNullBulkString, serializeRESPDataType)
+import Redis.RESP (BulkString (BulkString), RESPDataType (Null), mkNonNullBulkString, nullBulkString, serializeRESPDataType)
 import Redis.Server.Env (HasClientSocket (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Store (StoreState, StoreValue (StoreValue))
@@ -44,6 +46,8 @@ mkGetCmdArg _ = fail "GET command requires only 1 argument"
 handleGet :: (HasClientSocket r Socket, HasStore r StoreState, MonadIO m, MonadReader r m, MonadSocket m b) => GetCmdArg -> m b
 handleGet (GetCmdArg targetKey) = do
     env <- ask
+    currentTime <- liftIO getCurrentTime
+
     let socket = view clientSocket env
     let kvStoreState = view store env
 
@@ -53,9 +57,14 @@ handleGet (GetCmdArg targetKey) = do
         case targetItemM of
             Nothing -> pure . Right $ Null
             Just targetItemVar -> do
-                (StoreValue valForTargetKey _ _) <- readTVar targetItemVar
+                (StoreValue valForTargetKey _ ttlM) <- readTVar targetItemVar
                 case valForTargetKey of
-                    (MkRedisStr (RedisStr val)) -> pure . Right $ mkNonNullBulkString val
+                    (MkRedisStr (RedisStr val)) -> do
+                        case ttlM of
+                            Nothing -> pure . Right $ mkNonNullBulkString val
+                            Just ttl -> do
+                                let keyValHasExpired = currentTime >= ttl
+                                pure . bool (Right $ mkNonNullBulkString val) (Right nullBulkString) $ keyValHasExpired
                     x -> do
                         let actualValType = getStrTypeRepForRedisDataType @ByteString x
                         pure . Left $ [i|(error) GET command only supports string values, but value at key #{targetKey} was of type #{actualValType}|]
