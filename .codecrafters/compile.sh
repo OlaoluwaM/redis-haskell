@@ -9,4 +9,4 @@
 set -e # Exit on failure
 
 # This compiles the program into $(stack path --local-install-root)/bin/codecrafters-redis-exe.
-stack build --pedantic
+stack build --fast
