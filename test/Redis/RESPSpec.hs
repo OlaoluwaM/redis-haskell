@@ -42,7 +42,8 @@ genInvalidRawBulkString = do
     strLength <- Gen.integral (Range.linear (-100) 100)
 
     -- We derive the bytestring range from `strLength` to allow us avoid an overlap between the bytestring length and the `strLength` value without the need for a manual filter
-    mainStr <- Gen.bytes (Range.linear (abs strLength + 1) (abs strLength * 100))
+    -- (+ 1) in case strLength is 0 to avoid having an invalid range (0 * n = 0). This way whenever strLength is 0, the upper bound of this range will be 100
+    mainStr <- Gen.bytes (Range.linear (abs strLength + 1) (abs (strLength * 100 + 1)))
 
     let rawBulkString = [i|$#{strLength}#{seqTerminator}#{mainStr}#{seqTerminator}|]
     pure rawBulkString

@@ -69,7 +69,10 @@ data SetCmdOpts = SetCmdOpts {setCondition :: SetCondition, returnOldVal :: Bool
 
 -- "Any previous time to live associated with the key is discarded on successful SET operation". That is from the redis documentation on the SET command
 -- By default items set without an explicit TTL have no TTL, that is there is no default TTL in redis: https://stackoverflow.com/questions/49133314/whats-default-ttl-in-redis
-data TTLOption = EX (Tagged Seconds Integer) | PX (Tagged MilliSeconds Integer) | EXAT (Tagged UnixEpochTimeSeconds POSIXTime) | PXAT (Tagged UnixEpochTimeMilliSeconds Integer) | KeepTTL | DiscardTTL
+
+-- We are making the PX and PXAT types Doubles because they're in milliseconds and we don't want to lose precision when converting to seconds (we lose precision if we convert to seconds using integer division).
+-- We *could* make EX a Double too, if only to allow users to ability to express more precise TTL offsets with the option, but then what would be the point of the PX option? Following this line of reasoning, I think it would be best to just keep EX as an integer
+data TTLOption = EX (Tagged Seconds Integer) | PX (Tagged MilliSeconds Double) | EXAT (Tagged UnixEpochTimeSeconds POSIXTime) | PXAT (Tagged UnixEpochTimeMilliSeconds Double) | KeepTTL | DiscardTTL
     deriving stock (Eq, Show, Ord, Generic)
     deriving anyclass (ToJSON)
 
@@ -108,16 +111,16 @@ parseSetCmdOptions =
     ttlOptionParser :: Parser TTLOption
     ttlOptionParser =
         asum
-            [ numberedTTLOptionParser "EX" <&> EX . Tagged
+            [ numberedTTLOptionParser "EX" <&> EX . Tagged . floor -- rounding down to avoid creating time out of thin air
             , numberedTTLOptionParser "PX" <&> PX . Tagged
-            , numberedTTLOptionParser "EXAT" <&> EXAT . Tagged . fromInteger
+            , numberedTTLOptionParser "EXAT" <&> EXAT . Tagged . fromInteger . floor
             , numberedTTLOptionParser "PXAT" <&> PXAT . Tagged
             , KeepTTL <$ AC.stringCI "KEEPTTL"
             ]
             <?> "TTL option parser"
 
-    numberedTTLOptionParser :: (Integral a) => ByteString -> Parser a
-    numberedTTLOptionParser numberedTTLOptionStr = AC.stringCI numberedTTLOptionStr *> skipSomeTill AC.space AC.decimal
+    numberedTTLOptionParser :: ByteString -> Parser Double
+    numberedTTLOptionParser numberedTTLOptionStr = AC.stringCI numberedTTLOptionStr *> skipSomeTill AC.space AC.double
 
 mkSetCmdOpts :: SetCondition -> Bool -> TTLOption -> SetCmdOpts
 mkSetCmdOpts = SetCmdOpts
@@ -174,8 +177,8 @@ handleSet (SetCmdArg key newVal opts) = do
 setupTTLCalculation :: UTCTime -> Maybe UTCTime -> TTLOption -> Maybe UTCTime
 setupTTLCalculation currentTime currentTTLForItem = \case
     (EX t) -> Just $ addUTCTime (fromInteger @NominalDiffTime (untag t)) currentTime
-    (PX t) -> Just $ addUTCTime (fromInteger @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime -- t is in milliseconds so we must convert to seconds
-    (EXAT t) -> Just $ posixSecondsToUTCTime (untag t)
-    (PXAT t) -> Just $ posixSecondsToUTCTime . fromInteger . millisecondsToSeconds $ untag t -- t is POSIX milliseconds so we must convert it to seconds
+    (PX t) -> Just $ addUTCTime (realToFrac @_ @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime -- t is in milliseconds so we must convert to seconds
+    (EXAT t) -> Just $ posixSecondsToUTCTime  (untag t)
+    (PXAT t) -> Just $ posixSecondsToUTCTime . realToFrac . millisecondsToSeconds $ untag t -- t is POSIX milliseconds so we must convert it to seconds
     KeepTTL -> currentTTLForItem
     DiscardTTL -> Nothing

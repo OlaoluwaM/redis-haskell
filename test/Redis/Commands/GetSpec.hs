@@ -160,6 +160,18 @@ spec_get_cmd_tests = do
                     result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
                     result `shouldBe` expected
 
+                it "should return value for a key with a TTL that has not expired" $ \storeState -> do
+                    let key = "cam:4"
+                    let value = "some value"
+                    let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "px", mkBulkString "100"]
+
+                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just storeState))
+
+                    let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
+
+                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just storeState))
+                    result `shouldBe` serializeRESPDataType (mkBulkString value)
+
                 it "should return value for a key with non-expired TTL" $ \initialStoreState -> do
                     -- Use car:2 which is set to expire in 1 hour from current time (not expired)
                     let key = "car:2"

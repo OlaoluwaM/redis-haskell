@@ -22,8 +22,10 @@ fromEither = either id id
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 
-millisecondsToSeconds :: (Integral a) => a -> a
-millisecondsToSeconds = (`div` 1000)
+-- Using fractional division to avoid losing precision.
+-- Integer division would round 0.1 to 0 which we do not want, we want to have division results as is with little to no rounding
+millisecondsToSeconds :: (Fractional a) => a -> a
+millisecondsToSeconds = (/ 1000)
 
 secondsToMilliseconds :: (Integral a) => a -> a
 secondsToMilliseconds = (* 1000)

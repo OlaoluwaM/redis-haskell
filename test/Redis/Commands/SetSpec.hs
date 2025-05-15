@@ -161,9 +161,9 @@ spec_set_cmd_tests = do
 
         it "should correctly set up TTL with PXAT option" do
             now <- liftIO getCurrentTime
-            let ttlOption = PXAT (Tagged 1746057600)
+            let ttlOption = PXAT (Tagged 17460576000)
             let result = setupTTLCalculation now Nothing ttlOption
-            result `shouldBe` Just (posixSecondsToUTCTime 1746057)
+            result `shouldBe` Just (posixSecondsToUTCTime 17460576)
 
         it "should keep existing TTL with KEEPTTL option" do
             now <- liftIO getCurrentTime
