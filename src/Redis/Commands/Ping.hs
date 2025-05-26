@@ -9,7 +9,7 @@ import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
 import Redis.RESP (BulkString (BulkString), RESPDataType (..), mkNonNullBulkString, serializeRESPDataType)
-import Redis.Server.Env
+import Redis.Server.Context
 import Redis.Server.ServerT (MonadSocket (..))
 
 -- https://redis.io/docs/latest/commands/ping/

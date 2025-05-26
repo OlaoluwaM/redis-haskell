@@ -8,10 +8,10 @@ module Redis.Server (
 import Blammo.Logging.Simple
 import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Text (Text)
-import Redis.Server.Env as X (Env)
+import Redis.Server.Context as X (ServerContext)
 import Redis.Server.ServerT (ServerT (..))
 
-type ServerM a = ServerT Env (LoggingT IO) a
+type ServerM a = ServerT ServerContext (LoggingT IO) a
 
-runServer :: ServerM () -> Env -> IO ()
+runServer :: ServerM () -> ServerContext -> IO ()
 runServer action = runSimpleLoggingT . withThreadContext ["app" .= ("redis-server-hs" :: Text)] . runReaderT (unServerT action)

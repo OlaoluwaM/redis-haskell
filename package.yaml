@@ -9,7 +9,6 @@ dependencies:
   - base
   - bytestring # useful to send bytes over the network
   - containers
-  - concurrency
   - data-default
   - stm
   - string-interpolate
@@ -64,6 +63,7 @@ executables:
     dependencies:
       - async
       - codecrafters-redis
+      - envparse
       - mtl
       - network # required when using bytestring
       - network-run
@@ -77,27 +77,20 @@ library:
     - async # may help with concurrency
     - attoparsec
     - Blammo
-    - dejafu
-    - errors
+    - envparse
     - extra
-    - heap
+    # - heap # For modelling other redis data structures
     - lens
-    - monoidal-containers
     - mtl
     - network # required when using bytestring
     - optparse-applicative
     - parser-combinators
     - safe
-    - semialign
     - split
-    - stm # may help with a concurrent database
+    - stm
     - tagged
-    - these
     - time
-    - transformers
-    - unliftio
     - unordered-containers
-    - unix-time
     - vector
 
 tests:
@@ -125,6 +118,5 @@ tests:
       - tasty-hspec
       - tasty-hedgehog
       - time
-      - transformers
       - unordered-containers
       - vector

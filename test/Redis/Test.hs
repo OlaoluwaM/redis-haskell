@@ -15,7 +15,7 @@ import Data.ByteString (ByteString)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe)
 import Network.Socket (AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType), AddrInfoFlag (..), Socket, SocketType (..), defaultHints, getAddrInfo, socket)
-import Redis.Server.Env (HasClientSocket (..), HasStore (..))
+import Redis.Server.Context (HasClientSocket (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Store (genInitialStore, StoreState)
 import Control.Concurrent.STM (newTVarIO)

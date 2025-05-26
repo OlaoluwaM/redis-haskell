@@ -41,7 +41,7 @@ import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime, posixSecondsToUTCTime)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
 import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
-import Redis.Server.Env (HasClientSocket (..), HasStore (..))
+import Redis.Server.Context (HasClientSocket (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Store (StoreState, StoreValue (..), mkStoreValue)
 import Redis.Store.Data (
