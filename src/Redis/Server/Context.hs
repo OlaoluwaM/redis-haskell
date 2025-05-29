@@ -6,13 +6,13 @@ module Redis.Server.Context where
 
 import Control.Lens (camelCaseFields, makeLensesWith)
 import Network.Socket (Socket)
-import Redis.Server.Settings (Settings)
+import Redis.Server.Settings (ServerSettings)
 import Redis.Store (StoreState)
 
 data ServerContext = ServerContext
     { serverContextClientSocket :: Socket
     , serverContextStore :: StoreState
-    , serverContextSettings :: Settings
+    , serverContextSettings :: ServerSettings
     }
 
 makeLensesWith camelCaseFields ''ServerContext

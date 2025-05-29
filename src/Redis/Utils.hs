@@ -6,8 +6,13 @@ module Redis.Utils (
     millisecondsToSeconds,
     secondsToMilliseconds,
     convergeEither,
+    toUpperBs,
 ) where
 
+import Data.ByteString.Char8 qualified as BS
+
+import Data.ByteString (ByteString)
+import Data.Char (toUpper)
 import Debug.Trace (trace, traceShowM)
 
 myTrace :: (Show a) => String -> a -> a
@@ -32,3 +37,6 @@ secondsToMilliseconds = (* 1000)
 
 convergeEither :: (a -> b) -> Either a a -> b
 convergeEither f = either f f
+
+toUpperBs :: ByteString -> ByteString
+toUpperBs = BS.map toUpper
