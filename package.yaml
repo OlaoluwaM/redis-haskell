@@ -79,6 +79,7 @@ library:
     - Blammo
     - envparse
     - extra
+    - filepath
     # - heap # For modelling other redis data structures
     - lens
     - mtl
