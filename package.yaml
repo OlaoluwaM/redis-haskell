@@ -67,6 +67,7 @@ executables:
       - mtl
       - network # required when using bytestring
       - network-run
+      - optparse-applicative
       - split
       - time
 
@@ -80,6 +81,7 @@ library:
     - envparse
     - extra
     - filepath
+    - Glob
     # - heap # For modelling other redis data structures
     - lens
     - mtl

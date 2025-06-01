@@ -37,7 +37,7 @@ bulkStringParser = nullBulkStringParser <|> nonNullBulkStringParser
 
 -- | Parser for null bulk strings ($-1\r\n)
 nullBulkStringParser :: Parser BulkString
-nullBulkStringParser = withCustomError (AC.char '$' *> (AC.char '-' *> AC.char '1') *> terminatorSeqParser *> AC.endOfInput $> NullBulkString) "Invalid RESP Null BulkString"
+nullBulkStringParser = withCustomError (AC.char '$' *> (AC.char '-' *> AC.char '1') *> terminatorSeqParser $> NullBulkString) "Invalid Null RESP BulkString"
 
 -- | Parser for non-null bulk strings ($<length>\r\n<data>\r\n)
 nonNullBulkStringParser :: Parser BulkString

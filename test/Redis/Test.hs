@@ -4,6 +4,7 @@ module Redis.Test (
     TestM,
     runTestM,
     runTestM',
+    PassableTestContext (..),
 ) where
 
 import Data.List.NonEmpty qualified as NE
@@ -19,7 +20,7 @@ import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
 import Network.Socket (AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType), AddrInfoFlag (..), Socket, SocketType (..), defaultHints, getAddrInfo, socket)
-import Redis.Server.Context (HasClientSocket (..), HasStore (..))
+import Redis.Server.Context (HasClientSocket (..), HasSettings (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Server.Settings (ServerSettings)
 import Redis.Store (StoreState, genInitialStore)
@@ -45,6 +46,9 @@ instance HasStore TestContext StoreState where
 instance HasLogger TestContext where
     loggerL = lens testContextLogger $ \x y -> x{testContextLogger = y}
 
+instance HasSettings TestContext ServerSettings where
+    settings = lens testContextSetting $ \x y -> x{testContextSetting = y}
+
 newtype TestM a = TestM {unTestM :: ReaderT TestContext IO a}
     deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader TestContext)
     deriving (MonadLogger, MonadLoggerIO) via (WithLogger TestContext IO)
@@ -65,8 +69,8 @@ runTestM' action testContext = do
     loopbackSocket <- mkLoopbackSocket
     initialStoreState <- newTVarIO genInitialStore
     let kvStoreState = fromMaybe initialStoreState testContext.storeState
-    let settings = fromMaybe def testContext.settings
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestContext{testContextClientSocket = loopbackSocket, testContextStore = kvStoreState, testContextLogger = logger, testContextSetting = settings}
+    let serverSettings = fromMaybe def testContext.settings
+    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestContext{testContextClientSocket = loopbackSocket, testContextStore = kvStoreState, testContextLogger = logger, testContextSetting = serverSettings}
 
 mkLoopbackSocket :: IO Socket
 mkLoopbackSocket = do
