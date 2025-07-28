@@ -7,12 +7,18 @@ synopsis: Redis server implementation in Haskell
 language: GHC2021
 dependencies:
   - base
+  - binary
+  - binary-instances
+  - bits-show
   - bytestring # useful to send bytes over the network
   - containers
   - data-default
+  - mono-traversable
+  - pretty-simple
   - stm
   - string-interpolate
   - text
+  - text-ascii
 
 default-extensions:
   - AllowAmbiguousTypes
@@ -78,6 +84,7 @@ library:
     - async # may help with concurrency
     - attoparsec
     - Blammo
+    - deepseq
     - envparse
     - extra
     - filepath
@@ -86,14 +93,21 @@ library:
     - lens
     - mtl
     - network # required when using bytestring
+    - optics
+    - optics-core
+    - optics-extra
+    - optics-th
     - optparse-applicative
     - parser-combinators
     - safe
     - split
     - stm
     - tagged
+    - text-ascii
+    - template-haskell
     - time
     - unordered-containers
+    - utf8-string
     - vector
 
 tests:

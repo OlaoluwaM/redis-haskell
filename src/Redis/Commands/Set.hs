@@ -72,6 +72,7 @@ data SetCmdOpts = SetCmdOpts {setCondition :: SetCondition, returnOldVal :: Bool
 
 -- We are making the PX and PXAT types Doubles because they're in milliseconds and we don't want to lose precision when converting to seconds (we lose precision if we convert to seconds using integer division).
 -- We *could* make EX a Double too, if only to allow users to ability to express more precise TTL offsets with the option, but then what would be the point of the PX option? Following this line of reasoning, I think it would be best to just keep EX as an integer
+-- TODO: Explore using POSIXTime for the PXAT option here, you'll need to convert it to milliseconds before storing/using it
 data TTLOption = EX (Tagged Seconds Integer) | PX (Tagged MilliSeconds Double) | EXAT (Tagged UnixEpochTimeSeconds POSIXTime) | PXAT (Tagged UnixEpochTimeMilliSeconds Double) | KeepTTL | DiscardTTL
     deriving stock (Eq, Show, Ord, Generic)
     deriving anyclass (ToJSON)

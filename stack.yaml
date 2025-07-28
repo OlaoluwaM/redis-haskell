@@ -9,3 +9,10 @@ resolver: lts-23.18
 
 packages:
   - .
+
+extra-deps:
+  - text-ascii-1.2.1
+  - git: https://github.com/OlaoluwaM/bits-show.git
+    commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
+    subdirs:
+      - bits-show

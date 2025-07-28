@@ -1,25 +1,37 @@
 module Redis.Utils (
     myTrace,
+    myTracePretty,
     myTraceM,
+    myTracePrettyM,
     fromEither,
     mapLeft,
     millisecondsToSeconds,
     secondsToMilliseconds,
     convergeEither,
     toUpperBs,
+    showUsingBase,
+    combineDecimalDigits,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
 import Data.ByteString (ByteString)
-import Data.Char (toUpper)
+import Data.Char (intToDigit, toUpper)
+import Data.String (IsString (..))
+import Debug.Pretty.Simple
 import Debug.Trace (trace, traceShowM)
 
 myTrace :: (Show a) => String -> a -> a
 myTrace str' a = trace (str' <> show a) a
 
+myTracePretty :: (Show a) => String -> a -> a
+myTracePretty str' a = pTrace (str' <> show a) a
+
 myTraceM :: (Show a, Applicative f) => String -> a -> f ()
 myTraceM str a = traceShowM (str <> show a)
+
+myTracePrettyM :: (Show a, Applicative f) => String -> a -> f ()
+myTracePrettyM str a = pTraceM (str <> show a)
 
 fromEither :: Either a a -> a
 fromEither = either id id
@@ -32,7 +44,7 @@ mapLeft f = either (Left . f) Right
 millisecondsToSeconds :: (Fractional a) => a -> a
 millisecondsToSeconds = (/ 1000)
 
-secondsToMilliseconds :: (Integral a) => a -> a
+secondsToMilliseconds :: (Num a) => a -> a
 secondsToMilliseconds = (* 1000)
 
 convergeEither :: (a -> b) -> Either a a -> b
@@ -40,3 +52,14 @@ convergeEither f = either f f
 
 toUpperBs :: ByteString -> ByteString
 toUpperBs = BS.map toUpper
+
+showUsingBase :: Int -> Int -> String
+showUsingBase base num = go num ""
+  where
+    go v = case v `divMod` base of
+        (0, r) -> showChar (intToDigit r)
+        (d, r) -> go d . showChar (intToDigit r)
+
+combineDecimalDigits :: [Int] -> Int
+combineDecimalDigits [] = 0
+combineDecimalDigits digits = sum $ zipWith (\digit numOfZeros -> digit * (10 ^ numOfZeros)) (reverse digits) [0 ..]

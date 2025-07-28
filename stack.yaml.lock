@@ -3,7 +3,27 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: text-ascii-1.2.1@sha256:98ef7737e7679e6511484225a5146d84e1c62a0b1b425d1839b04c24a847aaad,1473
+    pantry-tree:
+      sha256: 562cc7911420e6ba09d3c32a1faad1f74850daa5d3a187ed553c7af9b7b9b25b
+      size: 577
+  original:
+    hackage: text-ascii-1.2.1
+- completed:
+    commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
+    git: https://github.com/OlaoluwaM/bits-show.git
+    name: bits-show
+    pantry-tree:
+      sha256: 579800966c2dc5de8ecd62136862b1423f781f5e11869518b392ef76afa15268
+      size: 323
+    subdir: bits-show
+    version: 0.0.0.1
+  original:
+    commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
+    git: https://github.com/OlaoluwaM/bits-show.git
+    subdir: bits-show
 snapshots:
 - completed:
     sha256: d133abe75e408a407cce3f032c96ac1bbadf474a93b5156ebf4135b53382d56b
