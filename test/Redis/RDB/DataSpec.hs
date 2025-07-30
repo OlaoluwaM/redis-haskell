@@ -15,6 +15,7 @@ import Data.Binary.Get (runGet)
 import Data.Binary.Put (runPut)
 import Data.String (IsString (fromString))
 import Hedgehog (MonadGen)
+import Redis.Helper (encodeThenDecode)
 import Test.Tasty.Hedgehog (testProperty)
 
 genWord :: (MonadGen m) => m Word
@@ -59,11 +60,8 @@ validateRDBLengthPrefixedValEncodingForLargeByteSequences = H.property $ do
     let rdbString = toRDBLengthPrefixedVal byteString
     encodeThenDecode rdbString H.=== rdbString
 
-encodeThenDecode :: (Binary a) => a -> a
-encodeThenDecode = runGet get . runPut . put
-
-spec_rdb_data_binary_serialization_unit_tests :: Spec
-spec_rdb_data_binary_serialization_unit_tests = do
+spec_RDB_data_binary_serialization_unit_tests :: Spec
+spec_RDB_data_binary_serialization_unit_tests = do
     describe "Boundary Value Tests" $ do
         it "handles encoding of val at exact 6-bit length boundary (63 bytes)" $ do
             let str63 = BSLC.replicate 63 'a'

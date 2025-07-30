@@ -103,7 +103,6 @@ library:
     - split
     - stm
     - tagged
-    - text-ascii
     - template-haskell
     - time
     - unordered-containers
@@ -123,6 +122,8 @@ tests:
       - attoparsec
       - Blammo
       - codecrafters-redis
+      - directory
+      - filepath
       - hspec
       - hedgehog
       - lens

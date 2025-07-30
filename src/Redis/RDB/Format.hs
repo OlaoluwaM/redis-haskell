@@ -27,15 +27,18 @@ import Control.DeepSeq (NFData)
 import Data.Binary (Binary (..))
 import Data.Binary.Get (
     getByteString,
+    getLazyByteString,
     getWord64le,
     getWord8,
  )
 
 import Data.Binary.Put (
     putByteString,
+    putLazyByteString,
     putWord64le,
     putWord8,
  )
+import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy.Char8 qualified as BSLC
 import Data.Default (Default (..))
 import Data.Word (Word64, Word8)
@@ -192,10 +195,9 @@ Each version builds upon previous ones, adding new capabilities while
 ensuring older RDB files remain readable.
 -}
 newtype RDBVersion = RDBVersion
-    { getRDBVersion :: AsciiText
+    { getRDBVersion :: BSL.ByteString
     }
-    deriving stock (Show, Eq, Ord, Generic)
-    deriving newtype (NFData)
+    deriving stock (Show, Eq)
 
 {- | Key-value entry types with different expiry behaviors.
 
@@ -490,12 +492,8 @@ instance Binary RDbEntry where
 
 -- | RDB version is stored as 4 ASCII bytes (e.g., "0003")
 instance Binary RDBVersion where
-    put (RDBVersion version) = putByteString $ toByteString version
-    get = do
-        bytes <- getByteString 4
-        case fromByteString bytes of
-            Just versionStr -> pure $ RDBVersion versionStr
-            _ -> fail "Invalid RDB version format, expected 4 ASCII bytes in the form of something like \"0003\""
+    put (RDBVersion version) = putLazyByteString version
+    get = RDBVersion <$> getLazyByteString 4
 
 -- | Magic string is exactly "REDIS" (5 ASCII bytes)
 instance Binary RDBMagicString where

@@ -4,4 +4,3 @@ codecrafters-redis.cabal
 *~
 !.env.example
 !.env.test
-*.rdb
