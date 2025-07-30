@@ -30,9 +30,12 @@ genByteSequence = do
 genLargeByteSequence :: (MonadGen m) => m BSL.ByteString
 genLargeByteSequence = do
     -- Generate a large byte sequence of length between 1 and 512 MB
-    let maxSize = 512 * 1024 * 1024
-    arbitraryByteSeq <- Gen.bytes (Range.linear 1 maxSize)
+    arbitraryByteSeq <- Gen.bytes (Range.linear 0 maxSize)
     return $ BSL.fromStrict arbitraryByteSeq
+
+-- This is set to 512 MB
+maxSize :: (Num a) => a
+maxSize = 512 * 1024 * 1024
 
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
 test_rdb_data_binary_serialization_prop_tests =
@@ -82,6 +85,11 @@ spec_RDB_data_binary_serialization_unit_tests = do
             let str16384 = BSLC.replicate 16384 'c'
                 longString = RDBLengthPrefixedLongString str16384
             encodeThenDecode longString `shouldBe` longString
+
+        it "handles encoding of val that is max-size" $ do
+            let strMax = BSLC.replicate maxSize 'a'
+                val = toRDBLengthPrefixedVal strMax
+            encodeThenDecode val `shouldBe` val
 
         it "handles encoding of minimum and maximum 8-bit integers" $ do
             let minInt8 = RDBLengthPrefixedInt8 (-128)
