@@ -4,8 +4,8 @@ import Redis.RDB.Data
 import Test.Hspec
 import Test.Tasty
 
-import Data.ByteString.Lazy qualified as BSL
-import Data.ByteString.Lazy.Char8 qualified as BSLC
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BSC
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -21,17 +21,16 @@ import Test.Tasty.Hedgehog (testProperty)
 genWord :: (MonadGen m) => m Word
 genWord = Gen.word (Range.linearBounded @Word)
 
-genByteSequence :: (MonadGen m) => m BSL.ByteString
+genByteSequence :: (MonadGen m) => m BS.ByteString
 genByteSequence = do
     intByteSeq <- fromString . show <$> Gen.int (Range.linear (-1000000) 10000000)
     arbitraryByteSeq <- Gen.bytes (Range.linear 0 100000)
-    BSL.fromStrict <$> Gen.element [arbitraryByteSeq, intByteSeq]
+    Gen.element [arbitraryByteSeq, intByteSeq]
 
-genLargeByteSequence :: (MonadGen m) => m BSL.ByteString
+genLargeByteSequence :: (MonadGen m) => m BS.ByteString
 genLargeByteSequence = do
     -- Generate a large byte sequence of length between 1 and 512 MB
-    arbitraryByteSeq <- Gen.bytes (Range.linear 0 maxSize)
-    return $ BSL.fromStrict arbitraryByteSeq
+    Gen.bytes (Range.linear 0 maxSize)
 
 -- This is set to 512 MB
 maxSize :: (Num a) => a
@@ -67,27 +66,27 @@ spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
     describe "Boundary Value Tests" $ do
         it "handles encoding of val at exact 6-bit length boundary (63 bytes)" $ do
-            let str63 = BSLC.replicate 63 'a'
+            let str63 = BSC.replicate 63 'a'
                 shortString = RDBLengthPrefixedShortString str63
             encodeThenDecode shortString `shouldBe` shortString
 
         it "handles encoding of val just over 6-bit length boundary (64 bytes)" $ do
-            let str64 = BSLC.replicate 64 'a'
+            let str64 = BSC.replicate 64 'a'
                 mediumString = RDBLengthPrefixedMediumString str64
             encodeThenDecode mediumString `shouldBe` mediumString
 
         it "handles encoding of val at maximum 14-bit length (16383 bytes)" $ do
-            let str16383 = BSLC.replicate 16383 'b'
+            let str16383 = BSC.replicate 16383 'b'
                 mediumString = RDBLengthPrefixedMediumString str16383
             encodeThenDecode mediumString `shouldBe` mediumString
 
         it "handles encoding of val just over 14-bit length (16384 bytes)" $ do
-            let str16384 = BSLC.replicate 16384 'c'
+            let str16384 = BSC.replicate 16384 'c'
                 longString = RDBLengthPrefixedLongString str16384
             encodeThenDecode longString `shouldBe` longString
 
         it "handles encoding of val that is max-size" $ do
-            let strMax = BSLC.replicate maxSize 'a'
+            let strMax = BSC.replicate maxSize 'a'
                 val = toRDBLengthPrefixedStr strMax
             encodeThenDecode val `shouldBe` val
 
@@ -115,7 +114,7 @@ spec_RDB_data_binary_serialization_unit_tests = do
 
     describe "Edge Cases and Corner Cases" $ do
         it "handles empty strings" $ do
-            let emptyString = RDBLengthPrefixedShortString BSL.empty
+            let emptyString = RDBLengthPrefixedShortString BS.empty
             encodeThenDecode emptyString `shouldBe` emptyString
 
         it "handles zero values" $ do
@@ -136,7 +135,7 @@ spec_RDB_data_binary_serialization_unit_tests = do
             encodeThenDecode unicodeString `shouldBe` unicodeString
 
         it "handles binary data in strings" $ do
-            let binaryData = BSLC.pack ['\0', '\1', '\255', '\127']
+            let binaryData = BSC.pack ['\0', '\1', '\255', '\127']
                 binaryString = RDBLengthPrefixedShortString binaryData
             encodeThenDecode binaryString `shouldBe` binaryString
 
@@ -162,8 +161,8 @@ spec_RDB_data_binary_serialization_unit_tests = do
         it "handles mixed type polymorphic value sequences" $ do
             let values =
                     [ toRDBLengthPrefixedVal "short"
-                    , toRDBLengthPrefixedVal (BSLC.replicate 100 'a')
-                    , toRDBLengthPrefixedVal (BSLC.replicate 1000 'b')
+                    , toRDBLengthPrefixedVal (BSC.replicate 100 'a')
+                    , toRDBLengthPrefixedVal (BSC.replicate 1000 'b')
                     , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "42"
                     , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "-999"
                     ]

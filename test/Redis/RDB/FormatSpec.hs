@@ -4,7 +4,8 @@ import Redis.RDB.Data
 import Redis.RDB.Format
 import Test.Hspec
 
-import Data.ByteString.Lazy.Char8 qualified as BSLC
+import Data.ByteString.Char8 qualified as BSC
+
 import Redis.Helper (encodeThenDecode)
 
 spec_RDB_format_binary_serialization :: Spec
@@ -48,7 +49,7 @@ spec_RDB_format_binary_serialization = do
             encodeThenDecode opCode `shouldBe` opCode
 
         it "roundtrip encodes and decodes Redis version auxiliary field correctly" $ do
-            let redisVer = RedisVersion (RDBLengthPrefixedShortString (BSLC.pack "7.0.0"))
+            let redisVer = RedisVersion (RDBLengthPrefixedShortString (BSC.pack "7.0.0"))
                 auxField = AuxFieldRedisVer redisVer
             encodeThenDecode auxField `shouldBe` auxField
 
@@ -77,15 +78,15 @@ spec_RDB_format_binary_serialization = do
 
         describe "Boundary Value and Edge Case Tests" $ do
             it "handles zero-length key-value pairs" $ do
-                let emptyKey = toRDBLengthPrefixedVal BSLC.empty
-                    emptyValue = toRDBLengthPrefixedVal BSLC.empty
+                let emptyKey = toRDBLengthPrefixedVal BSC.empty
+                    emptyValue = toRDBLengthPrefixedVal BSC.empty
                     keyVal = KeyValWithNoExpiryInfo Str emptyKey emptyValue
                     opCode = KeyValOpCode keyVal
                 encodeThenDecode opCode `shouldBe` opCode
 
             it "handles very long keys and values" $ do
-                let longKey = toRDBLengthPrefixedVal (BSLC.pack (replicate 1000 'k'))
-                    longValue = toRDBLengthPrefixedVal (BSLC.pack (replicate 10000 'v'))
+                let longKey = toRDBLengthPrefixedVal (BSC.pack (replicate 1000 'k'))
+                    longValue = toRDBLengthPrefixedVal (BSC.pack (replicate 10000 'v'))
                     keyVal = KeyValWithNoExpiryInfo Str longKey longValue
                     opCode = KeyValOpCode keyVal
                 encodeThenDecode opCode `shouldBe` opCode

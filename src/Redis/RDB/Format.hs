@@ -21,30 +21,25 @@ module Redis.RDB.Format (
 -- Core RDB data types and encoding functions
 import Redis.RDB.Data
 
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BSC
+
 import Control.Applicative (asum, optional, (<|>))
 import Control.Applicative.Combinators (many, manyTill)
-import Control.DeepSeq (NFData)
 import Data.Binary (Binary (..))
 import Data.Binary.Get (
     getByteString,
-    getLazyByteString,
     getWord64le,
     getWord8,
  )
 
 import Data.Binary.Put (
     putByteString,
-    putLazyByteString,
     putWord64le,
     putWord8,
  )
-import Data.ByteString.Lazy qualified as BSL
-import Data.ByteString.Lazy.Char8 qualified as BSLC
 import Data.Default (Default (..))
 import Data.Word (Word64, Word8)
-import Debug.Pretty.Simple (pTraceId)
-import GHC.Generics (Generic)
-import Text.Ascii (AsciiText, fromByteString, toByteString)
 
 {- | Redis RDB Format Implementation
 
@@ -195,7 +190,7 @@ Each version builds upon previous ones, adding new capabilities while
 ensuring older RDB files remain readable.
 -}
 newtype RDBVersion = RDBVersion
-    { getRDBVersion :: BSL.ByteString
+    { getRDBVersion :: BS.ByteString
     }
     deriving stock (Show, Eq)
 
@@ -492,8 +487,8 @@ instance Binary RDbEntry where
 
 -- | RDB version is stored as 4 ASCII bytes (e.g., "0003")
 instance Binary RDBVersion where
-    put (RDBVersion version) = putLazyByteString version
-    get = RDBVersion <$> getLazyByteString 4
+    put (RDBVersion version) = putByteString version
+    get = RDBVersion <$> getByteString 4
 
 -- | Magic string is exactly "REDIS" (5 ASCII bytes)
 instance Binary RDBMagicString where
@@ -596,7 +591,7 @@ instance Binary AuxField where
                     , -- Custom auxiliary fields can be any key-value pair, so we use RDBLengthPrefixedString for both key and value
                       -- This allows for extensibility in future Redis versions or custom applications
                       -- How can we handle unknown auxiliary fields? Particularly, how can we skip them without failing?
-                      fail (pTraceId "Unknown auxiliary field with unsupported value encoding")
+                      fail "Unknown auxiliary field with unsupported value encoding"
                     ]
 
 {- | Redis architecture bits encoding (32-bit or 64-bit).
@@ -645,7 +640,7 @@ instance Binary CTime where
     put (CTime cTime) = do
         -- Write "ctime" key followed by timestamp as string
         put (RDBLengthPrefixedShortString "ctime")
-        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSLC.pack . show $ cTime.getRDBUnixTimestampS))
+        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ cTime.getRDBUnixTimestampS))
 
     -- \^ Using the Data.ByteString.Lazy.Char8 to pack to go from string to ByteString since we expect (show posixTime) to be an ASCII string
     -- We also convert to string like is done here: https://github.com/redis/redis/blob/f6f16746e1d4bc51960158d9a896e1aa0a2c7dbd/src/rdb.c#L1257
@@ -657,7 +652,7 @@ instance Binary CTime where
             else do
                 -- Parse timestamp string and convert to numeric value
                 timeStr <- get @RDBLengthPrefixedVal
-                let cTimeM = BSLC.readWord32 . fromRDBLengthPrefixedVal $ timeStr
+                let cTimeM = BSC.readWord32 . fromRDBLengthPrefixedVal $ timeStr
                 -- \^ Using the Data.ByteString.Lazy.Char8 to unpack to string since we expect an ASCII string
                 case cTimeM of
                     Just (cTime, "") -> pure $ CTime (RDBUnixTimestampS cTime)
@@ -670,7 +665,7 @@ instance Binary UsedMem where
     put (UsedMem mem) = do
         -- Write "used-mem" key followed by memory value as string
         put (RDBLengthPrefixedShortString "used-mem")
-        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSLC.pack . show $ mem))
+        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ mem))
 
     get = do
         -- Parse and validate "used-mem" key
@@ -680,7 +675,7 @@ instance Binary UsedMem where
             else do
                 -- Parse memory value string and convert to integer
                 memVal <- fromRDBLengthPrefixedVal <$> get @RDBLengthPrefixedVal
-                case BSLC.readInt memVal of
+                case BSC.readInt memVal of
                     Just (memInt, "") -> pure $ UsedMem memInt
                     _ -> fail "Invalid used-mem format: expected an integer"
 
