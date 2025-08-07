@@ -88,7 +88,7 @@ spec_RDB_data_binary_serialization_unit_tests = do
 
         it "handles encoding of val that is max-size" $ do
             let strMax = BSLC.replicate maxSize 'a'
-                val = toRDBLengthPrefixedVal strMax
+                val = toRDBLengthPrefixedStr strMax
             encodeThenDecode val `shouldBe` val
 
         it "handles encoding of minimum and maximum 8-bit integers" $ do
