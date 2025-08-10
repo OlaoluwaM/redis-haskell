@@ -1,14 +1,13 @@
 module Redis.Commands.Echo (EchoCmdArg (..), handleEcho, mkEchoCmdArg) where
 
-import Control.Lens
 import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
+import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (BulkString), mkNonNullBulkString, serializeRESPDataType)
-import Redis.Server.Context
 import Redis.Server.ServerT (MonadSocket (..))
 
 -- https://redis.io/docs/latest/commands/echo/
@@ -18,10 +17,15 @@ newtype EchoCmdArg = EchoCmdArg Text
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON)
 
-handleEcho :: (HasClientSocket r Socket, MonadReader r m, MonadSocket m b) => EchoCmdArg -> m b
+handleEcho ::
+    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
+    , MonadReader r m
+    , MonadSocket m b
+    ) =>
+    EchoCmdArg -> m b
 handleEcho (EchoCmdArg msg) = do
     env <- ask
-    let socket = view clientSocket env
+    let socket = view #clientSocket env
     sendThroughSocket socket . serializeRESPDataType . mkNonNullBulkString . encodeUtf8 $ msg
 
 mkEchoCmdArg :: (MonadFail m) => [BulkString] -> m EchoCmdArg

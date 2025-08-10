@@ -20,7 +20,6 @@ import Control.Applicative.Permutations (
     toPermutationWithDefault,
  )
 import Control.Concurrent.STM (atomically, newTVar, readTVar, readTVarIO, writeTVar)
-import Control.Lens (view)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..))
 import Data.Aeson (ToJSON (..), object, (.=))
@@ -40,8 +39,8 @@ import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
 import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime, posixSecondsToUTCTime)
 import GHC.Generics (Generic)
 import Network.Socket (Socket)
+import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
-import Redis.Server.Context (HasClientSocket (..), HasStore (..))
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Store (StoreState, StoreValue (..), mkStoreValue)
 import Redis.Store.Data (
@@ -135,12 +134,19 @@ mkSetCmdArg (BulkString key : BulkString val : cmdOpts) = do
     either fail (\setCmdOpts -> pure $ SetCmdArg{key, val, opts = setCmdOpts}) result
 mkSetCmdArg _ = fail "SET command requires at least 2 arguments. None were provided"
 
-handleSet :: (HasClientSocket r Socket, HasStore r StoreState, MonadReader r m, MonadSocket m b, MonadIO m) => SetCmdArg -> m b
+handleSet ::
+    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
+    , LabelOptic "store" A_Lens r r StoreState StoreState
+    , MonadReader r m
+    , MonadSocket m b
+    , MonadIO m
+    ) =>
+    SetCmdArg -> m b
 handleSet (SetCmdArg key newVal opts) = do
     env <- ask
 
-    let socket = view clientSocket env
-    let kvStoreState = view store env
+    let socket = view #clientSocket env
+    let kvStoreState = view #store env
     let shouldReturnOldKeyValue = opts.returnOldVal
     let setCondition = opts.setCondition
 
@@ -179,7 +185,7 @@ setupTTLCalculation :: UTCTime -> Maybe UTCTime -> TTLOption -> Maybe UTCTime
 setupTTLCalculation currentTime currentTTLForItem = \case
     (EX t) -> Just $ addUTCTime (fromInteger @NominalDiffTime (untag t)) currentTime
     (PX t) -> Just $ addUTCTime (realToFrac @_ @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime -- t is in milliseconds so we must convert to seconds
-    (EXAT t) -> Just $ posixSecondsToUTCTime  (untag t)
+    (EXAT t) -> Just $ posixSecondsToUTCTime (untag t)
     (PXAT t) -> Just $ posixSecondsToUTCTime . realToFrac . millisecondsToSeconds $ untag t -- t is POSIX milliseconds so we must convert it to seconds
     KeepTTL -> currentTTLForItem
     DiscardTTL -> Nothing

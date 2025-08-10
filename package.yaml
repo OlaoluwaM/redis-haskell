@@ -4,6 +4,9 @@ license: BSD3
 author: Olaoluwa Mustapha
 synopsis: Redis server implementation in Haskell
 
+extra-source-files:
+  - README.md
+
 language: GHC2021
 dependencies:
   - base
@@ -14,11 +17,14 @@ dependencies:
   - containers
   - data-default
   - mono-traversable
+  - mtl
+  - network
   - pretty-simple
   - stm
   - string-interpolate
   - text
   - text-ascii
+  - time
 
 default-extensions:
   - AllowAmbiguousTypes
@@ -37,6 +43,7 @@ default-extensions:
   - NoFieldSelectors
   - NoStarIsType
   - OverloadedRecordDot
+  - OverloadedLabels
   - OverloadedStrings
   - PackageImports
   - PatternSynonyms
@@ -70,12 +77,9 @@ executables:
       - async
       - codecrafters-redis
       - envparse
-      - mtl
-      - network # required when using bytestring
       - network-run
       - optparse-applicative
       - split
-      - time
 
 library:
   source-dirs: src
@@ -90,13 +94,7 @@ library:
     - filepath
     - Glob
     # - heap # For modelling other redis data structures
-    - lens
-    - mtl
-    - network # required when using bytestring
     - optics
-    - optics-core
-    - optics-extra
-    - optics-th
     - optparse-applicative
     - parser-combinators
     - safe
@@ -104,7 +102,6 @@ library:
     - stm
     - tagged
     - template-haskell
-    - time
     - unordered-containers
     - utf8-string
     - vector
@@ -126,15 +123,12 @@ tests:
       - filepath
       - hspec
       - hedgehog
-      - lens
-      - mtl
-      - network
+      - optics
       - tagged
       - tasty
       - tasty-discover
       - tasty-expected-failure
       - tasty-hspec
       - tasty-hedgehog
-      - time
       - unordered-containers
       - vector

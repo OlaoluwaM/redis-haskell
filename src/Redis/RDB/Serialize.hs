@@ -18,7 +18,7 @@ import Data.Maybe (mapMaybe)
 import Data.String (IsString (..))
 import Data.Word (Word8)
 import Numeric (readHex, showHex)
-import Optics.Core (review, view)
+import Optics (review, view)
 
 rdbFileMagicString :: BSL.ByteString
 rdbFileMagicString = Binary.encode @BSL.ByteString "REDIS"

@@ -13,41 +13,40 @@ import Blammo.Logging (LogLevel (LevelError), Logger, MonadLogger (..), MonadLog
 import Blammo.Logging.LogSettings.LogLevels (newLogLevels)
 import Blammo.Logging.Simple (HasLogger (..), WithLogger (..), defaultLogSettings, setLogSettingsLevels, withLogger)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (lens)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
-import Network.Socket (AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType), AddrInfoFlag (..), Socket, SocketType (..), defaultHints, getAddrInfo, socket)
-import Redis.Server.Context (HasClientSocket (..), HasSettings (..), HasStore (..))
+import GHC.Generics (Generic)
+import Network.Socket (
+    AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
+    AddrInfoFlag (..),
+    Socket,
+    SocketType (..),
+    defaultHints,
+    getAddrInfo,
+    socket,
+ )
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Server.Settings (ServerSettings)
 import Redis.Store (StoreState, genInitialStore)
 
 data TestContext = TestContext
-    { testContextClientSocket :: Socket
-    , testContextStore :: StoreState
-    , testContextLogger :: Logger
-    , testContextSetting :: ServerSettings
+    { clientSocket :: Socket
+    , store :: StoreState
+    , settings :: ServerSettings
+    , logger :: Logger
     }
+    deriving stock (Generic)
 
 data PassableTestContext = PassableTestContext
     { storeState :: Maybe StoreState
     , settings :: Maybe ServerSettings
     }
 
-instance HasClientSocket TestContext Socket where
-    clientSocket = lens testContextClientSocket $ \x y -> x{testContextClientSocket = y}
-
-instance HasStore TestContext StoreState where
-    store = lens testContextStore $ \x y -> x{testContextStore = y}
-
 instance HasLogger TestContext where
-    loggerL = lens testContextLogger $ \x y -> x{testContextLogger = y}
-
-instance HasSettings TestContext ServerSettings where
-    settings = lens testContextSetting $ \x y -> x{testContextSetting = y}
+    loggerL f (TestContext clientSocket store settings logger) = TestContext clientSocket store settings <$> f logger
 
 newtype TestM a = TestM {unTestM :: ReaderT TestContext IO a}
     deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader TestContext)
@@ -61,7 +60,15 @@ runTestM action storeM = do
     loopbackSocket <- mkLoopbackSocket
     initialStoreState <- newTVarIO genInitialStore
     let kvStoreState = fromMaybe initialStoreState storeM
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestContext{testContextClientSocket = loopbackSocket, testContextStore = kvStoreState, testContextLogger = logger, testContextSetting = def}
+    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger ->
+        runReaderT
+            (unTestM action)
+            TestContext
+                { clientSocket = loopbackSocket
+                , store = kvStoreState
+                , logger = logger
+                , settings = def
+                }
 
 -- TODO: This should the replace the above API
 runTestM' :: TestM a -> PassableTestContext -> IO a
@@ -70,7 +77,15 @@ runTestM' action testContext = do
     initialStoreState <- newTVarIO genInitialStore
     let kvStoreState = fromMaybe initialStoreState testContext.storeState
     let serverSettings = fromMaybe def testContext.settings
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger -> runReaderT (unTestM action) TestContext{testContextClientSocket = loopbackSocket, testContextStore = kvStoreState, testContextLogger = logger, testContextSetting = serverSettings}
+    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger ->
+        runReaderT
+            (unTestM action)
+            TestContext
+                { clientSocket = loopbackSocket
+                , store = kvStoreState
+                , logger = logger
+                , settings = serverSettings
+                }
 
 mkLoopbackSocket :: IO Socket
 mkLoopbackSocket = do

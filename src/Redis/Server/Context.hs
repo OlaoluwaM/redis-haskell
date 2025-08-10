@@ -1,18 +1,21 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
 module Redis.Server.Context where
 
-import Control.Lens (camelCaseFields, makeLensesWith)
+import GHC.Generics (Generic)
 import Network.Socket (Socket)
+import Optics (makeFieldLabelsNoPrefix)
 import Redis.Server.Settings (ServerSettings)
 import Redis.Store (StoreState)
 
 data ServerContext = ServerContext
-    { serverContextClientSocket :: Socket
-    , serverContextStore :: StoreState
-    , serverContextSettings :: ServerSettings
+    { clientSocket :: Socket
+    , store :: StoreState
+    , settings :: ServerSettings
     }
+    deriving stock (Eq, Generic)
 
-makeLensesWith camelCaseFields ''ServerContext
+makeFieldLabelsNoPrefix ''ServerContext
