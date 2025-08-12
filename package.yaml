@@ -83,6 +83,12 @@ executables:
 
 library:
   source-dirs: src
+  include-dirs:
+    - include/crc64_redis
+    - include/liblzf
+  c-sources:
+    - include/crc64_redis/*.c
+    - include/liblzf/*.c
   dependencies:
     - aeson
     - async # may help with concurrency
