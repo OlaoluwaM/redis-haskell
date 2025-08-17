@@ -118,6 +118,7 @@ tests:
     source-dirs: test
     ghc-options:
       - -Wno-missing-export-lists
+      - -Wno-x-unsafe-internals
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N

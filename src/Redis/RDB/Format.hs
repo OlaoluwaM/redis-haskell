@@ -16,30 +16,37 @@ module Redis.RDB.Format (
     RedisBits (..),
     CTime (..),
     UsedMem (..),
+    RDBFileWithChecksum (..),
+
+    -- ** For Testing
+    defaultChecksum,
 ) where
 
 -- Core RDB data types and encoding functions
 import Redis.RDB.Data
+import Redis.RDB.SBinary
 
+import Control.Monad.State.Strict qualified as State
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
 import Control.Applicative (asum, optional, (<|>))
 import Control.Applicative.Combinators (many, manyTill)
+import Control.Monad.Trans (lift)
 import Data.Binary (Binary (..))
 import Data.Binary.Get (
     getByteString,
     getWord64le,
-    getWord8,
  )
+import Redis.RDB.SBinary.DerivingVia (BinaryFromSBinary (..))
 
 import Data.Binary.Put (
     putByteString,
     putWord64le,
-    putWord8,
  )
 import Data.Default (Default (..))
-import Data.Word (Word64, Word8)
+import Data.Word (Word8)
+import Redis.RDB.CRC64 (CheckSum, fromChecksum, toChecksum)
 
 {- | Redis RDB Format Implementation
 
@@ -128,12 +135,14 @@ data RDBFile = RDBFile
     -- ^ Global metadata: Redis version, architecture, creation time, memory stats
     , dbEntries :: [RDbEntry]
     -- ^ Database contents - typically just database 0, but can include 0-15
-    , checksum :: Maybe Word64
-    {- ^ Optional CRC64 checksum for data integrity verification (8 bytes)
-    ^ TODO: This is not implemented yet, but will be used to verify data integrity during loading so it will need to be implemented
-    -}
     }
     deriving stock (Show, Eq)
+
+newtype RDBFileWithChecksum = RDBFileWithChecksum
+    { getRDBFileWithChecksum :: RDBFile
+    }
+    deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RDBFileWithChecksum)
 
 {- | Individual Redis database within an RDB file.
 
@@ -157,6 +166,7 @@ data RDbEntry = RDbEntry
     -- ^ All key-value pairs stored in this database, with optional expiry data
     }
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RDbEntry)
 
 {- | File format identifier for Redis RDB files.
 
@@ -170,6 +180,7 @@ If these bytes are missing or incorrect, the file is not a valid RDB file.
 -}
 data RDBMagicString = Redis
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RDBMagicString)
 
 {- | RDB format version identifier.
 
@@ -193,6 +204,7 @@ newtype RDBVersion = RDBVersion
     { getRDBVersion :: BS.ByteString
     }
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RDBVersion)
 
 {- | Key-value entry types with different expiry behaviors.
 
@@ -215,6 +227,7 @@ timing requirements and storage efficiency considerations.
 -}
 data KeyValueOpCode = FCOpCode KeyValWithExpiryInMS | KeyValOpCode KeyValWithNoExpiryInfo | FDOpcode KeyValWithExpiryInS
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary KeyValueOpCode)
 
 {- | File termination marker.
 
@@ -229,6 +242,7 @@ Any data appearing before a proper EOF marker indicates file corruption.
 -}
 data EOF = EOF
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary EOF)
 
 {- | Key-value pair with millisecond-precision expiry.
 
@@ -259,6 +273,7 @@ data KeyValWithExpiryInMS = KeyValWithExpiryInMS
     -- ^ Value data encoded according to its specific type rules
     }
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary KeyValWithExpiryInMS)
 
 {- | Key-value pair with second-precision expiry.
 
@@ -288,6 +303,7 @@ data KeyValWithExpiryInS = KeyValWithExpiryInS
     -- ^ Value data encoded according to its specific type rules
     }
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary KeyValWithExpiryInS)
 
 {- | Persistent key-value pair (no expiry).
 
@@ -315,6 +331,7 @@ data KeyValWithNoExpiryInfo = KeyValWithNoExpiryInfo
     -- ^ Value data encoded according to its specific type rules
     }
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary KeyValWithNoExpiryInfo)
 
 {- | Database selection marker (opcode 0xFE).
 
@@ -334,6 +351,7 @@ newtype SelectDB
     = -- | Database index (0-15) identifying which logical Redis database contains the following keys
       SelectDB {dbIndex :: Word8}
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary SelectDB)
 
 instance Default SelectDB where
     def = SelectDB 0 -- Default to database 0
@@ -381,22 +399,27 @@ Common auxiliary fields:
 -}
 data AuxField = AuxFieldRedisVer RedisVersion | AuxFieldRedisBits RedisBits | AuxFieldCTime CTime | AuxFieldUsedMem UsedMem | AuxFieldCustom RDBLengthPrefixedString RDBLengthPrefixedVal
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary AuxField)
 
 -- | Memory usage information in bytes at the time of RDB creation
 newtype UsedMem = UsedMem Int
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary UsedMem)
 
 -- | RDB file creation timestamp as Unix time
 newtype CTime = CTime RDBUnixTimestampS
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary CTime)
 
 -- | Redis version string that created this RDB file
 newtype RedisVersion = RedisVersion RDBLengthPrefixedShortString
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RedisVersion)
 
 -- | Architecture information (32-bit or 64-bit Redis build)
 data RedisBits = RedisBits32 | RedisBits64
     deriving stock (Show, Eq)
+    deriving (Binary) via (BinaryFromSBinary RedisBits)
 
 {- | Redis value types supported in RDB format.
 
@@ -413,6 +436,7 @@ Currently only string type is implemented.
 -}
 data ValueType = Str
     deriving stock (Show, Eq, Ord)
+    deriving (Binary) via (BinaryFromSBinary ValueType)
 
 {- | RDB format opcode constants
 These single-byte values mark different section types in the RDB file format
@@ -444,8 +468,12 @@ stringValueTypeByteId = 0
 Handles the full file structure including magic string, version, auxiliary fields,
 database entries, EOF marker, and optional checksum.
 -}
+{-# WARNING in "x-unsafe-internals" defaultChecksum "This value is exported for testing purposes only" #-}
+defaultChecksum :: CheckSum
+defaultChecksum = toChecksum 0
+
 instance Binary RDBFile where
-    put (RDBFile magicString version auxFieldEntries dbEntries checksum) = do
+    put (RDBFile magicString version auxFieldEntries dbEntries) = do
         -- Write file header: magic string and format version
         put magicString
         put version
@@ -455,139 +483,165 @@ instance Binary RDBFile where
         mapM_ put dbEntries
         -- Write EOF marker to signal end of data
         put EOF
-        -- Write optional CRC64 checksum (0 if not present)
-        maybe (putWord64le 0) putWord64le checksum
+        putWord64le (fromChecksum defaultChecksum)
 
     get = do
-        magicString <- get @RDBMagicString
-        version <- get @RDBVersion
-        auxFieldEntries <- many $ get @AuxField -- Parse until non-aux field
-        dbEntries <- manyTill (get @RDbEntry) (get @EOF) -- Parse database entries until EOF marker
-        checksumM <- optional getWord64le -- Parse optional 8-byte CRC64 checksum
-        let checksum = case checksumM of
-                Just 0 -> Nothing -- If checksum is 0, we set it to Nothing
-                Just c -> Just c
-                Nothing -> Nothing -- If no checksum is present, we set it to Nothing
-        pure $ RDBFile magicString version auxFieldEntries dbEntries checksum
+        (rdbFile, generatedChecksum) <- execSGetWithChecksum $ do
+            magicString <- getWithChecksum @RDBMagicString
+            version <- getWithChecksum @RDBVersion
+            auxFieldEntries <- many $ getWithChecksum @AuxField -- Parse until non-aux field
+            dbEntries <- manyTill (getWithChecksum @RDbEntry) (getWithChecksum @EOF) -- Parse database entries until EOF marker
+            pure $ RDBFile magicString version auxFieldEntries dbEntries
+
+        mChecksum <- optional (toChecksum <$> getWord64le)
+
+        case mChecksum of
+            Nothing -> pure rdbFile -- No checksum present, assume valid
+            Just checksum ->
+                if (checksum == defaultChecksum) || (checksum == generatedChecksum)
+                    then pure rdbFile
+                    else fail "RDB file checksum mismatch"
+
+instance SBinary RDBFileWithChecksum where
+    putWithChecksum (RDBFileWithChecksum (RDBFile magicString version auxFieldEntries dbEntries)) = do
+        putWithChecksum magicString
+        putWithChecksum version
+        mapM_ putWithChecksum auxFieldEntries
+        mapM_ putWithChecksum dbEntries
+        putWithChecksum EOF -- Write EOF marker
+        generatedChecksum <- State.get
+        lift $ putWord64le (fromChecksum generatedChecksum)
+
+    -- \| Implemented solely for completeness, if we are truly looking to de-serialize an RDB file we should utilize the Binary instance on the RDBFile type instead
+    getWithChecksum = do
+        magicString <- getWithChecksum @RDBMagicString
+        version <- getWithChecksum @RDBVersion
+        auxFieldEntries <- many $ getWithChecksum @AuxField
+        dbEntries <- manyTill (getWithChecksum @RDbEntry) (getWithChecksum @EOF) -- Parse database entries until EOF marker
+        generatedChecksum <- State.get
+        checksum <- lift (toChecksum <$> getWord64le) -- There should always be a checksum at the end of the rdbFile, even if it is just 0
+        if checksum == generatedChecksum
+            then pure $ RDBFileWithChecksum (RDBFile magicString version auxFieldEntries dbEntries)
+            else fail "RDB file checksum mismatch"
 
 {- | Database entry encoding/decoding.
 Each database starts with SelectDB, followed by ResizeDB hints, then key-value pairs.
 -}
-instance Binary RDbEntry where
-    put (RDbEntry entryId resizeDBEntry keyValEntries) = do
-        put entryId
-        put resizeDBEntry
-        mapM_ put keyValEntries
+instance SBinary RDbEntry where
+    putWithChecksum (RDbEntry entryId resizeDBEntry keyValEntries) = do
+        putWithChecksum entryId
+        putWithChecksum resizeDBEntry
+        mapM_ putWithChecksum keyValEntries
 
-    get = do
-        entryId <- get @SelectDB <|> pure def -- Default to SelectDB 0 if not present
-        resizeDBEntry <- get @ResizeDB <|> pure def -- Default to ResizeDB 0 0 if not present
-        keyValEntries <- many $ get @KeyValueOpCode
+    getWithChecksum = do
+        entryId <- getWithChecksum @SelectDB <|> pure def -- Default to SelectDB 0 if not present
+        resizeDBEntry <- getWithChecksum @ResizeDB <|> pure def -- Default to ResizeDB 0 0 if not present
+        keyValEntries <- many $ getWithChecksum @KeyValueOpCode
         pure $ RDbEntry entryId resizeDBEntry keyValEntries
 
 -- | RDB version is stored as 4 ASCII bytes (e.g., "0003")
-instance Binary RDBVersion where
-    put (RDBVersion version) = putByteString version
-    get = RDBVersion <$> getByteString 4
+instance SBinary RDBVersion where
+    putWithChecksum (RDBVersion version) = genericPutWithChecksumUsing (putByteString version)
+    getWithChecksum = RDBVersion <$> genericGetWithChecksumUsing (getByteString 4)
 
 -- | Magic string is exactly "REDIS" (5 ASCII bytes)
-instance Binary RDBMagicString where
-    put Redis = putByteString "REDIS"
-    get = do
-        magic <- getByteString 5
+instance SBinary RDBMagicString where
+    putWithChecksum Redis = genericPutWithChecksumUsing (putByteString "REDIS")
+    getWithChecksum = do
+        magic <- genericGetWithChecksumUsing (getByteString 5)
         if magic == "REDIS"
             then pure Redis
             else fail "Invalid RDB magic string"
 
 -- | KeyValueOpCode encoding with proper opcode prefixes
-instance Binary KeyValueOpCode where
-    put = \case
-        FCOpCode keyValWithExpiryInMS -> put keyValWithExpiryInMS
-        KeyValOpCode keyValWithNoExpiryInfo -> put keyValWithNoExpiryInfo
-        FDOpcode keyValWithExpiryInS -> put keyValWithExpiryInS
-    get =
+instance SBinary KeyValueOpCode where
+    putWithChecksum = \case
+        FCOpCode keyValWithExpiryInMS -> putWithChecksum keyValWithExpiryInMS
+        KeyValOpCode keyValWithNoExpiryInfo -> putWithChecksum keyValWithNoExpiryInfo
+        FDOpcode keyValWithExpiryInS -> putWithChecksum keyValWithExpiryInS
+    getWithChecksum =
         -- Try parsing different key-value types in order of specificity
         asum
-            [ FDOpcode <$> get
-            , FCOpCode <$> get
-            , KeyValOpCode <$> get -- Should be last since it's most permissive
+            [ FDOpcode <$> getWithChecksum
+            , FCOpCode <$> getWithChecksum
+            , KeyValOpCode <$> getWithChecksum -- Should be last since it's most permissive
             ]
 
 -- | EOF marker is a single 0xFF byte
-instance Binary EOF where
-    put EOF = putWord8 eofOpCodeByteTag
-    get = do
-        tag <- getWord8
+instance SBinary EOF where
+    putWithChecksum EOF = genericPutWithChecksum @Word8 eofOpCodeByteTag
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         if tag == eofOpCodeByteTag
             then pure EOF
             else fail ("Expected EOF marker got " <> show tag <> " instead")
 
 -- | Millisecond expiry: 0xFC + 8-byte little-endian timestamp + value type + key + value
-instance Binary KeyValWithExpiryInMS where
-    put (KeyValWithExpiryInMS expiryTimeMs valueType encodedKey encodedValue) = do
-        putWord8 keyValWithExpiryInMSOpCodeByteTag
-        put expiryTimeMs
-        put valueType
-        put encodedKey
-        put encodedValue
+instance SBinary KeyValWithExpiryInMS where
+    putWithChecksum (KeyValWithExpiryInMS expiryTimeMs valueType encodedKey encodedValue) = do
+        genericPutWithChecksum @Word8 keyValWithExpiryInMSOpCodeByteTag
+        putWithChecksum expiryTimeMs
+        putWithChecksum valueType
+        putWithChecksum encodedKey
+        putWithChecksum encodedValue
 
-    get = do
-        tag <- getWord8
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         if tag /= keyValWithExpiryInMSOpCodeByteTag
             then fail ("Expected KeyValWithExpiryInMS marker got " <> show tag <> " instead")
-            else KeyValWithExpiryInMS <$> get <*> get <*> get <*> get
+            else KeyValWithExpiryInMS <$> getWithChecksum <*> getWithChecksum <*> getWithChecksum <*> getWithChecksum
 
 -- | Second expiry: 0xFD + 4-byte little-endian timestamp + value type + key + value
-instance Binary KeyValWithExpiryInS where
-    put (KeyValWithExpiryInS expiryTimeS valueType encodedKey encodedValue) = do
-        putWord8 keyValWithExpiryInSpCodeByteTag
-        put expiryTimeS
-        put valueType
-        put encodedKey
-        put encodedValue
+instance SBinary KeyValWithExpiryInS where
+    putWithChecksum (KeyValWithExpiryInS expiryTimeS valueType encodedKey encodedValue) = do
+        genericPutWithChecksum @Word8 keyValWithExpiryInSpCodeByteTag
+        putWithChecksum expiryTimeS
+        putWithChecksum valueType
+        putWithChecksum encodedKey
+        putWithChecksum encodedValue
 
-    get = do
-        tag <- getWord8
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         if tag /= keyValWithExpiryInSpCodeByteTag
             then fail ("Expected KeyValWithExpiryInS marker got " <> show tag <> " instead")
-            else KeyValWithExpiryInS <$> get <*> get <*> get <*> get
+            else KeyValWithExpiryInS <$> getWithChecksum <*> getWithChecksum <*> getWithChecksum <*> getWithChecksum
 
 -- | No expiry format: value type + key + value (no opcode prefix)
-instance Binary KeyValWithNoExpiryInfo where
-    put (KeyValWithNoExpiryInfo valueType encodedKey encodedValue) = do
-        put valueType
-        put encodedKey
-        put encodedValue
+instance SBinary KeyValWithNoExpiryInfo where
+    putWithChecksum (KeyValWithNoExpiryInfo valueType encodedKey encodedValue) = do
+        putWithChecksum valueType
+        putWithChecksum encodedKey
+        putWithChecksum encodedValue
 
-    get = KeyValWithNoExpiryInfo <$> get <*> get <*> get
+    getWithChecksum = KeyValWithNoExpiryInfo <$> getWithChecksum <*> getWithChecksum <*> getWithChecksum
 
 {- | Auxiliary field encoding with 0xFA opcode prefix.
 Format: [0xFA][key-string][value-string]
 This handles all auxiliary field types with their specific encodings.
 -}
-instance Binary AuxField where
-    put x = do
-        putWord8 auxiliaryFieldOpCodeByteTag -- Redis auxiliary field opcode
+instance SBinary AuxField where
+    putWithChecksum x = do
+        genericPutWithChecksum @Word8 auxiliaryFieldOpCodeByteTag -- Redis auxiliary field opcode
         case x of
-            AuxFieldRedisVer ver -> put ver
-            AuxFieldRedisBits bits -> put bits
-            AuxFieldCTime time -> put time
-            AuxFieldUsedMem mem -> put mem
+            AuxFieldRedisVer ver -> putWithChecksum ver
+            AuxFieldRedisBits bits -> putWithChecksum bits
+            AuxFieldCTime time -> putWithChecksum time
+            AuxFieldUsedMem mem -> putWithChecksum mem
             AuxFieldCustom key value -> do
-                put key
-                put value
+                putWithChecksum key
+                putWithChecksum value
 
-    get = do
-        tag <- getWord8
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         if tag /= auxiliaryFieldOpCodeByteTag
             then fail ("Expected AuxField marker got " <> show tag <> " instead")
             else do
                 asum
-                    [ AuxFieldRedisVer <$> get @RedisVersion
-                    , AuxFieldRedisBits <$> get @RedisBits
-                    , AuxFieldCTime <$> get @CTime
-                    , AuxFieldUsedMem <$> get @UsedMem
-                    , AuxFieldCustom <$> get @RDBLengthPrefixedString <*> get @RDBLengthPrefixedVal
+                    [ AuxFieldRedisVer <$> getWithChecksum @RedisVersion
+                    , AuxFieldRedisBits <$> getWithChecksum @RedisBits
+                    , AuxFieldCTime <$> getWithChecksum @CTime
+                    , AuxFieldUsedMem <$> getWithChecksum @UsedMem
+                    , AuxFieldCustom <$> getWithChecksum @RDBLengthPrefixedString <*> getWithChecksum @RDBLengthPrefixedVal
                     , -- Custom auxiliary fields can be any key-value pair, so we use RDBLengthPrefixedString for both key and value
                       -- This allows for extensibility in future Redis versions or custom applications
                       -- How can we handle unknown auxiliary fields? Particularly, how can we skip them without failing?
@@ -597,21 +651,21 @@ instance Binary AuxField where
 {- | Redis architecture bits encoding (32-bit or 64-bit).
 Stores "redis-bits" key with "32" or "64" value as variable-length strings.
 -}
-instance Binary RedisBits where
-    put x = do
+instance SBinary RedisBits where
+    putWithChecksum x = do
         -- Write "redis-bits" key followed by architecture value
-        put (RDBLengthPrefixedShortString "redis-bits")
+        putWithChecksum (RDBLengthPrefixedShortString "redis-bits")
         case x of
-            RedisBits32 -> put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "32")
-            RedisBits64 -> put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "64")
-    get = do
+            RedisBits32 -> putWithChecksum (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "32")
+            RedisBits64 -> putWithChecksum (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "64")
+    getWithChecksum = do
         -- Parse and validate "redis-bits" key
-        key <- get @RDBLengthPrefixedShortString -- "redis-bits" is 10 bytes
+        key <- getWithChecksum @RDBLengthPrefixedShortString -- "redis-bits" is 10 bytes
         if key /= RDBLengthPrefixedShortString "redis-bits"
             then fail ("Expected redis-bits marker got " <> show key <> " instead")
             else do
                 -- Parse architecture value ("32" or "64")
-                tag <- get @RDBLengthPrefixedVal
+                tag <- getWithChecksum @RDBLengthPrefixedVal
                 case fromRDBLengthPrefixedVal tag of
                     "32" -> pure RedisBits32
                     "64" -> pure RedisBits64
@@ -620,38 +674,38 @@ instance Binary RedisBits where
 {- | Redis version string encoding.
 Stores "redis-ver" key with version string value (e.g., "7.0.0").
 -}
-instance Binary RedisVersion where
-    put (RedisVersion version) = do
+instance SBinary RedisVersion where
+    putWithChecksum (RedisVersion version) = do
         -- Write "redis-ver" key followed by version string
-        put (RDBLengthPrefixedShortString "redis-ver")
-        put version
-    get = do
+        putWithChecksum (RDBLengthPrefixedShortString "redis-ver")
+        putWithChecksum version
+    getWithChecksum = do
         -- Parse and validate "redis-ver" key
-        key <- get @RDBLengthPrefixedShortString -- "redis-ver" is 10 bytes
+        key <- getWithChecksum @RDBLengthPrefixedShortString -- "redis-ver" is 10 bytes
         if key /= RDBLengthPrefixedShortString "redis-ver"
             then fail ("Expected redis-ver marker got " <> show key <> " instead")
             -- Parse version string value
-            else RedisVersion <$> get @RDBLengthPrefixedShortString
+            else RedisVersion <$> getWithChecksum @RDBLengthPrefixedShortString
 
 {- | Creation time (ctime) encoding as Unix timestamp.
 Stores "ctime" key with POSIXTime formatted as string value.
 -}
-instance Binary CTime where
-    put (CTime cTime) = do
+instance SBinary CTime where
+    putWithChecksum (CTime cTime) = do
         -- Write "ctime" key followed by timestamp as string
-        put (RDBLengthPrefixedShortString "ctime")
-        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ cTime.getRDBUnixTimestampS))
+        putWithChecksum (RDBLengthPrefixedShortString "ctime")
+        putWithChecksum (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ cTime.getRDBUnixTimestampS))
 
     -- \^ Using the Data.ByteString.Lazy.Char8 to pack to go from string to ByteString since we expect (show posixTime) to be an ASCII string
     -- We also convert to string like is done here: https://github.com/redis/redis/blob/f6f16746e1d4bc51960158d9a896e1aa0a2c7dbd/src/rdb.c#L1257
-    get = do
+    getWithChecksum = do
         -- Parse and validate "ctime" key
-        key <- get @RDBLengthPrefixedShortString -- "ctime" is 5 bytes
+        key <- getWithChecksum @RDBLengthPrefixedShortString -- "ctime" is 5 bytes
         if key /= RDBLengthPrefixedShortString "ctime"
             then fail ("Expected ctime marker got " <> show key <> " instead")
             else do
                 -- Parse timestamp string and convert to numeric value
-                timeStr <- get @RDBLengthPrefixedVal
+                timeStr <- getWithChecksum @RDBLengthPrefixedVal
                 let cTimeM = BSC.readWord32 . fromRDBLengthPrefixedVal $ timeStr
                 -- \^ Using the Data.ByteString.Lazy.Char8 to unpack to string since we expect an ASCII string
                 case cTimeM of
@@ -661,20 +715,20 @@ instance Binary CTime where
 {- | Memory usage (used-mem) encoding in bytes.
 Stores "used-mem" key with memory usage as variable-length string value.
 -}
-instance Binary UsedMem where
-    put (UsedMem mem) = do
+instance SBinary UsedMem where
+    putWithChecksum (UsedMem mem) = do
         -- Write "used-mem" key followed by memory value as string
-        put (RDBLengthPrefixedShortString "used-mem")
-        put (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ mem))
+        putWithChecksum (RDBLengthPrefixedShortString "used-mem")
+        putWithChecksum (toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible (BSC.pack . show $ mem))
 
-    get = do
+    getWithChecksum = do
         -- Parse and validate "used-mem" key
-        key <- get @RDBLengthPrefixedShortString -- "used-mem" is 8
+        key <- getWithChecksum @RDBLengthPrefixedShortString -- "used-mem" is 8
         if key /= RDBLengthPrefixedShortString "used-mem"
             then fail ("Expected used-mem marker got " <> show key <> " instead")
             else do
                 -- Parse memory value string and convert to integer
-                memVal <- fromRDBLengthPrefixedVal <$> get @RDBLengthPrefixedVal
+                memVal <- fromRDBLengthPrefixedVal <$> getWithChecksum @RDBLengthPrefixedVal
                 case BSC.readInt memVal of
                     Just (memInt, "") -> pure $ UsedMem memInt
                     _ -> fail "Invalid used-mem format: expected an integer"
@@ -683,50 +737,113 @@ instance Binary UsedMem where
 Format: [0xFE][database-index-as-string]
 Indicates which Redis database the following entries belong to.
 -}
-instance Binary SelectDB where
-    put (SelectDB dbIndex) = do
+instance SBinary SelectDB where
+    putWithChecksum (SelectDB dbIndex) = do
         -- Write database selection opcode
-        putWord8 selectDBOpCodeByteTag -- Redis SelectDB opcode
+        genericPutWithChecksum @Word8 selectDBOpCodeByteTag -- Redis SelectDB opcode
         -- Write database index using variable-length encoding
-        put (toUIntValInRDBLengthPrefixedForm dbIndex)
-    get = do
+        putWithChecksum (toUIntValInRDBLengthPrefixedForm dbIndex)
+    getWithChecksum = do
         -- Read and validate database selection opcode
-        tag <- getWord8
+        tag <- genericGetWithChecksum @Word8
         if tag /= selectDBOpCodeByteTag
             then fail ("Expected SelectDB marker got " <> show tag <> " instead")
             else do
                 -- Parse database index from variable-length encoding
-                dbIndex <- get @UIntValInRDBLengthPrefixForm
+                dbIndex <- getWithChecksum @UIntValInRDBLengthPrefixForm
                 pure $ SelectDB (fromUIntValInRDBLengthPrefixedForm dbIndex)
 
 {- | Database resize hints (ResizeDB) encoding with 0xFB opcode.
 Format: [0xFB][total-keys-hint][expiry-keys-hint]
 Provides memory allocation hints for hash table sizing optimization.
 -}
-instance Binary ResizeDB where
-    put (ResizeDB numOfKeys numOfKeysWithExpiry) = do
-        putWord8 resizeDBOpCodeByteTag -- Redis ResizeDB opcode
-        put (toUIntValInRDBLengthPrefixedForm numOfKeys)
-        put (toUIntValInRDBLengthPrefixedForm numOfKeysWithExpiry)
+instance SBinary ResizeDB where
+    putWithChecksum (ResizeDB numOfKeys numOfKeysWithExpiry) = do
+        genericPutWithChecksum @Word8 resizeDBOpCodeByteTag -- Redis ResizeDB opcode
+        putWithChecksum (toUIntValInRDBLengthPrefixedForm numOfKeys)
+        putWithChecksum (toUIntValInRDBLengthPrefixedForm numOfKeysWithExpiry)
 
-    get = do
-        tag <- getWord8
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         if tag /= resizeDBOpCodeByteTag
             then fail ("Expected ResizeDB marker got " <> show tag <> " instead")
             else do
-                numOfKeys <- get @UIntValInRDBLengthPrefixForm
-                numOfKeysWithExpiry <- get @UIntValInRDBLengthPrefixForm
+                numOfKeys <- getWithChecksum @UIntValInRDBLengthPrefixForm
+                numOfKeysWithExpiry <- getWithChecksum @UIntValInRDBLengthPrefixForm
                 pure $ ResizeDB (fromUIntValInRDBLengthPrefixedForm numOfKeys) (fromUIntValInRDBLengthPrefixedForm numOfKeysWithExpiry)
 
 {- | Redis value type encoding for RDB format.
 Each type has a specific byte identifier followed by type-specific data.
 Currently only string type (0) is implemented in this codebase.
 -}
-instance Binary ValueType where
-    put = \case
-        Str -> putWord8 stringValueTypeByteId -- Redis string type identifier
-    get = do
-        tag <- getWord8
+instance SBinary ValueType where
+    putWithChecksum = \case
+        Str -> genericPutWithChecksum @Word8 stringValueTypeByteId -- Redis string type identifier
+    getWithChecksum = do
+        tag <- genericGetWithChecksum @Word8
         case tag of
             0 -> pure Str
             _ -> fail ("Unknown ValueType: " <> show tag)
+
+-- -------------------------------------------------------------------------- --
+--                Serialization functions with checksum support               --
+-- -------------------------------------------------------------------------- --
+
+-- The reason we're putting and getting with checksum this way is so each sub-component of each RDB file component can contribute to the final checksum, basically we're doing it this way to give the checksum a greater level of granularity and to ensure that the checksum includes all sub-components of a given section, not just the section as a whole. I think this is how redis does it
+-- We do not need to do this for RDB File components that are basic/simple, that is, those that do not themselves have sub components like the version, magic string, and eof marker
+-- putKeyValWithExpiryMSWithChecksum :: KeyValWithExpiryInMS -> SPut
+-- putKeyValWithExpiryMSWithChecksum (KeyValWithExpiryInMS expiryTimeMs valueType encodedKey encodedValue) = do
+--     putWithChecksum keyValWithExpiryInMSOpCodeByteTag
+--     putWithChecksum expiryTimeMs
+--     putWithChecksum valueType
+--     putWithChecksum encodedKey
+--     putWithChecksum encodedValue
+
+-- getKeyValWithExpiryMSWithChecksum :: SGet KeyValWithExpiryInMS
+-- getKeyValWithExpiryMSWithChecksum = do
+--     tag <- getWithChecksum
+--     if tag /= keyValWithExpiryInMSOpCodeByteTag
+--         then fail ("Expected KeyValWithExpiryInMS marker got " <> show tag <> " instead")
+--         else KeyValWithExpiryInMS <$> getWithChecksum <*> getWithChecksum <*> getWithChecksum <*> getWithChecksum
+
+-- putKeyValWithExpirySWithChecksum :: KeyValWithExpiryInS -> SPut
+-- putKeyValWithExpirySWithChecksum (KeyValWithExpiryInS expiryTimeS valueType encodedKey encodedValue) = do
+--     putWithChecksum expiryTimeS
+--     putWithChecksum valueType
+--     putWithChecksum encodedKey
+--     putWithChecksum encodedValue
+
+-- getKeyValWithExpirySWithChecksum :: SGet KeyValWithExpiryInS
+-- getKeyValWithExpirySWithChecksum = do
+--     expiryTimeS <- getWithChecksum
+--     valueType <- getWithChecksum
+--     encodedKey <- getWithChecksum
+--     KeyValWithExpiryInS expiryTimeS valueType encodedKey <$> getWithChecksum
+
+-- putKeyValWithNoExpiryInfoWithChecksum :: KeyValWithNoExpiryInfo -> SPut
+-- putKeyValWithNoExpiryInfoWithChecksum (KeyValWithNoExpiryInfo valueType encodedKey encodedValue) = do
+--     putWithChecksum valueType
+--     putWithChecksum encodedKey
+--     putWithChecksum encodedValue
+
+-- getKeyValWithNoExpiryInfoWithChecksum :: SGet KeyValWithNoExpiryInfo
+-- getKeyValWithNoExpiryInfoWithChecksum = do
+--     valueType <- getWithChecksum
+--     encodedKey <- getWithChecksum
+--     KeyValWithNoExpiryInfo valueType encodedKey <$> getWithChecksum
+
+-- putKeyValueOpCodeWithChecksum :: KeyValueOpCode -> SPut
+-- putKeyValueOpCodeWithChecksum = \case
+--     FCOpCode keyValWithExpiryInMS -> putWithChecksum keyValWithExpiryInMS
+--     KeyValOpCode keyValWithNoExpiryInfo -> putWithChecksum keyValWithNoExpiryInfo
+--     FDOpcode keyValWithExpiryInS -> putWithChecksum keyValWithExpiryInS
+
+-- getKeyValueOpCodeWithChecksum :: SGet KeyValueOpCode
+-- getKeyValueOpCodeWithChecksum =
+--     asum
+--         [ FDOpcode <$> getKeyValWithExpirySWithChecksum
+--         , FCOpCode <$> getKeyValWithExpiryMSWithChecksum
+--         , KeyValOpCode <$> getKeyValWithNoExpiryInfoWithChecksum
+--         ]
+
+-- putAuxFieldWithChecksum :: AuxField -> SPut

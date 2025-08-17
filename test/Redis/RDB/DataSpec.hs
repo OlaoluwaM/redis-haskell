@@ -15,7 +15,7 @@ import Data.Binary.Get (runGet)
 import Data.Binary.Put (runPut)
 import Data.String (IsString (fromString))
 import Hedgehog (MonadGen)
-import Redis.Helper (encodeThenDecode)
+import Redis.Helper (encodeThenDecodeBinary)
 import Test.Tasty.Hedgehog (testProperty)
 
 genWord :: (MonadGen m) => m Word
@@ -48,19 +48,19 @@ validateUnsignedIntVaLengthPrefixedEncoding :: H.Property
 validateUnsignedIntVaLengthPrefixedEncoding = H.property $ do
     wordVal <- H.forAll genWord
     let uInt = toUIntValInRDBLengthPrefixedForm wordVal
-    encodeThenDecode uInt H.=== uInt
+    encodeThenDecodeBinary uInt H.=== uInt
 
 validateRDBLengthPrefixedValEncoding :: H.Property
 validateRDBLengthPrefixedValEncoding = H.property $ do
     byteString <- H.forAll genByteSequence
     let rdbString = toRDBLengthPrefixedVal byteString
-    encodeThenDecode rdbString H.=== rdbString
+    encodeThenDecodeBinary rdbString H.=== rdbString
 
 validateRDBLengthPrefixedValEncodingForLargeByteSequences :: H.Property
 validateRDBLengthPrefixedValEncodingForLargeByteSequences = H.property $ do
     byteString <- H.forAll genLargeByteSequence
     let rdbString = toRDBLengthPrefixedVal byteString
-    encodeThenDecode rdbString H.=== rdbString
+    encodeThenDecodeBinary rdbString H.=== rdbString
 
 spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
@@ -68,27 +68,27 @@ spec_RDB_data_binary_serialization_unit_tests = do
         it "handles encoding of val at exact 6-bit length boundary (63 bytes)" $ do
             let str63 = BSC.replicate 63 'a'
                 shortString = RDBLengthPrefixedShortString str63
-            encodeThenDecode shortString `shouldBe` shortString
+            encodeThenDecodeBinary shortString `shouldBe` shortString
 
         it "handles encoding of val just over 6-bit length boundary (64 bytes)" $ do
             let str64 = BSC.replicate 64 'a'
                 mediumString = RDBLengthPrefixedMediumString str64
-            encodeThenDecode mediumString `shouldBe` mediumString
+            encodeThenDecodeBinary mediumString `shouldBe` mediumString
 
         it "handles encoding of val at maximum 14-bit length (16383 bytes)" $ do
             let str16383 = BSC.replicate 16383 'b'
                 mediumString = RDBLengthPrefixedMediumString str16383
-            encodeThenDecode mediumString `shouldBe` mediumString
+            encodeThenDecodeBinary mediumString `shouldBe` mediumString
 
         it "handles encoding of val just over 14-bit length (16384 bytes)" $ do
             let str16384 = BSC.replicate 16384 'c'
                 longString = RDBLengthPrefixedLongString str16384
-            encodeThenDecode longString `shouldBe` longString
+            encodeThenDecodeBinary longString `shouldBe` longString
 
         it "handles encoding of val that is max-size" $ do
             let strMax = BSC.replicate maxSize 'a'
                 val = toRDBLengthPrefixedStr strMax
-            encodeThenDecode val `shouldBe` val
+            encodeThenDecodeBinary val `shouldBe` val
 
         it "handles encoding of minimum and maximum 8-bit integers" $ do
             let minInt8 = RDBLengthPrefixedInt8 (-128)
@@ -103,19 +103,19 @@ spec_RDB_data_binary_serialization_unit_tests = do
         it "handles encoding of minimum and maximum 16-bit integers" $ do
             let minInt16 = RDBLengthPrefixedInt16 (-32768)
                 maxInt16 = RDBLengthPrefixedInt16 32767
-            encodeThenDecode minInt16 `shouldBe` minInt16
-            encodeThenDecode maxInt16 `shouldBe` maxInt16
+            encodeThenDecodeBinary minInt16 `shouldBe` minInt16
+            encodeThenDecodeBinary maxInt16 `shouldBe` maxInt16
 
         it "handles encoding of minimum and maximum 32-bit integers" $ do
             let minInt32 = RDBLengthPrefixedInt32 (-2147483648)
                 maxInt32 = RDBLengthPrefixedInt32 2147483647
-            encodeThenDecode minInt32 `shouldBe` minInt32
-            encodeThenDecode maxInt32 `shouldBe` maxInt32
+            encodeThenDecodeBinary minInt32 `shouldBe` minInt32
+            encodeThenDecodeBinary maxInt32 `shouldBe` maxInt32
 
     describe "Edge Cases and Corner Cases" $ do
         it "handles empty strings" $ do
             let emptyString = RDBLengthPrefixedShortString BS.empty
-            encodeThenDecode emptyString `shouldBe` emptyString
+            encodeThenDecodeBinary emptyString `shouldBe` emptyString
 
         it "handles zero values" $ do
             let zeroInt8 = RDBLengthPrefixedInt8 0
@@ -123,40 +123,40 @@ spec_RDB_data_binary_serialization_unit_tests = do
                 zeroInt32 = RDBLengthPrefixedInt32 0
                 zeroTimestampS = RDBUnixTimestampS 0
                 zeroTimestampMS = RDBUnixTimestampMS 0
-            encodeThenDecode zeroInt8 `shouldBe` zeroInt8
-            encodeThenDecode zeroInt16 `shouldBe` zeroInt16
-            encodeThenDecode zeroInt32 `shouldBe` zeroInt32
-            encodeThenDecode zeroTimestampS `shouldBe` zeroTimestampS
-            encodeThenDecode zeroTimestampMS `shouldBe` zeroTimestampMS
+            encodeThenDecodeBinary zeroInt8 `shouldBe` zeroInt8
+            encodeThenDecodeBinary zeroInt16 `shouldBe` zeroInt16
+            encodeThenDecodeBinary zeroInt32 `shouldBe` zeroInt32
+            encodeThenDecodeBinary zeroTimestampS `shouldBe` zeroTimestampS
+            encodeThenDecodeBinary zeroTimestampMS `shouldBe` zeroTimestampMS
 
         it "handles Unicode and special characters in strings" $ do
             let unicodeStr = "héllo 世界 🚀 \n\t\r"
                 unicodeString = toRDBLengthPrefixedStr unicodeStr
-            encodeThenDecode unicodeString `shouldBe` unicodeString
+            encodeThenDecodeBinary unicodeString `shouldBe` unicodeString
 
         it "handles binary data in strings" $ do
             let binaryData = BSC.pack ['\0', '\1', '\255', '\127']
                 binaryString = RDBLengthPrefixedShortString binaryData
-            encodeThenDecode binaryString `shouldBe` binaryString
+            encodeThenDecodeBinary binaryString `shouldBe` binaryString
 
         it "handles single character strings" $ do
             let singleChar = RDBLengthPrefixedShortString "x"
-            encodeThenDecode singleChar `shouldBe` singleChar
+            encodeThenDecodeBinary singleChar `shouldBe` singleChar
 
         it "handles string-like numeric values that don't optimize to integers" $ do
             let floatStr = "123.45"
                 sciStr = "1e10"
                 hexStr = "0xFF"
                 vals = map toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible [floatStr, sciStr, hexStr]
-            mapM_ (\val -> encodeThenDecode val `shouldBe` val) vals
+            mapM_ (\val -> encodeThenDecodeBinary val `shouldBe` val) vals
 
         it "handles timestamp edge cases" $ do
             let maxSeconds = RDBUnixTimestampS 2147483647 -- Max 32-bit timestamp (2038)
                 maxMillis = RDBUnixTimestampMS 9223372036854775807 -- Max 64-bit timestamp
                 minTimestamp = RDBUnixTimestampS 1 -- Minimal valid timestamp
-            encodeThenDecode maxSeconds `shouldBe` maxSeconds
-            encodeThenDecode maxMillis `shouldBe` maxMillis
-            encodeThenDecode minTimestamp `shouldBe` minTimestamp
+            encodeThenDecodeBinary maxSeconds `shouldBe` maxSeconds
+            encodeThenDecodeBinary maxMillis `shouldBe` maxMillis
+            encodeThenDecodeBinary minTimestamp `shouldBe` minTimestamp
 
         it "handles mixed type polymorphic value sequences" $ do
             let values =
@@ -166,7 +166,7 @@ spec_RDB_data_binary_serialization_unit_tests = do
                     , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "42"
                     , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "-999"
                     ]
-                testVal val = encodeThenDecode val `shouldBe` val
+                testVal val = encodeThenDecodeBinary val `shouldBe` val
             mapM_ testVal values
 
         it "maintains precision for timestamp edge cases and leap seconds" $ do

@@ -2,16 +2,19 @@ module Redis.Helper (
     mkCmdReqStr,
     mkBulkString,
     bulkStrToOptionString,
-    encodeThenDecode,
+    encodeThenDecodeSBinary,
+    encodeThenDecodeBinary,
     pingCmd,
     echoCmd,
     setCmd,
     getCmd,
 ) where
 
+import Redis.RDB.SBinary
+
 import Data.Binary (Binary (get, put))
 import Data.Binary.Get (runGet)
-import Data.Binary.Put (runPut)
+import Data.Binary.Put (runPut, runPutM)
 import Data.ByteString (ByteString)
 import Data.Vector (fromList)
 import Redis.RESP (Array (..), BulkString (..), RESPDataType (MkArrayResponse, MkBulkStringResponse), serializeRESPDataType, toOptionString)
@@ -37,5 +40,8 @@ setCmd = mkBulkString "SET"
 getCmd :: RESPDataType
 getCmd = mkBulkString "GET"
 
-encodeThenDecode :: (Binary a) => a -> a
-encodeThenDecode = runGet get . runPut . put
+encodeThenDecodeSBinary :: (SBinary a) => a -> a
+encodeThenDecodeSBinary = fst . runGet (execSGetWithChecksum getWithChecksum) . snd . runPutM . execSPutWithChecksum . putWithChecksum
+
+encodeThenDecodeBinary :: (Binary a) => a -> a
+encodeThenDecodeBinary = runGet get . runPut . put

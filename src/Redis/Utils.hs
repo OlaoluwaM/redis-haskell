@@ -1,7 +1,5 @@
 module Redis.Utils (
-    myTrace,
     myTracePretty,
-    myTraceM,
     myTracePrettyM,
     fromEither,
     mapLeft,
@@ -17,18 +15,10 @@ import Data.ByteString.Char8 qualified as BS
 
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
-import Data.String (IsString (..))
 import Debug.Pretty.Simple
-import Debug.Trace (trace, traceShowM)
-
-myTrace :: (Show a) => String -> a -> a
-myTrace str' a = trace (str' <> show a) a
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
-
-myTraceM :: (Show a, Applicative f) => String -> a -> f ()
-myTraceM str a = traceShowM (str <> show a)
 
 myTracePrettyM :: (Show a, Applicative f) => String -> a -> f ()
 myTracePrettyM str a = pTraceM (str <> show a)

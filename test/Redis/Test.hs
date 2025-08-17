@@ -1,4 +1,6 @@
 {-# LANGUAGE FieldSelectors #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Redis.Test (
     TestM,
@@ -28,6 +30,7 @@ import Network.Socket (
     getAddrInfo,
     socket,
  )
+import Optics (makeFieldLabelsNoPrefix)
 import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Server.Settings (ServerSettings)
 import Redis.Store (StoreState, genInitialStore)
@@ -40,10 +43,13 @@ data TestContext = TestContext
     }
     deriving stock (Generic)
 
+makeFieldLabelsNoPrefix ''TestContext
+
 data PassableTestContext = PassableTestContext
     { storeState :: Maybe StoreState
     , settings :: Maybe ServerSettings
     }
+    deriving stock (Generic)
 
 instance HasLogger TestContext where
     loggerL f (TestContext clientSocket store settings logger) = TestContext clientSocket store settings <$> f logger

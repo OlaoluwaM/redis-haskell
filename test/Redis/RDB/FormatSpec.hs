@@ -6,21 +6,21 @@ import Test.Hspec
 
 import Data.ByteString.Char8 qualified as BSC
 
-import Redis.Helper (encodeThenDecode)
+import Redis.Helper (encodeThenDecodeBinary)
 
 spec_RDB_format_binary_serialization :: Spec
 spec_RDB_format_binary_serialization = do
     describe "Roundtrip serialization of RDB structuure components" $ do
         it "roundtrip encodes and decodes magic string correctly" $ do
             let magicString = Redis
-            encodeThenDecode magicString `shouldBe` magicString
+            encodeThenDecodeBinary magicString `shouldBe` magicString
 
         it "roundtrip encodes and decodes version strings correctly" $ do
             let version = RDBVersion "0009"
-            encodeThenDecode version `shouldBe` version
+            encodeThenDecodeBinary version `shouldBe` version
 
         it "roundtrip encodes and decodes EOF marker correctly" $ do
-            encodeThenDecode EOF `shouldBe` EOF
+            encodeThenDecodeBinary EOF `shouldBe` EOF
 
         it "roundtrip encodes and decodes expiry in milliseconds correctly" $ do
             let timestampMS = RDBUnixTimestampMS 1640995200000
@@ -29,7 +29,7 @@ spec_RDB_format_binary_serialization = do
                 value = toRDBLengthPrefixedVal "testvalue"
                 keyVal = KeyValWithExpiryInMS timestampMS valueType key value
                 opCode = FCOpCode keyVal
-            encodeThenDecode opCode `shouldBe` opCode
+            encodeThenDecodeBinary opCode `shouldBe` opCode
 
         it "roundtrip encodes and decodes expiry in seconds correctly" $ do
             let timestampS = RDBUnixTimestampS 1640995200
@@ -38,7 +38,7 @@ spec_RDB_format_binary_serialization = do
                 value = toRDBLengthPrefixedVal "testvalue"
                 keyVal = KeyValWithExpiryInS timestampS valueType key value
                 opCode = FDOpcode keyVal
-            encodeThenDecode opCode `shouldBe` opCode
+            encodeThenDecodeBinary opCode `shouldBe` opCode
 
         it "roundtrip encodes and decodes no expiry correctly" $ do
             let valueType = Str
@@ -46,35 +46,35 @@ spec_RDB_format_binary_serialization = do
                 value = toRDBLengthPrefixedVal "testvalue"
                 keyVal = KeyValWithNoExpiryInfo valueType key value
                 opCode = KeyValOpCode keyVal
-            encodeThenDecode opCode `shouldBe` opCode
+            encodeThenDecodeBinary opCode `shouldBe` opCode
 
         it "roundtrip encodes and decodes Redis version auxiliary field correctly" $ do
             let redisVer = RedisVersion (RDBLengthPrefixedShortString (BSC.pack "7.0.0"))
                 auxField = AuxFieldRedisVer redisVer
-            encodeThenDecode auxField `shouldBe` auxField
+            encodeThenDecodeBinary auxField `shouldBe` auxField
 
         it "roundtrip encodes and decodes Redis bits auxiliary field correctly" $ do
             let redisBits = RedisBits64
                 auxField = AuxFieldRedisBits redisBits
-            encodeThenDecode auxField `shouldBe` auxField
+            encodeThenDecodeBinary auxField `shouldBe` auxField
 
         it "roundtrip encodes and decodes creation time auxiliary field correctly" $ do
             let ctime = CTime (RDBUnixTimestampS 1640995200)
                 auxField = AuxFieldCTime ctime
-            encodeThenDecode auxField `shouldBe` auxField
+            encodeThenDecodeBinary auxField `shouldBe` auxField
 
         it "roundtrip encodes and decodes used memory auxiliary field correctly" $ do
             let usedMem = UsedMem 1073741824 -- 1GB
                 auxField = AuxFieldUsedMem usedMem
-            encodeThenDecode auxField `shouldBe` auxField
+            encodeThenDecodeBinary auxField `shouldBe` auxField
 
         it "roundtrip encodes and decodes database selection correctly" $ do
             let dbSelect = SelectDB 20
-            encodeThenDecode dbSelect `shouldBe` dbSelect
+            encodeThenDecodeBinary dbSelect `shouldBe` dbSelect
 
         it "roundtrip encodes and decodes string value type correctly" $ do
             let valueType = Str
-            encodeThenDecode valueType `shouldBe` valueType
+            encodeThenDecodeBinary valueType `shouldBe` valueType
 
         describe "Boundary Value and Edge Case Tests" $ do
             it "handles zero-length key-value pairs" $ do
@@ -82,14 +82,14 @@ spec_RDB_format_binary_serialization = do
                     emptyValue = toRDBLengthPrefixedVal BSC.empty
                     keyVal = KeyValWithNoExpiryInfo Str emptyKey emptyValue
                     opCode = KeyValOpCode keyVal
-                encodeThenDecode opCode `shouldBe` opCode
+                encodeThenDecodeBinary opCode `shouldBe` opCode
 
             it "handles very long keys and values" $ do
                 let longKey = toRDBLengthPrefixedVal (BSC.pack (replicate 1000 'k'))
                     longValue = toRDBLengthPrefixedVal (BSC.pack (replicate 10000 'v'))
                     keyVal = KeyValWithNoExpiryInfo Str longKey longValue
                     opCode = KeyValOpCode keyVal
-                encodeThenDecode opCode `shouldBe` opCode
+                encodeThenDecodeBinary opCode `shouldBe` opCode
 
             it "handles edge case timestamps" $ do
                 let epochStart = RDBUnixTimestampS 0
@@ -123,4 +123,4 @@ spec_RDB_format_binary_serialization = do
                             (toRDBLengthPrefixedVal "ms")
 
                     opCodes = [FDOpcode keyVal1, FDOpcode keyVal2, FCOpCode keyVal3, FCOpCode keyVal4]
-                mapM_ (\op -> encodeThenDecode op `shouldBe` op) opCodes
+                mapM_ (\op -> encodeThenDecodeBinary op `shouldBe` op) opCodes

@@ -60,7 +60,6 @@ createSampleRDBStructure currentTime =
                     ]
                 }
             ]
-        , checksum = Nothing -- No checksum for this example
         }
 
 emptyRDBFile :: RDBFile
@@ -70,7 +69,6 @@ emptyRDBFile =
         , version = RDBVersion "0009"
         , auxFieldEntries = []
         , dbEntries = []
-        , checksum = Nothing
         }
 
 rdbFileWithOnlyAuxFields :: RDBFile
@@ -84,7 +82,6 @@ rdbFileWithOnlyAuxFields =
             , AuxFieldUsedMem $ UsedMem 2048
             ]
         , dbEntries = []
-        , checksum = Nothing
         }
 
 multiDatabaseRDBStructure :: RDBFile
@@ -131,24 +128,23 @@ multiDatabaseRDBStructure =
                     ]
                 }
             ]
-        , checksum = Nothing
         }
 
 -- | List of example RDB files to test
 exampleRDBFiles :: [String]
 exampleRDBFiles =
-    [ "empty_database.rdb"
+    [ "rdb_version_5_with_checksum.rdb"
+    , "empty_database.rdb"
     , "expiration.rdb"
     , "integer_keys.rdb"
     , "keys_with_expiry.rdb"
     , "multiple_databases.rdb"
     , "non_ascii_values.rdb"
-    , "rdb_version_5_with_checksum.rdb"
     -- , "easily_compressible_string_key.rdb" -- Commented because it requires lzf compression which we do not yet support
     ]
 
-encodeThenDecodeRDBStructure :: RDBFile -> RDBFile
-encodeThenDecodeRDBStructure rdbFile =
+encodeThenDecodeBinaryRDBStructure :: RDBFile -> RDBFile
+encodeThenDecodeBinaryRDBStructure rdbFile =
     let encoded = Binary.encode rdbFile
         decoded = Binary.decode encoded
      in decoded
@@ -157,24 +153,32 @@ spec_RDB_integration_tests :: Spec
 spec_RDB_integration_tests = do
     describe "RDB File Integration Tests" $ do
         describe "RDB Creation and Roundtrip Tests" $ do
-            it "Encodes/decodes a sample RDB file successfully" $ do
+            it "Encodes/decodes a sample RDB file successfully (without checksum)" $ do
                 currentTime <- getPOSIXTime
                 let rdbStructure = createSampleRDBStructure currentTime
-                encodeThenDecodeRDBStructure rdbStructure `shouldBe` rdbStructure
+                encodeThenDecodeBinaryRDBStructure rdbStructure `shouldBe` rdbStructure
+
+            it "Encodes/decodes a sample RDB file successfully (with checksum)" $ do
+                currentTime <- getPOSIXTime
+                let rdbStructure = createSampleRDBStructure currentTime
+                let encoded = Binary.encode (RDBFileWithChecksum rdbStructure)
+                let decoded = Binary.decode @RDBFile encoded
+
+                decoded `shouldBe` rdbStructure
 
             it "Encodes/decodes an empty RDB file successfully" $ do
-                encodeThenDecodeRDBStructure emptyRDBFile `shouldBe` emptyRDBFile
+                encodeThenDecodeBinaryRDBStructure emptyRDBFile `shouldBe` emptyRDBFile
 
             it "Encodes/decodes an auxiliary-only RDB file successfully" $ do
-                encodeThenDecodeRDBStructure rdbFileWithOnlyAuxFields `shouldBe` rdbFileWithOnlyAuxFields
+                encodeThenDecodeBinaryRDBStructure rdbFileWithOnlyAuxFields `shouldBe` rdbFileWithOnlyAuxFields
 
             it "handles multiple databases correctly" $ do
-                encodeThenDecodeRDBStructure multiDatabaseRDBStructure `shouldBe` multiDatabaseRDBStructure
+                encodeThenDecodeBinaryRDBStructure multiDatabaseRDBStructure `shouldBe` multiDatabaseRDBStructure
 
             it "encodes large RDB files efficiently" $ do
                 currentTime <- getPOSIXTime
                 let largeRDB = createLargeRDB currentTime
-                encodeThenDecodeRDBStructure largeRDB `shouldBe` largeRDB
+                encodeThenDecodeBinaryRDBStructure largeRDB `shouldBe` largeRDB
 
         describe "Decoding sample RDB Files" $ do
             for_ exampleRDBFiles $ \filename -> do
@@ -209,7 +213,6 @@ createLargeRDB currentTime =
                 , keyValEntries = generateLargeKeyValList currentTime 50
                 }
             ]
-        , checksum = Nothing
         }
 
 -- | Generate a large list of key-value entries
