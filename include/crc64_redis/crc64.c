@@ -151,11 +151,5 @@ void crc64_init(void)
 /* Compute crc64 */
 uint64_t crc64(uint64_t crc, const unsigned char *s, uint64_t l)
 {
-    // print out the data being passed
-    for (uint64_t i = 0; i < l; i++)
-    {
-        printf("%02x ", s[i]);
-    }
-    printf("\n");
     return crcspeed64native(crc64_table, crc, (void *)s, l);
 }
