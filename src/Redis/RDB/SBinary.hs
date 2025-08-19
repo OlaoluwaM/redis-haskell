@@ -113,7 +113,7 @@ getWithConsumedInput decoder = do
     consumedInput <- getLazyByteString size
     pure (value, consumedInput)
 
--- Failed attempt to implement runAndCaptureInput which does what getWithConsumedInput does but in a single pass. We'd need the unexported `pushBack` combinator from Data.Binary.Get.Internal to make this work properly.
+-- Failed attempt to implement runAndCaptureInput which does what getWithConsumedInput does but in a single pass. We'd end up needing to do two passes like in getWithConsumedInput, so there isn't much point
 -- runAndCaptureInput :: Get a -> Get (a, BS.ByteString)
 -- runAndCaptureInput g = do
 --     (decoder, bs) <- runAndKeepTrack $ do
@@ -122,11 +122,19 @@ getWithConsumedInput decoder = do
 --         after <- bytesRead
 --         pure (fromIntegral $ after - before, value)
 --     case decoder of
---         Done _ (foo, a) -> do
---             let (consumed, unConsumed) = BS.splitAt foo (fold bs)
---             pure (a, BS.take foo $ fold bs)
+--         Done _ (bytesConsumed, a) -> do
+--             let fullBS = BS.concat bs
+--             pushBack fullBS
+--             consumedInput <- getByteString bytesConsumed
+--             -- let (consumed, unConsumed) = BS.splitAt bytesConsumed fullBS
+--             pure (a, consumedInput)
 --         Fail inp s -> g{runCont = \_ _ -> Fail inp s}
 --         _ -> error "Binary: impossible"
+--   where
+--     pushBack :: BS.ByteString -> Get ()
+--     pushBack bs
+--         | BS.null bs = g{runCont = \inp ks -> ks inp ()}
+--         | otherwise = g{runCont = \inp ks -> ks (inp <> bs) ()}
 
 -- runAndKeepTrack :: Get a -> Get (Decoder a, [BS.ByteString])
 -- runAndKeepTrack g =
