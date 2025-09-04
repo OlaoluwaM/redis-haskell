@@ -1,5 +1,6 @@
 {-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# OPTIONS_GHC -fno-cse #-}
 
 module Redis.RDB.CRC64 (
     crc64,
@@ -10,7 +11,7 @@ module Redis.RDB.CRC64 (
 )
 where
 
-import Data.ByteString qualified as BS
+import Data.ByteString.Unsafe qualified as BSU
 
 import Data.ByteString (ByteString)
 import Data.Word (Word64)
@@ -18,18 +19,23 @@ import Foreign.C (CString)
 import Foreign.C.Types (CULLong (..))
 import System.IO.Unsafe (unsafePerformIO)
 
-foreign import ccall unsafe "crc64.h crc64_init" c_crc64_init :: IO ()
-foreign import ccall unsafe "crc64.h crc64" c_crc64 :: CULLong -> CString -> CULLong -> CULLong
+foreign import capi unsafe "crc64.h crc64_init" c_crc64_init :: IO ()
+foreign import capi unsafe "crc64.h crc64" c_crc64 :: CULLong -> CString -> CULLong -> CULLong
 
 newtype CheckSum = CheckSum {getChecksum :: Word64}
     deriving stock (Show, Eq, Ord)
     deriving newtype (Num)
 
+--- Use of the unsafe function from Data.ByteString.Unsafe is fine here because neither we nor C mutates the underlying CString representation of the ByteString thus we avoid breaking referential transparency through mutation
+
+-- The underlying C function treats the bytestring input as immutable since the parameter is a const pointer
+
+{-# NOINLINE crc64 #-}
 crc64 :: CheckSum -> ByteString -> CheckSum
 crc64 seed bs = unsafePerformIO $ do
     -- ensure tables are initialized otherwise function will always return 0
     c_crc64_init
-    BS.useAsCStringLen bs $ \(cs, len) -> do
+    BSU.unsafeUseAsCStringLen bs $ \(cs, len) -> do
         let cksum = c_crc64 (checksumIntegral seed) cs (fromIntegral len)
         pure (toChecksumFromIntegral cksum)
 
