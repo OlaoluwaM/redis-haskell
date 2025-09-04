@@ -65,9 +65,6 @@ execSGetWithChecksum = flip runStateT initialChecksum . runSGet
 updateChecksum :: (MonadState CheckSum m) => BSL.ByteString -> m ()
 updateChecksum bs = modify (\currentChecksum -> BSL.foldl' (\currChkSum byte -> crc64 currChkSum (BS.singleton byte)) currentChecksum bs)
 
-updateChecksum' :: (MonadState CheckSum m) => BSL.ByteString -> m ()
-updateChecksum' bs = modify (`crc64` BSL.toStrict bs)
-
 genericPutWithChecksum :: (Binary a) => a -> SPut
 genericPutWithChecksum x = do
     let putResult = runPut (put x)
