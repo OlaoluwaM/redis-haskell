@@ -27,21 +27,10 @@ genByteSequence = do
     arbitraryByteSeq <- Gen.bytes (Range.linear 0 100000)
     Gen.element [arbitraryByteSeq, intByteSeq]
 
-genLargeByteSequence :: (MonadGen m) => m BS.ByteString
-genLargeByteSequence = do
-    -- Generate a large byte sequence of length between 1 and 512 MB
-    Gen.bytes (Range.linear 0 maxSize)
-
--- This is set to 512 MB
-maxSize :: (Num a) => a
-maxSize = 512 * 1024 * 1024
-
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
 test_rdb_data_binary_serialization_prop_tests =
     [ testProperty "unsigned int values length prefixed form encoding roundtrips" validateUnsignedIntVaLengthPrefixedEncoding
     , testProperty "RDB length prefixed value encoding roundtrips" validateRDBLengthPrefixedValEncoding
-    -- TODO This property test causes the program to hang, figure out why
-    -- , testProperty "RDB length prefixed value encoding for large byte sequences roundtrips" validateRDBLengthPrefixedValEncodingForLargeByteSequences
     ]
 
 validateUnsignedIntVaLengthPrefixedEncoding :: H.Property
@@ -53,12 +42,6 @@ validateUnsignedIntVaLengthPrefixedEncoding = H.property $ do
 validateRDBLengthPrefixedValEncoding :: H.Property
 validateRDBLengthPrefixedValEncoding = H.property $ do
     byteString <- H.forAll genByteSequence
-    let rdbString = toRDBLengthPrefixedVal byteString
-    encodeThenDecodeBinary rdbString H.=== rdbString
-
-validateRDBLengthPrefixedValEncodingForLargeByteSequences :: H.Property
-validateRDBLengthPrefixedValEncodingForLargeByteSequences = H.property $ do
-    byteString <- H.forAll genLargeByteSequence
     let rdbString = toRDBLengthPrefixedVal byteString
     encodeThenDecodeBinary rdbString H.=== rdbString
 
@@ -86,6 +69,8 @@ spec_RDB_data_binary_serialization_unit_tests = do
             encodeThenDecodeBinary longString `shouldBe` longString
 
         it "handles encoding of val that is max-size" $ do
+            -- This is set to 512 MB
+            let maxSize = 512 * 1024 * 1024
             let strMax = BSC.replicate maxSize 'a'
                 val = toRDBLengthPrefixedStr strMax
             encodeThenDecodeBinary val `shouldBe` val
