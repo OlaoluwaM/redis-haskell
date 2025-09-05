@@ -37,6 +37,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
 import Control.Applicative (asum)
+import Control.DeepSeq (NFData)
 import Data.Binary.Get (
     getByteString,
     getInt16le,
@@ -60,6 +61,7 @@ import Data.Int (Int16, Int32, Int8)
 import Data.String (IsString (fromString))
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
+import GHC.Generics (Generic)
 import Redis.RDB.SBinary.DerivingVia (BinaryFromSBinary (..))
 import Redis.Utils (millisecondsToSeconds, secondsToMilliseconds)
 
@@ -74,37 +76,44 @@ import Redis.Utils (millisecondsToSeconds, secondsToMilliseconds)
 -- Globally, when we refer to length-prefix we really mean length-prefix encoding as per the rdb-variable-length encoding scheme (Do not Change)
 
 newtype RDBLengthPrefixedShortString = RDBLengthPrefixedShortString {getRDBLengthPrefixedShortString :: BS.ByteString}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedShortString)
 
 newtype RDBLengthPrefixedMediumString = RDBLengthPrefixedMediumString {getRDBLengthPrefixedMediumString :: BS.ByteString}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedMediumString)
 
 newtype RDBLengthPrefixedLongString = RDBLengthPrefixedLongString {getRDBLengthPrefixedLongString :: BS.ByteString}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedLongString)
 
 newtype RDBLengthPrefixedExtraLongString = RDBLengthPrefixedExtraLongString {getRDBLengthPrefixedExtraLongString :: BS.ByteString}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedExtraLongString)
 
 -- The encoding and decoding of length-prefixed integer types are done in little-endian (Do not Change)
 
 newtype RDBLengthPrefixedInt8 = RDBLengthPrefixedInt8 {getRDBLengthPrefixedInt8 :: Int8}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt8)
 
 newtype RDBLengthPrefixedInt16 = RDBLengthPrefixedInt16 {getRDBLengthPrefixedInt16 :: Int16}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt16)
 
 newtype RDBLengthPrefixedInt32 = RDBLengthPrefixedInt32 {getRDBLengthPrefixedInt32 :: Int32}
-    deriving stock (Show, Eq, Ord)
+    deriving stock (Show, Eq, Ord, Generic)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt32)
 
 {- | Length-prefixed integer types for encoding standalone length values
@@ -179,7 +188,8 @@ data RDBLengthPrefixedVal
     | RDBLengthPrefixedInt8Val RDBLengthPrefixedInt8
     | RDBLengthPrefixedInt16Val RDBLengthPrefixedInt16
     | RDBLengthPrefixedInt32Val RDBLengthPrefixedInt32
-    deriving stock (Show, Eq)
+    deriving stock (Show, Eq, Generic)
+    deriving anyclass (NFData)
     deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedVal)
 
 class (Integral a) => Unsigned a where
