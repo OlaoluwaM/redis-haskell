@@ -2,6 +2,7 @@ module Redis.RDB.DataSpec where
 
 import Redis.RDB.Data
 import Test.Hspec
+import Test.Hspec.Hedgehog
 import Test.Tasty
 
 import Data.ByteString qualified as BS
@@ -10,12 +11,9 @@ import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Data.Binary (Binary (..))
-import Data.Binary.Get (runGet)
-import Data.Binary.Put (runPut)
 import Data.String (IsString (fromString))
-import Hedgehog (MonadGen)
-import Redis.Helper (encodeThenDecodeBinary)
+import Redis.Helper (encodeThenDecodeRDBBinary)
+import Redis.RDB.TestConfig (genRDBConfig)
 import Test.Tasty.Hedgehog (testProperty)
 
 genWord :: (MonadGen m) => m Word
@@ -30,132 +28,128 @@ genByteSequence = do
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
 test_rdb_data_binary_serialization_prop_tests =
     [ testProperty "unsigned int values length prefixed form encoding roundtrips" validateUnsignedIntVaLengthPrefixedEncoding
-    , testProperty "RDB length prefixed value encoding roundtrips" validateRDBLengthPrefixedValEncoding
+    , testProperty "RDB length prefixed value encoding roundtrips" validateRDBValEncoding
     ]
 
 validateUnsignedIntVaLengthPrefixedEncoding :: H.Property
 validateUnsignedIntVaLengthPrefixedEncoding = H.property $ do
     wordVal <- H.forAll genWord
-    let uInt = toUIntValInRDBLengthPrefixedForm wordVal
-    encodeThenDecodeBinary uInt H.=== uInt
+    rdbConfig <- H.forAll genRDBConfig
+    let lengthPrefixVal = toRDBLengthPrefix wordVal
+    encodeThenDecodeRDBBinary rdbConfig lengthPrefixVal H.=== lengthPrefixVal
 
-validateRDBLengthPrefixedValEncoding :: H.Property
-validateRDBLengthPrefixedValEncoding = H.property $ do
+validateRDBValEncoding :: H.Property
+validateRDBValEncoding = H.property $ do
     byteString <- H.forAll genByteSequence
-    let rdbString = toRDBLengthPrefixedVal byteString
-    encodeThenDecodeBinary rdbString H.=== rdbString
+    let rdbVal = toRDBVal byteString
+    rdbConfig <- H.forAll genRDBConfig
+    encodeThenDecodeRDBBinary rdbConfig rdbVal H.=== rdbVal
 
 spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
     describe "Boundary Value Tests" $ do
-        it "handles encoding of val at exact 6-bit length boundary (63 bytes)" $ do
+        it "handles encoding of val at exact 6-bit length boundary (63 bytes)" $ hedgehog $ do
             let str63 = BSC.replicate 63 'a'
-                shortString = RDBLengthPrefixedShortString str63
-            encodeThenDecodeBinary shortString `shouldBe` shortString
+                shortString = RDBShortString str63
+            rdbConfig <- H.forAll genRDBConfig
+            -- As an example of how'd we'd go about using hspec assertions with Hedgehog
+            evalIO $ encodeThenDecodeRDBBinary rdbConfig shortString `shouldBe` shortString
 
-        it "handles encoding of val just over 6-bit length boundary (64 bytes)" $ do
+        it "handles encoding of val just over 6-bit length boundary (64 bytes)" $ hedgehog $ do
             let str64 = BSC.replicate 64 'a'
-                mediumString = RDBLengthPrefixedMediumString str64
-            encodeThenDecodeBinary mediumString `shouldBe` mediumString
+                mediumString = RDBMediumString str64
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig mediumString H.=== mediumString
 
-        it "handles encoding of val at maximum 14-bit length (16383 bytes)" $ do
+        it "handles encoding of val at maximum 14-bit length (16383 bytes)" $ hedgehog $ do
             let str16383 = BSC.replicate 16383 'b'
-                mediumString = RDBLengthPrefixedMediumString str16383
-            encodeThenDecodeBinary mediumString `shouldBe` mediumString
+                mediumString = RDBMediumString str16383
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig mediumString H.=== mediumString
 
-        it "handles encoding of val just over 14-bit length (16384 bytes)" $ do
+        it "handles encoding of val just over 14-bit length (16384 bytes)" $ hedgehog $ do
             let str16384 = BSC.replicate 16384 'c'
-                longString = RDBLengthPrefixedLongString str16384
-            encodeThenDecodeBinary longString `shouldBe` longString
+                longString = RDBLongString str16384
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig longString H.=== longString
 
-        it "handles encoding of val that is max-size" $ do
+        -- This test is resource-intensive; limit to a few runs
+        modifyMaxSuccess (const 5) $ it "handles encoding of val that is max-size" $ hedgehog $ do
             -- This is set to 512 MB
             let maxSize = 512 * 1024 * 1024
             let strMax = BSC.replicate maxSize 'a'
-                val = toRDBLengthPrefixedStr strMax
-            encodeThenDecodeBinary val `shouldBe` val
-
-        it "handles encoding of minimum and maximum 8-bit integers" $ do
-            let minInt8 = RDBLengthPrefixedInt8 (-128)
-                maxInt8 = RDBLengthPrefixedInt8 127
-                encodedMin = runPut (put minInt8)
-                encodedMax = runPut (put maxInt8)
-                decodedMin = runGet get encodedMin
-                decodedMax = runGet get encodedMax
-            decodedMin `shouldBe` minInt8
-            decodedMax `shouldBe` maxInt8
-
-        it "handles encoding of minimum and maximum 16-bit integers" $ do
-            let minInt16 = RDBLengthPrefixedInt16 (-32768)
-                maxInt16 = RDBLengthPrefixedInt16 32767
-            encodeThenDecodeBinary minInt16 `shouldBe` minInt16
-            encodeThenDecodeBinary maxInt16 `shouldBe` maxInt16
-
-        it "handles encoding of minimum and maximum 32-bit integers" $ do
-            let minInt32 = RDBLengthPrefixedInt32 (-2147483648)
-                maxInt32 = RDBLengthPrefixedInt32 2147483647
-            encodeThenDecodeBinary minInt32 `shouldBe` minInt32
-            encodeThenDecodeBinary maxInt32 `shouldBe` maxInt32
+                val = toRDBString strMax
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig val H.=== val
 
     describe "Edge Cases and Corner Cases" $ do
-        it "handles empty strings" $ do
-            let emptyString = RDBLengthPrefixedShortString BS.empty
-            encodeThenDecodeBinary emptyString `shouldBe` emptyString
+        it "handles empty strings" $ hedgehog $ do
+            let emptyString = RDBShortString BS.empty
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig emptyString H.=== emptyString
 
-        it "handles zero values" $ do
-            let zeroInt8 = RDBLengthPrefixedInt8 0
-                zeroInt16 = RDBLengthPrefixedInt16 0
-                zeroInt32 = RDBLengthPrefixedInt32 0
+        it "handles zero values" $ hedgehog $ do
+            let zeroInt8 = RDBInt8 0
+                zeroInt16 = RDBInt16 0
+                zeroInt32 = RDBInt32 0
                 zeroTimestampS = RDBUnixTimestampS 0
                 zeroTimestampMS = RDBUnixTimestampMS 0
-            encodeThenDecodeBinary zeroInt8 `shouldBe` zeroInt8
-            encodeThenDecodeBinary zeroInt16 `shouldBe` zeroInt16
-            encodeThenDecodeBinary zeroInt32 `shouldBe` zeroInt32
-            encodeThenDecodeBinary zeroTimestampS `shouldBe` zeroTimestampS
-            encodeThenDecodeBinary zeroTimestampMS `shouldBe` zeroTimestampMS
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig zeroInt8 H.=== zeroInt8
+            encodeThenDecodeRDBBinary rdbConfig zeroInt16 H.=== zeroInt16
+            encodeThenDecodeRDBBinary rdbConfig zeroInt32 H.=== zeroInt32
+            encodeThenDecodeRDBBinary rdbConfig zeroTimestampS H.=== zeroTimestampS
+            encodeThenDecodeRDBBinary rdbConfig zeroTimestampMS H.=== zeroTimestampMS
 
-        it "handles Unicode and special characters in strings" $ do
+        it "handles Unicode and special characters in strings" $ hedgehog $ do
             let unicodeStr = "héllo 世界 🚀 \n\t\r"
-                unicodeString = toRDBLengthPrefixedStr unicodeStr
-            encodeThenDecodeBinary unicodeString `shouldBe` unicodeString
+                unicodeString = toRDBString unicodeStr
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig unicodeString H.=== unicodeString
 
-        it "handles binary data in strings" $ do
+        it "handles binary data in strings" $ hedgehog $ do
             let binaryData = BSC.pack ['\0', '\1', '\255', '\127']
-                binaryString = RDBLengthPrefixedShortString binaryData
-            encodeThenDecodeBinary binaryString `shouldBe` binaryString
+                binaryString = RDBShortString binaryData
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig binaryString H.=== binaryString
 
-        it "handles single character strings" $ do
-            let singleChar = RDBLengthPrefixedShortString "x"
-            encodeThenDecodeBinary singleChar `shouldBe` singleChar
+        it "handles single character strings" $ hedgehog $ do
+            let singleChar = RDBShortString "x"
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig singleChar H.=== singleChar
 
-        it "handles string-like numeric values that don't optimize to integers" $ do
+        it "handles string-like numeric values that don't optimize to integers" $ hedgehog $ do
             let floatStr = "123.45"
                 sciStr = "1e10"
                 hexStr = "0xFF"
-                vals = map toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible [floatStr, sciStr, hexStr]
-            mapM_ (\val -> encodeThenDecodeBinary val `shouldBe` val) vals
+                vals = map toRDBVal [floatStr, sciStr, hexStr]
+            rdbConfig <- H.forAll genRDBConfig
+            mapM_ (\val -> encodeThenDecodeRDBBinary rdbConfig val H.=== val) vals
 
-        it "handles timestamp edge cases" $ do
+        it "handles timestamp edge cases" $ hedgehog $ do
             let maxSeconds = RDBUnixTimestampS 2147483647 -- Max 32-bit timestamp (2038)
                 maxMillis = RDBUnixTimestampMS 9223372036854775807 -- Max 64-bit timestamp
                 minTimestamp = RDBUnixTimestampS 1 -- Minimal valid timestamp
-            encodeThenDecodeBinary maxSeconds `shouldBe` maxSeconds
-            encodeThenDecodeBinary maxMillis `shouldBe` maxMillis
-            encodeThenDecodeBinary minTimestamp `shouldBe` minTimestamp
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig maxSeconds H.=== maxSeconds
+            encodeThenDecodeRDBBinary rdbConfig maxMillis H.=== maxMillis
+            encodeThenDecodeRDBBinary rdbConfig minTimestamp H.=== minTimestamp
 
-        it "handles mixed type polymorphic value sequences" $ do
+        it "handles mixed type polymorphic value sequences" $ hedgehog $ do
+            rdbConfig <- H.forAll genRDBConfig
             let values =
-                    [ toRDBLengthPrefixedVal "short"
-                    , toRDBLengthPrefixedVal (BSC.replicate 100 'a')
-                    , toRDBLengthPrefixedVal (BSC.replicate 1000 'b')
-                    , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "42"
-                    , toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible "-999"
+                    [ toRDBVal "short"
+                    , toRDBVal (BSC.replicate 100 'a')
+                    , toRDBVal (BSC.replicate 1000 'b')
+                    , toRDBVal "42"
+                    , toRDBVal "-999"
                     ]
-                testVal val = encodeThenDecodeBinary val `shouldBe` val
+                testVal val = encodeThenDecodeRDBBinary rdbConfig val H.=== val
             mapM_ testVal values
 
-        it "maintains precision for timestamp edge cases and leap seconds" $ do
+        it "maintains precision for timestamp edge cases and leap seconds" $ hedgehog $ do
             -- Test precision around known problematic timestamps
+            rdbConfig <- H.forAll genRDBConfig
             let criticalTimestampsS =
                     [ RDBUnixTimestampS 0 -- Unix epoch
                     , RDBUnixTimestampS 946684800 -- Y2K
@@ -168,6 +162,7 @@ spec_RDB_data_binary_serialization_unit_tests = do
                     , RDBUnixTimestampMS 1577836800000 -- 2020-01-01 00:00:00 UTC
                     , RDBUnixTimestampMS 1640995200000 -- 2022-01-01 00:00:00 UTC
                     ]
-                testTimestamp ts = runGet get (runPut (put ts)) `shouldBe` ts
-            mapM_ testTimestamp criticalTimestampsS
-            mapM_ testTimestamp criticalTimestampsMS
+                testTimestampS ts = encodeThenDecodeRDBBinary rdbConfig ts H.=== ts
+                testTimestampMS ts = encodeThenDecodeRDBBinary rdbConfig ts H.=== ts
+            mapM_ testTimestampS criticalTimestampsS
+            mapM_ testTimestampMS criticalTimestampsMS

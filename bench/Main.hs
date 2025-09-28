@@ -3,7 +3,7 @@ module Main (main) where
 import Criterion.Main
 
 import LZF qualified
-import SBinary qualified
+import RDBBinary qualified
 
 main :: IO ()
-main = defaultMain $ LZF.benchmarks <> SBinary.benchmarks
+main = defaultMain $ LZF.benchmarks <> RDBBinary.benchmarks

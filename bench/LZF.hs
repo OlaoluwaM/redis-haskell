@@ -25,4 +25,4 @@ benchmarks =
         ]
 
 compressThenDecompress :: ByteString -> Maybe ByteString
-compressThenDecompress bs = let len = BS.length bs in lzfCompress bs >>= lzfDecompress len
+compressThenDecompress bs = lzfCompress bs Nothing >>= lzfDecompress

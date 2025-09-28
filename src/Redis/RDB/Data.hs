@@ -1,28 +1,26 @@
+{-# LANGUAGE MultiWayIf #-}
+
 module Redis.RDB.Data (
-    RDBLengthPrefixedVal (..),
-    RDBLengthPrefixedString (..),
-    RDBLengthPrefixedShortString (..),
-    RDBLengthPrefixedMediumString (..),
-    RDBLengthPrefixedLongString (..),
-    RDBLengthPrefixedExtraLongString (..),
-    RDBLengthPrefixedInt8 (..),
-    RDBLengthPrefixedInt16 (..),
-    RDBLengthPrefixedInt32 (..),
-    UIntValInRDBLengthPrefixForm (..),
-    UInt8ValInRDBLengthPrefixForm (..),
-    UInt16ValInRDBLengthPrefixForm (..),
-    UInt32ValInRDBLengthPrefixForm (..),
-    UInt64ValInRDBLengthPrefixForm (..),
+    RDBVal (..),
+    RDBString (..),
+    RDBShortString (..),
+    RDBMediumString (..),
+    RDBLongString (..),
+    RDBInt8 (..),
+    RDBInt16 (..),
+    RDBInt32 (..),
+    RDBLengthPrefix (..),
+    RDBLengthPrefix6 (..),
+    RDBLengthPrefix14 (..),
+    RDBLengthPrefix32 (..),
     RDBUnixTimestampS (..),
     RDBUnixTimestampMS (..),
-    toRDBVariableLengthPrefixedStr,
-    toRDBLengthPrefixedStr,
-    fromRDBLengthPrefixedStr,
-    toRDBLengthPrefixedVal,
-    toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible,
-    fromRDBLengthPrefixedVal,
-    toUIntValInRDBLengthPrefixedForm,
-    fromUIntValInRDBLengthPrefixedForm,
+    toRDBString,
+    fromRDBString,
+    toRDBVal,
+    fromRDBVal,
+    toRDBLengthPrefix,
+    fromRDBLengthPrefix,
     fromPosixTimeToRDBUnixTimestampMS,
     toPosixTimeFromRDBUnixTimestampMS,
     fromPosixTimeToRDBUnixTimestampS,
@@ -30,14 +28,15 @@ module Redis.RDB.Data (
 ) where
 
 import Data.Binary
-import Redis.RDB.SBinary
+import Redis.RDB.Binary
 
 import Data.Bits qualified as Bits
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
-import Control.Applicative (asum)
+import Control.Applicative (Alternative (..), asum)
 import Control.DeepSeq (NFData)
+import Control.Monad.Reader (ask)
 import Data.Binary.Get (
     getByteString,
     getInt16le,
@@ -58,330 +57,336 @@ import Data.Binary.Put (
  )
 import Data.Fixed (Pico)
 import Data.Int (Int16, Int32, Int8)
+import Data.Maybe (isNothing)
 import Data.String (IsString (fromString))
+import Data.String.Interpolate (i)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import GHC.Generics (Generic)
-import Redis.RDB.SBinary.DerivingVia (BinaryFromSBinary (..))
+import Redis.RDB.Config (RDBConfig (..))
+import Redis.RDB.LZF (LzfCompressedByteString (..), lzfCompress, lzfDecompress)
 import Redis.Utils (millisecondsToSeconds, secondsToMilliseconds)
 
 {-
-    Okay, so the RDB spec describes what a variant of variable-length encoding that we shall refer to as rdb-variable-length encoding since this variant differs subtly from the standard variable-length encoding. Now, that said, the rdb-variable length encoding is mostly for the length of things to ensure that the length is stored smartly and efficiently, not using more space/bytes than necessary. However, Redis also uses this encoding/algorithm to sometimes encode integers hence we have the UInt8ValInRDBLengthPrefixForm, UInt16ValInRDBLengthPrefixForm, UInt32ValInRDBLengthPrefixForm, and UInt64ValInRDBLengthPrefixForm types which encode integers as if they were a length of a string but without the accompany byte sequence you'd expect for a string.
+    Okay, so the RDB spec describes what a variant of variable-length encoding that we shall refer to as rdb-variable-length encoding since this variant differs subtly from the standard variable-length encoding. Now, that said, the rdb-variable length encoding is mostly for the length of things to ensure that the length is stored smartly and efficiently, not using more space/bytes than necessary. However, Redis also uses this encoding/algorithm to sometimes encode integers hence we have the RDBLengthPrefix6, RDBLengthPrefix14, and RDBLengthPrefix32, types which encode integers as if they were a length of a string but without the accompany byte sequence you'd expect for a string.
 
     Note that these types differ from the RDBInt* types in that the RDBInt* types use a special encoding based off the rdb-variable-length encoding to encode integers as strings with a length as the first byte followed by a byte sequence representing the integer quantity. So in this case we aren't just encoding the length alone and considering it an integer during decoding, we encode the a special prefix byte followed by the encoded integer value
-
-    (Do not Change)
 -}
 
--- Globally, when we refer to length-prefix we really mean length-prefix encoding as per the rdb-variable-length encoding scheme (Do not Change)
+-- When we refer to length-prefix we really mean length-prefix encoding as per the RDB variable length encoding scheme outlined here https://rdb.fnordig.de/file_format.html#length-encoding
 
-newtype RDBLengthPrefixedShortString = RDBLengthPrefixedShortString {getRDBLengthPrefixedShortString :: BS.ByteString}
+-- RDB strings are encoded using the RDB length encoding scheme ([len][data]): https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L440
+
+-- Supports strings with sizes up to 64 bits by virtue of there being support for length prefixes up to 64 bits: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L157
+
+newtype RDBShortString = RDBShortString {rdbShortString :: BS.ByteString}
     deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedShortString)
 
-newtype RDBLengthPrefixedMediumString = RDBLengthPrefixedMediumString {getRDBLengthPrefixedMediumString :: BS.ByteString}
+newtype RDBMediumString = RDBMediumString {rdbMediumString :: BS.ByteString}
     deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedMediumString)
 
-newtype RDBLengthPrefixedLongString = RDBLengthPrefixedLongString {getRDBLengthPrefixedLongString :: BS.ByteString}
+newtype RDBLongString = RDBLongString {rdbLongString :: BS.ByteString}
     deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedLongString)
 
-newtype RDBLengthPrefixedExtraLongString = RDBLengthPrefixedExtraLongString {getRDBLengthPrefixedExtraLongString :: BS.ByteString}
+newtype RDBExtraLongString = RDBExtraLongString {rdbExtraLongString :: BS.ByteString}
     deriving stock (Show, Eq, Ord, Generic)
     deriving newtype (IsString)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedExtraLongString)
 
--- The encoding and decoding of length-prefixed integer types are done in little-endian (Do not Change)
+-- NOTE: The rdb variable length encoding also includes special support for serializing integers as string as defined here https://rdb.fnordig.de/file_format.html#integers-as-string. The resulting byte sequence is in little-endian. Below are the types that represent integers to be serialized according to the special rdb variable - length encoding rules for integers
 
-newtype RDBLengthPrefixedInt8 = RDBLengthPrefixedInt8 {getRDBLengthPrefixedInt8 :: Int8}
+-- Only supports integers up to 32 bits: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L251
+
+newtype RDBInt8 = RDBInt8 {rdbInt8 :: Int8}
     deriving stock (Show, Eq, Ord, Generic)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt8)
 
-newtype RDBLengthPrefixedInt16 = RDBLengthPrefixedInt16 {getRDBLengthPrefixedInt16 :: Int16}
+newtype RDBInt16 = RDBInt16 {rdbInt16 :: Int16}
     deriving stock (Show, Eq, Ord, Generic)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt16)
 
-newtype RDBLengthPrefixedInt32 = RDBLengthPrefixedInt32 {getRDBLengthPrefixedInt32 :: Int32}
+newtype RDBInt32 = RDBInt32 {rdbInt32 :: Int32}
     deriving stock (Show, Eq, Ord, Generic)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedInt32)
 
-{- | Length-prefixed integer types for encoding standalone length values
-These types use the same encoding prefixes as strings but encode only the length
-value itself without any accompanying data bytes.
--}
+-- As mentioned above, the rdb specification serializes strings using a length encoding (what we've opted to call rdb variable length encoding). For certain integral values, rather than serializing those as rdb string integers, redis will sometimes serializes integral data as a "length" as though it were doing a full length encoding, the difference is, there is no data, just an unsigned integer serialized as though it were part of a full length encoding. We call this part of the full encoding the length prefix and the types below represent unsigned integers serialized as length prefixes with no accompanying data. Big endian is assumed
 
--- The 'U' here stands for "Unsigned" as these are unsigned integers (Do not Change)
--- The following types represent unsigned integers that *can* be encoded in length prefix form. Encoding assumes big-endian (Do not Change)
+-- Supports length prefix unsigned integer values up to 64 bits: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L157
 
--- | 6-bit length encoding (0-63)
-newtype UInt8ValInRDBLengthPrefixForm = UInt8ValInRDBLengthPrefixForm {getUInt8ValInRDBLengthPrefixForm :: Word8}
+-- | 6-bit length prefix (0-63)
+newtype RDBLengthPrefix6 = RDBLengthPrefix6 {rdbLengthPrefix8 :: Word8}
     deriving stock (Show, Eq, Ord)
     deriving newtype (Num, Enum, Real, Integral)
-    deriving (Binary) via (BinaryFromSBinary UInt8ValInRDBLengthPrefixForm)
 
--- | 14-bit length encoding (0-16383)
-newtype UInt16ValInRDBLengthPrefixForm = UInt16ValInRDBLengthPrefixForm {getUInt16ValInRDBLengthPrefixForm :: Word16}
+-- | 14-bit length prefix (0-16383)
+newtype RDBLengthPrefix14 = RDBLengthPrefix14 {rdbLengthPrefix16 :: Word16}
     deriving stock (Show, Eq, Ord)
     deriving newtype (Num, Enum, Real, Integral)
-    deriving (Binary) via (BinaryFromSBinary UInt16ValInRDBLengthPrefixForm)
 
--- | 32-bit length encoding (0-4294967295)
-newtype UInt32ValInRDBLengthPrefixForm = UInt32ValInRDBLengthPrefixForm {getUInt32ValInRDBLengthPrefixForm :: Word32}
+-- | 32-bit length prefix (0-4294967295)
+newtype RDBLengthPrefix32 = RDBLengthPrefix32 {rdbLengthPrefix32 :: Word32}
     deriving stock (Show, Eq, Ord)
     deriving newtype (Num, Enum, Real, Integral)
-    deriving (Binary) via (BinaryFromSBinary UInt32ValInRDBLengthPrefixForm)
 
--- | 64-bit length encoding (0-18446744073709551615)
-newtype UInt64ValInRDBLengthPrefixForm = UInt64ValInRDBLengthPrefixForm {getUInt64ValInRDBLengthPrefixForm :: Word64}
+-- | 64-bit length prefix (0-18446744073709551615)
+newtype RDBLengthPrefix64 = RDBLengthPrefix64 {rdbLengthPrefix64 :: Word64}
     deriving stock (Show, Eq, Ord)
     deriving newtype (Num, Enum, Real, Integral)
-    deriving (Binary) via (BinaryFromSBinary UInt64ValInRDBLengthPrefixForm)
 
 -- | RDB Unix timestamp types
 newtype RDBUnixTimestampS = RDBUnixTimestampS {getRDBUnixTimestampS :: Word32}
     deriving stock (Show, Eq, Ord)
-    deriving (Binary) via (BinaryFromSBinary RDBUnixTimestampS)
 
 newtype RDBUnixTimestampMS = RDBUnixTimestampMS {getRDBUnixTimestampMS :: Word64}
     deriving stock (Show, Eq, Ord)
-    deriving (Binary) via (BinaryFromSBinary RDBUnixTimestampMS)
 
--- | Sum types
-data RDBLengthPrefixedString
-    = MkRDBLengthPrefixedShortString RDBLengthPrefixedShortString
-    | MkRDBLengthPrefixedMediumString RDBLengthPrefixedMediumString
-    | MkRDBLengthPrefixedLongString RDBLengthPrefixedLongString
-    | MkRDBLengthPrefixedExtraLongString RDBLengthPrefixedExtraLongString
-    deriving stock (Show, Eq)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedString)
-
-data UIntValInRDBLengthPrefixForm
-    = MkUInt8ValInRDBLengthPrefixForm UInt8ValInRDBLengthPrefixForm
-    | MkUInt16ValInRDBLengthPrefixForm UInt16ValInRDBLengthPrefixForm
-    | MkUInt32ValInRDBLengthPrefixForm UInt32ValInRDBLengthPrefixForm
-    | MkUInt64ValInRDBLengthPrefixForm UInt64ValInRDBLengthPrefixForm
-    deriving stock (Show, Eq)
-    deriving (Binary) via (BinaryFromSBinary UIntValInRDBLengthPrefixForm)
-
-data RDBLengthPrefixedIntVal
-    = RDBLengthPrefixedInt8Value RDBLengthPrefixedInt8
-    | RDBLengthPrefixedInt16Value RDBLengthPrefixedInt16
-    | RDBLengthPrefixedInt32Value RDBLengthPrefixedInt32
+-- | Sum types that group the individual types defined above together
+data RDBString
+    = MkRDBShortString RDBShortString
+    | MkRDBMediumString RDBMediumString
+    | MkRDBLongString RDBLongString
+    | MkRDBExtraLongString RDBExtraLongString
     deriving stock (Show, Eq)
 
-data RDBLengthPrefixedVal
-    = RDBLengthPrefixedShortStringVal RDBLengthPrefixedShortString
-    | RDBLengthPrefixedMediumStringVal RDBLengthPrefixedMediumString
-    | RDBLengthPrefixedLongStringVal RDBLengthPrefixedLongString
-    | RDBLengthPrefixedExtraLongStringVal RDBLengthPrefixedExtraLongString
-    | RDBLengthPrefixedInt8Val RDBLengthPrefixedInt8
-    | RDBLengthPrefixedInt16Val RDBLengthPrefixedInt16
-    | RDBLengthPrefixedInt32Val RDBLengthPrefixedInt32
+data RDBLengthPrefix
+    = MkRDBLengthPrefix6 RDBLengthPrefix6
+    | MkRDBLengthPrefix14 RDBLengthPrefix14
+    | MkRDBLengthPrefix32 RDBLengthPrefix32
+    | MkRDBLengthPrefix64 RDBLengthPrefix64
+    deriving stock (Show, Eq)
+
+data RDBInt
+    = MkRDBInt8 RDBInt8
+    | MkRDBInt16 RDBInt16
+    | MkRDBInt32 RDBInt32
+    deriving stock (Show, Eq)
+
+data RDBVal
+    = MkRDBShortStringVal RDBShortString
+    | MkRDBMediumStringVal RDBMediumString
+    | MkRDBLongStringVal RDBLongString
+    | MkRDBExtraLongStringVal RDBExtraLongString
+    | MkRDBInt8Val RDBInt8
+    | MkRDBInt16Val RDBInt16
+    | MkRDBInt32Val RDBInt32
     deriving stock (Show, Eq, Generic)
     deriving anyclass (NFData)
-    deriving (Binary) via (BinaryFromSBinary RDBLengthPrefixedVal)
 
-class (Integral a) => Unsigned a where
-    toUIntValInRDBLengthPrefixedForm :: a -> UIntValInRDBLengthPrefixForm
+instance RDBBinary RDBVal where
+    rdbPut = \case
+        (MkRDBInt8Val rdbInt8) -> rdbPut rdbInt8
+        (MkRDBInt16Val rdbInt16) -> rdbPut rdbInt16
+        (MkRDBInt32Val rdbInt32) -> rdbPut rdbInt32
+        (MkRDBShortStringVal shortRDBString) -> rdbPut shortRDBString
+        (MkRDBMediumStringVal mediumRDBString) -> rdbPut mediumRDBString
+        (MkRDBLongStringVal longRDBString) -> rdbPut longRDBString
+        (MkRDBExtraLongStringVal extraLongRDBString) -> rdbPut extraLongRDBString
 
-instance Unsigned Word8 where
-    toUIntValInRDBLengthPrefixedForm = MkUInt8ValInRDBLengthPrefixForm . UInt8ValInRDBLengthPrefixForm
-
-instance Unsigned Word16 where
-    toUIntValInRDBLengthPrefixedForm = MkUInt16ValInRDBLengthPrefixForm . UInt16ValInRDBLengthPrefixForm
-
-instance Unsigned Word32 where
-    toUIntValInRDBLengthPrefixedForm = MkUInt32ValInRDBLengthPrefixForm . UInt32ValInRDBLengthPrefixForm
-
-instance Unsigned Word64 where
-    toUIntValInRDBLengthPrefixedForm = MkUInt64ValInRDBLengthPrefixForm . UInt64ValInRDBLengthPrefixForm
-
-instance Unsigned Word where
-    toUIntValInRDBLengthPrefixedForm num
-        | num >= fromIntegral (minBound @Word8) && num <= fromIntegral (maxBound @Word8) = MkUInt8ValInRDBLengthPrefixForm (UInt8ValInRDBLengthPrefixForm $ fromIntegral num)
-        | num >= fromIntegral (minBound @Word32) && num <= fromIntegral (maxBound @Word32) = MkUInt32ValInRDBLengthPrefixForm (UInt32ValInRDBLengthPrefixForm $ fromIntegral num)
-        | num >= fromIntegral (minBound @Word16) && num <= fromIntegral (maxBound @Word16) = MkUInt16ValInRDBLengthPrefixForm (UInt16ValInRDBLengthPrefixForm $ fromIntegral num)
-        | otherwise = MkUInt64ValInRDBLengthPrefixForm (UInt64ValInRDBLengthPrefixForm $ fromIntegral num)
-
-instance SBinary RDBLengthPrefixedVal where
-    putWithChecksum = \case
-        (RDBLengthPrefixedInt8Val rdbLengthPrefixedInt8) -> putWithChecksum rdbLengthPrefixedInt8
-        (RDBLengthPrefixedInt16Val rdbLengthPrefixedInt16) -> putWithChecksum rdbLengthPrefixedInt16
-        (RDBLengthPrefixedInt32Val rdbLengthPrefixedInt32) -> putWithChecksum rdbLengthPrefixedInt32
-        (RDBLengthPrefixedShortStringVal shortRdbString) -> putWithChecksum shortRdbString
-        (RDBLengthPrefixedMediumStringVal mediumRdbString) -> putWithChecksum mediumRdbString
-        (RDBLengthPrefixedLongStringVal longRdbString) -> putWithChecksum longRdbString
-        (RDBLengthPrefixedExtraLongStringVal extraLongRdbString) -> putWithChecksum extraLongRdbString
-    getWithChecksum =
+    rdbGet =
         asum
-            [ RDBLengthPrefixedInt8Val <$> getWithChecksum
-            , RDBLengthPrefixedInt16Val <$> getWithChecksum
-            , RDBLengthPrefixedInt32Val <$> getWithChecksum
-            , RDBLengthPrefixedShortStringVal <$> getWithChecksum
-            , RDBLengthPrefixedMediumStringVal <$> getWithChecksum
-            , RDBLengthPrefixedLongStringVal <$> getWithChecksum
-            , RDBLengthPrefixedExtraLongStringVal <$> getWithChecksum
-            , fail "Failed to decode RDBLengthPrefixedVal"
+            [ MkRDBInt8Val <$> rdbGet
+            , MkRDBInt16Val <$> rdbGet
+            , MkRDBInt32Val <$> rdbGet
+            , MkRDBShortStringVal <$> rdbGet
+            , MkRDBMediumStringVal <$> rdbGet
+            , MkRDBLongStringVal <$> rdbGet
+            , MkRDBExtraLongStringVal <$> rdbGet
+            , fail "Failed to decode RDBVal"
             ]
 
-instance SBinary RDBUnixTimestampS where
-    putWithChecksum (RDBUnixTimestampS t) = genericPutWithChecksumUsing (putWord32le t) -- Redis uses little-endian for timestamps
+instance RDBBinary RDBUnixTimestampS where
+    rdbPut (RDBUnixTimestampS t) = genericRDBPutUsing (putWord32le t) -- Redis uses little-endian for timestamps
 
-    getWithChecksum = RDBUnixTimestampS <$> genericGetWithChecksumUsing getWord32le
+    rdbGet = RDBUnixTimestampS <$> genericRDBGetUsing getWord32le
 
-instance SBinary RDBUnixTimestampMS where
-    putWithChecksum (RDBUnixTimestampMS t) = genericPutWithChecksumUsing (putWord64le t) -- Redis uses little-endian for timestamps
+instance RDBBinary RDBUnixTimestampMS where
+    rdbPut (RDBUnixTimestampMS t) = genericRDBPutUsing (putWord64le t) -- Redis uses little-endian for timestamps
 
-    getWithChecksum = RDBUnixTimestampMS <$> genericGetWithChecksumUsing getWord64le
+    rdbGet = RDBUnixTimestampMS <$> genericRDBGetUsing getWord64le
 
-instance SBinary RDBLengthPrefixedString where
-    putWithChecksum = \case
-        MkRDBLengthPrefixedShortString shortStr -> putWithChecksum shortStr
-        MkRDBLengthPrefixedMediumString mediumStr -> putWithChecksum mediumStr
-        MkRDBLengthPrefixedLongString longStr -> putWithChecksum longStr
-        MkRDBLengthPrefixedExtraLongString extraLongStr -> putWithChecksum extraLongStr
+instance RDBBinary RDBString where
+    rdbPut = \case
+        MkRDBShortString shortStr -> rdbPut shortStr
+        MkRDBMediumString mediumStr -> rdbPut mediumStr
+        MkRDBLongString longStr -> rdbPut longStr
+        MkRDBExtraLongString extraLongStr -> rdbPut extraLongStr
 
-    getWithChecksum =
+    rdbGet =
         asum
-            [ MkRDBLengthPrefixedShortString <$> getWithChecksum
-            , MkRDBLengthPrefixedMediumString <$> getWithChecksum
-            , MkRDBLengthPrefixedLongString <$> getWithChecksum
-            , MkRDBLengthPrefixedExtraLongString <$> getWithChecksum
-            , fail "Failed to decode RDBLengthPrefixedString"
+            [ MkRDBShortString <$> rdbGet
+            , MkRDBMediumString <$> rdbGet
+            , MkRDBLongString <$> rdbGet
+            , MkRDBExtraLongString <$> rdbGet
+            , fail "Failed to decode RDBString"
             ]
 
-instance SBinary UIntValInRDBLengthPrefixForm where
-    putWithChecksum = \case
-        MkUInt8ValInRDBLengthPrefixForm uint8Val -> putWithChecksum uint8Val
-        MkUInt16ValInRDBLengthPrefixForm uint16Val -> putWithChecksum uint16Val
-        MkUInt32ValInRDBLengthPrefixForm uint32Val -> putWithChecksum uint32Val
-        MkUInt64ValInRDBLengthPrefixForm uint64Val -> putWithChecksum uint64Val
+instance RDBBinary RDBLengthPrefix where
+    rdbPut = \case
+        MkRDBLengthPrefix6 rdbLengthPrefix8 -> rdbPut rdbLengthPrefix8
+        MkRDBLengthPrefix14 rdbLengthPrefix16 -> rdbPut rdbLengthPrefix16
+        MkRDBLengthPrefix32 rdbLengthPrefix132 -> rdbPut rdbLengthPrefix132
+        MkRDBLengthPrefix64 rdbLengthPrefix164 -> rdbPut rdbLengthPrefix164
 
-    getWithChecksum =
+    rdbGet =
         asum
-            [ MkUInt8ValInRDBLengthPrefixForm <$> getWithChecksum
-            , MkUInt16ValInRDBLengthPrefixForm <$> getWithChecksum
-            , MkUInt32ValInRDBLengthPrefixForm <$> getWithChecksum
-            , MkUInt64ValInRDBLengthPrefixForm <$> getWithChecksum
+            [ MkRDBLengthPrefix6 <$> rdbGet
+            , MkRDBLengthPrefix14 <$> rdbGet
+            , MkRDBLengthPrefix32 <$> rdbGet
+            , MkRDBLengthPrefix64 <$> rdbGet
             , fail "Failed to decode int val in rdb length prefix form"
             ]
 
-instance SBinary RDBLengthPrefixedShortString where
-    putWithChecksum = rdbVariableLengthEncodeStrOneByte
-    getWithChecksum = rdbVariableLengthDecodeStrOneByte
+instance RDBBinary RDBShortString where
+    rdbPut = attemptLzfSerializationWithFallback (rdbVariableLengthEncodeShortString . RDBShortString) . (.rdbShortString)
+    rdbGet = attemptLzfDeserializationWithFallback mkRDBShortString rdbVariableLengthDecodeShortString
+      where
+        mkRDBShortString :: (MonadFail m) => BS.ByteString -> m RDBShortString
+        mkRDBShortString byteStr = do
+            let len = BS.length byteStr
+            if len < shortStringLenCutoff
+                then pure (RDBShortString byteStr)
+                else
+                    fail $
+                        "The value provided is too large to be encoded as an rdb short string. Length must be less than "
+                            <> show @Int shortStringLenCutoff
+                            <> " but got length: "
+                            <> show len
 
-instance SBinary RDBLengthPrefixedMediumString where
-    putWithChecksum = rdbVariableLengthEncodeStrTwoBytes
-    getWithChecksum = rdbVariableLengthDecodeStrTwoBytes
+instance RDBBinary RDBMediumString where
+    rdbPut = attemptLzfSerializationWithFallback (rdbVariableLengthEncodeMediumString . RDBMediumString) . (.rdbMediumString)
+    rdbGet = attemptLzfDeserializationWithFallback mkRDBMediumString rdbVariableLengthDecodeMediumString
+      where
+        mkRDBMediumString :: (MonadFail m) => BS.ByteString -> m RDBMediumString
+        mkRDBMediumString byteStr = do
+            let len = BS.length byteStr
+            if len >= shortStringLenCutoff && len < mediumStringLenCutoff
+                then pure (RDBMediumString byteStr)
+                else
+                    fail $
+                        "The value provided was either too large or too small to be encoded as an RDB medium string. Length must be between "
+                            <> show @Int shortStringLenCutoff
+                            <> " (inclusive) and "
+                            <> show @Int mediumStringLenCutoff
+                            <> " (exclusive) but got length: "
+                            <> show len
 
-instance SBinary RDBLengthPrefixedLongString where
-    putWithChecksum = rdbVariableLengthEncodeStrFourBytes
-    getWithChecksum = rdbVariableLengthDecodeStrFourBytes
+instance RDBBinary RDBLongString where
+    rdbPut = attemptLzfSerializationWithFallback (rdbVariableLengthEncodeLongString . RDBLongString) . (.rdbLongString)
+    rdbGet = attemptLzfDeserializationWithFallback mkRDBLongString rdbVariableLengthDecodeLongString
+      where
+        mkRDBLongString :: (MonadFail m) => BS.ByteString -> m RDBLongString
+        mkRDBLongString byteStr = do
+            let len = BS.length byteStr
+            if len >= mediumStringLenCutoff && len < longStringLenCutoff
+                then pure (RDBLongString byteStr)
+                else
+                    fail $
+                        "The value provided was either too large or too small to be encoded as an RDB long string. Length must be between "
+                            <> show @Int mediumStringLenCutoff
+                            <> " (inclusive) and "
+                            <> show @Int longStringLenCutoff
+                            <> " (exclusive) but got length: "
+                            <> show len
 
-instance SBinary RDBLengthPrefixedInt8 where
-    putWithChecksum = rdbVariableLengthEncodeFor8BitIntAsStr
-    getWithChecksum = rdbVariableLengthDecode8BitIntFromStr
+instance RDBBinary RDBExtraLongString where
+    rdbPut = attemptLzfSerializationWithFallback (rdbVariableLengthEncodeExtraLongString . RDBExtraLongString) . (.rdbExtraLongString)
+    rdbGet = attemptLzfDeserializationWithFallback mkRDBExtraLongString rdbVariableLengthDecodeExtraLongString
+      where
+        mkRDBExtraLongString :: (MonadFail m) => BS.ByteString -> m RDBExtraLongString
+        mkRDBExtraLongString byteStr = do
+            let len = BS.length byteStr
+            if len >= longStringLenCutoff
+                then pure (RDBExtraLongString byteStr)
+                else
+                    fail $
+                        "The value provided is too small to be encoded as an RDB extra long string. Length must be at least "
+                            <> show @Int longStringLenCutoff
+                            <> " but got length: "
+                            <> show len
 
-instance SBinary RDBLengthPrefixedInt16 where
-    putWithChecksum = rdbVariableLengthEncodeFor16BitIntAsStr
-    getWithChecksum = rdbVariableLengthDecode16BitIntFromStr
+instance RDBBinary RDBInt8 where
+    rdbPut = rdbVariableLengthEncode8BitInt
+    rdbGet = rdbVariableLengthDecode8BitInt
 
-instance SBinary RDBLengthPrefixedInt32 where
-    putWithChecksum = rdbVariableLengthEncodeFor32BitIntAsStr
-    getWithChecksum = rdbVariableLengthDecode32BitIntFromStr
+instance RDBBinary RDBInt16 where
+    rdbPut = rdbVariableLengthEncode16BitInt
+    rdbGet = rdbVariableLengthDecode16BitInt
 
-instance SBinary RDBLengthPrefixedExtraLongString where
-    putWithChecksum = rdbVariableLengthEncodeStrNineBytes
-    getWithChecksum = rdbVariableLengthDecodeStrNineBytes
+instance RDBBinary RDBInt32 where
+    rdbPut = rdbVariableLengthEncode32BitInt
+    rdbGet = rdbVariableLengthDecode32BitInt
 
 -- | Binary instances for length-prefixed integers
-instance SBinary UInt8ValInRDBLengthPrefixForm where
-    putWithChecksum = rdbEncodeUInt8ToLengthPrefixedForm
-    getWithChecksum = rdbDecodeUInt8FromLengthPrefixForm
+instance RDBBinary RDBLengthPrefix6 where
+    rdbPut = rdbEncodeLengthPrefix8
+    rdbGet = rdbDecodeLengthPrefix6
 
-instance SBinary UInt16ValInRDBLengthPrefixForm where
-    putWithChecksum = rdbEncodeUInt16ToLengthPrefixedForm
-    getWithChecksum = rdbDecodeUInt16FromLengthPrefixForm
+instance RDBBinary RDBLengthPrefix14 where
+    rdbPut = rdbEncodeLengthPrefix14
+    rdbGet = rdbDecodeLengthPrefix14
 
-instance SBinary UInt32ValInRDBLengthPrefixForm where
-    putWithChecksum = rdbEncodeUInt32ToLengthPrefixedForm
-    getWithChecksum = rdbDecodeUInt32FromLengthPrefixForm
+instance RDBBinary RDBLengthPrefix32 where
+    rdbPut = rdbEncodeLengthPrefix32
+    rdbGet = rdbDecodeLengthPrefix32
 
-instance SBinary UInt64ValInRDBLengthPrefixForm where
-    putWithChecksum = rdbEncodeUInt64ToLengthPrefixedForm
-    getWithChecksum = rdbDecodeUInt64FromLengthPrefixForm
+instance RDBBinary RDBLengthPrefix64 where
+    rdbPut = rdbEncodeLengthPrefix64
+    rdbGet = rdbDecodeLengthPrefix64
 
-toRDBLengthPrefixedVal :: BS.ByteString -> RDBLengthPrefixedVal
-toRDBLengthPrefixedVal byteStr
-    | Just num <- tryParseAsInt8 byteStr = RDBLengthPrefixedInt8Val (RDBLengthPrefixedInt8 num)
-    | Just num <- tryParseAsInt16 byteStr = RDBLengthPrefixedInt16Val (RDBLengthPrefixedInt16 num)
-    | Just num <- tryParseAsInt32 byteStr = RDBLengthPrefixedInt32Val (RDBLengthPrefixedInt32 num)
-    | BS.length byteStr <= shortStringLenCutoff = RDBLengthPrefixedShortStringVal (RDBLengthPrefixedShortString byteStr)
-    | BS.length byteStr <= mediumStringLenCutoff = RDBLengthPrefixedMediumStringVal (RDBLengthPrefixedMediumString byteStr)
-    | BS.length byteStr <= longStringLenCutoff = RDBLengthPrefixedLongStringVal (RDBLengthPrefixedLongString byteStr)
-    | otherwise = RDBLengthPrefixedExtraLongStringVal (RDBLengthPrefixedExtraLongString byteStr)
+-- This logic of this function, particularly the bounds/limits in each case, is based off the `rdbSaveLen` redis function: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L157
+toRDBLengthPrefix :: Word -> RDBLengthPrefix
+toRDBLengthPrefix num
+    | num < shortStringLenCutoff = MkRDBLengthPrefix6 (RDBLengthPrefix6 . fromIntegral $ num)
+    | num < mediumStringLenCutoff = MkRDBLengthPrefix14 (RDBLengthPrefix14 . fromIntegral $ num)
+    | num < longStringLenCutoff = MkRDBLengthPrefix32 (RDBLengthPrefix32 . fromIntegral $ num)
+    | otherwise = MkRDBLengthPrefix64 (RDBLengthPrefix64 . fromIntegral $ num)
 
-toRDBVariableLengthPrefixedStr :: BS.ByteString -> RDBLengthPrefixedString
-toRDBVariableLengthPrefixedStr byteStr
-    | BS.length byteStr <= shortStringLenCutoff = MkRDBLengthPrefixedShortString (RDBLengthPrefixedShortString byteStr)
-    | BS.length byteStr <= mediumStringLenCutoff = MkRDBLengthPrefixedMediumString (RDBLengthPrefixedMediumString byteStr)
-    | BS.length byteStr <= longStringLenCutoff = MkRDBLengthPrefixedLongString (RDBLengthPrefixedLongString byteStr)
-    | otherwise = MkRDBLengthPrefixedExtraLongString (RDBLengthPrefixedExtraLongString byteStr)
+shortStringLenCutoff :: (Num a) => a
+shortStringLenCutoff = 64 -- Equivalent to (1<<6) in C
 
--- https://github.com/redis/redis/blob/unstable/src/rdb.c#L445, attempts integer encoding for strings with length <= 11
-toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible :: BS.ByteString -> RDBLengthPrefixedVal
-toRDBLengthPrefixedValOptimizedToIntEncodingIfPossible byteStr
-    | BS.length byteStr <= randomCutOffToAttemptIntParsing, Just num <- tryParseAsInt8 byteStr = RDBLengthPrefixedInt8Val (RDBLengthPrefixedInt8 num)
-    | BS.length byteStr <= randomCutOffToAttemptIntParsing, Just num <- tryParseAsInt16 byteStr = RDBLengthPrefixedInt16Val (RDBLengthPrefixedInt16 num)
-    | BS.length byteStr <= randomCutOffToAttemptIntParsing, Just num <- tryParseAsInt32 byteStr = RDBLengthPrefixedInt32Val (RDBLengthPrefixedInt32 num)
-    | BS.length byteStr <= shortStringLenCutoff = RDBLengthPrefixedShortStringVal (RDBLengthPrefixedShortString byteStr)
-    | BS.length byteStr <= mediumStringLenCutoff = RDBLengthPrefixedMediumStringVal (RDBLengthPrefixedMediumString byteStr)
-    | BS.length byteStr <= longStringLenCutoff = RDBLengthPrefixedLongStringVal (RDBLengthPrefixedLongString byteStr)
-    | otherwise = RDBLengthPrefixedExtraLongStringVal (RDBLengthPrefixedExtraLongString byteStr)
+mediumStringLenCutoff :: (Num a) => a
+mediumStringLenCutoff = 16384 -- Equivalent to (1<<14) in C
 
-randomCutOffToAttemptIntParsing :: Int
-randomCutOffToAttemptIntParsing = 11
+longStringLenCutoff :: (Num a) => a
+longStringLenCutoff = 4294967295 -- Equivalent to UINT32_MAX in C
 
-toRDBLengthPrefixedStr :: BS.ByteString -> RDBLengthPrefixedString
-toRDBLengthPrefixedStr byteStr
-    | BS.length byteStr <= shortStringLenCutoff = MkRDBLengthPrefixedShortString (RDBLengthPrefixedShortString byteStr)
-    | BS.length byteStr <= mediumStringLenCutoff = MkRDBLengthPrefixedMediumString (RDBLengthPrefixedMediumString byteStr)
-    | BS.length byteStr <= longStringLenCutoff = MkRDBLengthPrefixedLongString (RDBLengthPrefixedLongString byteStr)
-    | otherwise = MkRDBLengthPrefixedExtraLongString (RDBLengthPrefixedExtraLongString byteStr)
+-- https://github.com/redis/redis/blob/unstable/src/rdb.c#L445, attempts integer encoding for potential integer strings
+-- We do not need the random cut off at (len <= 11) since we can already check to determine whether a byte sequence is number by attempting to parse it as such. Arbitrary length cutoffs become redundant
+toRDBVal :: BS.ByteString -> RDBVal
+toRDBVal byteStr
+    | Just num <- tryParseAsInt8 byteStr = MkRDBInt8Val (RDBInt8 num)
+    | Just num <- tryParseAsInt16 byteStr = MkRDBInt16Val (RDBInt16 num)
+    | Just num <- tryParseAsInt32 byteStr = MkRDBInt32Val (RDBInt32 num)
+    | BS.length byteStr < shortStringLenCutoff = MkRDBShortStringVal (RDBShortString byteStr)
+    | BS.length byteStr < mediumStringLenCutoff = MkRDBMediumStringVal (RDBMediumString byteStr)
+    | BS.length byteStr < longStringLenCutoff = MkRDBLongStringVal (RDBLongString byteStr)
+    | otherwise = MkRDBExtraLongStringVal (RDBExtraLongString byteStr)
 
-fromRDBLengthPrefixedStr :: RDBLengthPrefixedString -> BS.ByteString
-fromRDBLengthPrefixedStr (MkRDBLengthPrefixedShortString (RDBLengthPrefixedShortString byteStr)) = byteStr
-fromRDBLengthPrefixedStr (MkRDBLengthPrefixedMediumString (RDBLengthPrefixedMediumString byteStr)) = byteStr
-fromRDBLengthPrefixedStr (MkRDBLengthPrefixedLongString (RDBLengthPrefixedLongString byteStr)) = byteStr
-fromRDBLengthPrefixedStr (MkRDBLengthPrefixedExtraLongString (RDBLengthPrefixedExtraLongString byteStr)) = byteStr
+toRDBString :: BS.ByteString -> RDBString
+toRDBString byteStr
+    | BS.length byteStr < shortStringLenCutoff = MkRDBShortString (RDBShortString byteStr)
+    | BS.length byteStr < mediumStringLenCutoff = MkRDBMediumString (RDBMediumString byteStr)
+    | BS.length byteStr < longStringLenCutoff = MkRDBLongString (RDBLongString byteStr)
+    | otherwise = MkRDBExtraLongString (RDBExtraLongString byteStr)
 
--- | Extract value from unsigned integer wrapper type
-fromUIntValInRDBLengthPrefixedForm :: (Num a) => UIntValInRDBLengthPrefixForm -> a
-fromUIntValInRDBLengthPrefixedForm = \case
-    MkUInt8ValInRDBLengthPrefixForm num -> fromIntegral num
-    MkUInt16ValInRDBLengthPrefixForm num -> fromIntegral num
-    MkUInt32ValInRDBLengthPrefixForm num -> fromIntegral num
-    MkUInt64ValInRDBLengthPrefixForm num -> fromIntegral num
+fromRDBString :: RDBString -> BS.ByteString
+fromRDBString (MkRDBShortString (RDBShortString byteStr)) = byteStr
+fromRDBString (MkRDBMediumString (RDBMediumString byteStr)) = byteStr
+fromRDBString (MkRDBLongString (RDBLongString byteStr)) = byteStr
+fromRDBString (MkRDBExtraLongString (RDBExtraLongString byteStr)) = byteStr
 
-shortStringLenCutoff :: Int
-shortStringLenCutoff = 63
-
-mediumStringLenCutoff :: Int
-mediumStringLenCutoff = 16383
-
-longStringLenCutoff :: Int
-longStringLenCutoff = 4294967295
+fromRDBLengthPrefix :: (Num a) => RDBLengthPrefix -> a
+fromRDBLengthPrefix = \case
+    MkRDBLengthPrefix6 num -> fromIntegral num
+    MkRDBLengthPrefix14 num -> fromIntegral num
+    MkRDBLengthPrefix32 num -> fromIntegral num
+    MkRDBLengthPrefix64 num -> fromIntegral num
 
 tryParseAsInt8 :: BS.ByteString -> Maybe Int8
 tryParseAsInt8 byteStr = do
@@ -404,14 +409,14 @@ tryParseAsInt32 byteStr = do
         then Just num
         else Nothing
 
-fromRDBLengthPrefixedVal :: RDBLengthPrefixedVal -> BS.ByteString
-fromRDBLengthPrefixedVal (RDBLengthPrefixedShortStringVal (RDBLengthPrefixedShortString byteStr)) = byteStr
-fromRDBLengthPrefixedVal (RDBLengthPrefixedMediumStringVal (RDBLengthPrefixedMediumString byteStr)) = byteStr
-fromRDBLengthPrefixedVal (RDBLengthPrefixedLongStringVal (RDBLengthPrefixedLongString byteStr)) = byteStr
-fromRDBLengthPrefixedVal (RDBLengthPrefixedExtraLongStringVal (RDBLengthPrefixedExtraLongString byteStr)) = byteStr
-fromRDBLengthPrefixedVal (RDBLengthPrefixedInt8Val (RDBLengthPrefixedInt8 int8Val)) = fromString . show $ int8Val
-fromRDBLengthPrefixedVal (RDBLengthPrefixedInt16Val (RDBLengthPrefixedInt16 int16Val)) = fromString . show $ int16Val
-fromRDBLengthPrefixedVal (RDBLengthPrefixedInt32Val (RDBLengthPrefixedInt32 int32Val)) = fromString . show $ int32Val
+fromRDBVal :: RDBVal -> BS.ByteString
+fromRDBVal (MkRDBShortStringVal (RDBShortString byteStr)) = byteStr
+fromRDBVal (MkRDBMediumStringVal (RDBMediumString byteStr)) = byteStr
+fromRDBVal (MkRDBLongStringVal (RDBLongString byteStr)) = byteStr
+fromRDBVal (MkRDBExtraLongStringVal (RDBExtraLongString byteStr)) = byteStr
+fromRDBVal (MkRDBInt8Val (RDBInt8 int8Val)) = fromString . show $ int8Val
+fromRDBVal (MkRDBInt16Val (RDBInt16 int16Val)) = fromString . show $ int16Val
+fromRDBVal (MkRDBInt32Val (RDBInt32 int32Val)) = fromString . show $ int32Val
 
 toPosixTimeFromRDBUnixTimestampS :: RDBUnixTimestampS -> POSIXTime
 toPosixTimeFromRDBUnixTimestampS = fromIntegral . (.getRDBUnixTimestampS)
@@ -425,321 +430,310 @@ fromPosixTimeToRDBUnixTimestampMS = RDBUnixTimestampMS . floor @_ @Word64 . seco
 toPosixTimeFromRDBUnixTimestampMS :: RDBUnixTimestampMS -> POSIXTime
 toPosixTimeFromRDBUnixTimestampMS = secondsToNominalDiffTime . millisecondsToSeconds . fromIntegral @_ @Pico . (.getRDBUnixTimestampMS)
 
-{- | Encode a bytestring using RDB's 6-bit length prefix
-Format: [00XXXXXX] where XXXXXX is the 6-bit length (0-63 bytes)
-Used for strings up to 63 bytes
+{- |
+    Encode a short string using RDB's variable length encoding
+    Format: [00XXXXXX] where XXXXXX is the string's 6-bit length followed by the actual byte string data
 -}
-rdbVariableLengthEncodeStrOneByte :: RDBLengthPrefixedShortString -> SPut
-rdbVariableLengthEncodeStrOneByte (RDBLengthPrefixedShortString byteStr) = do
-    -- Extract the length as Word8 (max 63 for 6-bit encoding)
+rdbVariableLengthEncodeShortString :: RDBShortString -> RDBPut
+rdbVariableLengthEncodeShortString (RDBShortString byteStr) = do
     let shortRdbByteStrLen = fromIntegral @_ @Word8 $ BS.length byteStr
-    -- Use specialized integer length encoding function
-    let lengthPrefix = UInt8ValInRDBLengthPrefixForm shortRdbByteStrLen
-    -- Write length prefix followed by data
-    rdbEncodeUInt8ToLengthPrefixedForm lengthPrefix
-    genericPutWithChecksumUsing $ putByteString byteStr
+    let lengthPrefix = RDBLengthPrefix6 shortRdbByteStrLen
+    rdbEncodeLengthPrefix8 lengthPrefix
+    genericRDBPutUsing $ putByteString byteStr
 
-{- | Decode a bytestring using RDB's 6-bit length prefix
-Format: [00XXXXXX] where XXXXXX is the 6-bit length (0-63 bytes)
--}
-rdbVariableLengthDecodeStrOneByte :: SGet RDBLengthPrefixedShortString
-rdbVariableLengthDecodeStrOneByte = do
-    -- Use specialized integer length decoding function
-    UInt8ValInRDBLengthPrefixForm shortByteStrLen <- rdbDecodeUInt8FromLengthPrefixForm
-    -- Convert to Int for reading data bytes
+-- | Decode a short string using RDB's variable length encoding
+rdbVariableLengthDecodeShortString :: RDBGet RDBShortString
+rdbVariableLengthDecodeShortString = do
+    RDBLengthPrefix6 shortByteStrLen <- rdbDecodeLengthPrefix6
     let shortByteStrLenInt = fromIntegral @_ @Int shortByteStrLen
-    -- Read the specified number of data bytes
-    RDBLengthPrefixedShortString <$> genericGetWithChecksumUsing (getByteString shortByteStrLenInt)
+    RDBShortString <$> genericRDBGetUsing (getByteString shortByteStrLenInt)
 
-{- | Encode a bytestring using RDB's 14-bit length prefix
-Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length (64-16383 bytes)
-Used for strings from 64 to 16383 bytes
+{- | Encode medium length string using RDB's variable length encoding
+    Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the the string's 14-bit length followed by the actual byte string data
 -}
-rdbVariableLengthEncodeStrTwoBytes :: RDBLengthPrefixedMediumString -> SPut
-rdbVariableLengthEncodeStrTwoBytes (RDBLengthPrefixedMediumString byteStr) = do
-    -- Get the length and convert to 16-bit value
+rdbVariableLengthEncodeMediumString :: RDBMediumString -> RDBPut
+rdbVariableLengthEncodeMediumString (RDBMediumString byteStr) = do
     let mediumRdbByteStrLen = fromIntegral @_ @Word16 $ BS.length byteStr
-    -- Use specialized integer length encoding function
-    let lengthPrefix = UInt16ValInRDBLengthPrefixForm mediumRdbByteStrLen
-    -- Write length prefix followed by data
-    rdbEncodeUInt16ToLengthPrefixedForm lengthPrefix
-    genericPutWithChecksumUsing $ putByteString byteStr
+    let lengthPrefix = RDBLengthPrefix14 mediumRdbByteStrLen
+    rdbEncodeLengthPrefix14 lengthPrefix
+    genericRDBPutUsing $ putByteString byteStr
 
-{- | Decode a bytestring using RDB's 14-bit length prefix
-Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length (64-16383 bytes)
--}
-rdbVariableLengthDecodeStrTwoBytes :: SGet RDBLengthPrefixedMediumString
-rdbVariableLengthDecodeStrTwoBytes = do
-    -- Use specialized integer length decoding function
-    UInt16ValInRDBLengthPrefixForm mediumByteStrLen <- rdbDecodeUInt16FromLengthPrefixForm
-    -- Convert to Int for reading data bytes
+-- | Decode a medium length string using RDB's variable length encoding
+rdbVariableLengthDecodeMediumString :: RDBGet RDBMediumString
+rdbVariableLengthDecodeMediumString = do
+    RDBLengthPrefix14 mediumByteStrLen <- rdbDecodeLengthPrefix14
     let mediumByteStrLenInt = fromIntegral @_ @Int mediumByteStrLen
-    -- Read the specified number of data bytes
-    RDBLengthPrefixedMediumString <$> genericGetWithChecksumUsing (getByteString mediumByteStrLenInt)
+    RDBMediumString <$> genericRDBGetUsing (getByteString mediumByteStrLenInt)
 
-{- | Encode a bytestring using RDB's 32-bit length prefix
-Format: [10000000] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the 32-bit length
-Used for strings from 16384 bytes and above
+{- | Encode a long string using RDB's variable length encoding
+    Format: [10000000] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the string's 32-bit length followed by the actual byte string data
 -}
-rdbVariableLengthEncodeStrFourBytes :: RDBLengthPrefixedLongString -> SPut
-rdbVariableLengthEncodeStrFourBytes (RDBLengthPrefixedLongString byteStr) = do
-    -- Get the length and convert to 32-bit value
+rdbVariableLengthEncodeLongString :: RDBLongString -> RDBPut
+rdbVariableLengthEncodeLongString (RDBLongString byteStr) = do
     let longRdbStrLen = fromIntegral @_ @Word32 $ BS.length byteStr
-    -- Use specialized integer length encoding function
-    let lengthPrefix = UInt32ValInRDBLengthPrefixForm longRdbStrLen
-    -- Write length prefix followed by data
-    rdbEncodeUInt32ToLengthPrefixedForm lengthPrefix
-    genericPutWithChecksumUsing (putByteString byteStr)
+    let lengthPrefix = RDBLengthPrefix32 longRdbStrLen
+    rdbEncodeLengthPrefix32 lengthPrefix
+    genericRDBPutUsing (putByteString byteStr)
 
-{- | Decode a bytestring using RDB's 32-bit length prefix
-Format: [10000000] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the 32-bit length
--}
-rdbVariableLengthDecodeStrFourBytes :: SGet RDBLengthPrefixedLongString
-rdbVariableLengthDecodeStrFourBytes = do
-    -- Use specialized integer length decoding function
-    UInt32ValInRDBLengthPrefixForm longByteStrLen <- rdbDecodeUInt32FromLengthPrefixForm
-    -- Convert to Int for reading data bytes
+-- | Decode a long string using RDB's variable length encoding
+rdbVariableLengthDecodeLongString :: RDBGet RDBLongString
+rdbVariableLengthDecodeLongString = do
+    RDBLengthPrefix32 longByteStrLen <- rdbDecodeLengthPrefix32
     let longByteStrLenInt = fromIntegral @_ @Int longByteStrLen
-    -- Read the specified number of data bytes
-    RDBLengthPrefixedLongString <$> genericGetWithChecksumUsing (getByteString longByteStrLenInt)
+    RDBLongString <$> genericRDBGetUsing (getByteString longByteStrLenInt)
 
-{- | Encode a bytestring using RDB's 64-bit length prefix
-Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the 64-bit length
-Used for strings from 2^32 bytes and above
+{- | Encode an extra long string using RDB's variable length encoding
+    Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the string's 64-bit length followed by the actual byte string data
 -}
-rdbVariableLengthEncodeStrNineBytes :: RDBLengthPrefixedExtraLongString -> SPut
-rdbVariableLengthEncodeStrNineBytes (RDBLengthPrefixedExtraLongString byteStr) = do
-    -- Get the length and convert to 64-bit value
+rdbVariableLengthEncodeExtraLongString :: RDBExtraLongString -> RDBPut
+rdbVariableLengthEncodeExtraLongString (RDBExtraLongString byteStr) = do
     let extraLongRdbStrLen = fromIntegral @_ @Word64 $ BS.length byteStr
-    -- Use specialized integer length encoding function
-    let lengthPrefix = UInt64ValInRDBLengthPrefixForm extraLongRdbStrLen
-    -- Write length prefix followed by data
-    rdbEncodeUInt64ToLengthPrefixedForm lengthPrefix
-    genericPutWithChecksumUsing (putByteString byteStr)
+    let lengthPrefix = RDBLengthPrefix64 extraLongRdbStrLen
+    rdbEncodeLengthPrefix64 lengthPrefix
+    genericRDBPutUsing (putByteString byteStr)
 
-{- | Decode a bytestring using RDB's 64-bit length prefix
-Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the 64-bit length
--}
-rdbVariableLengthDecodeStrNineBytes :: SGet RDBLengthPrefixedExtraLongString
-rdbVariableLengthDecodeStrNineBytes = do
-    -- Use specialized integer length decoding function
-    UInt64ValInRDBLengthPrefixForm extraLongByteStrLen <- rdbDecodeUInt64FromLengthPrefixForm
-    -- Convert to Int for reading data bytes
+-- | Decode an extra long string using RDB's variable length encoding
+rdbVariableLengthDecodeExtraLongString :: RDBGet RDBExtraLongString
+rdbVariableLengthDecodeExtraLongString = do
+    RDBLengthPrefix64 extraLongByteStrLen <- rdbDecodeLengthPrefix64
     let extraLongByteStrLenInt = fromIntegral @_ @Int extraLongByteStrLen
-    -- Read the specified number of data bytes
-    RDBLengthPrefixedExtraLongString <$> genericGetWithChecksumUsing (getByteString extraLongByteStrLenInt)
+    RDBExtraLongString <$> genericRDBGetUsing (getByteString extraLongByteStrLenInt)
 
-{- | Encode an 8-bit integer using RDB's special integer format
-Format: [11000000] [XXXXXXXX] where XXXXXXXX is the 8-bit signed integer
-Used for integers that fit within 8 bits (-128 to 127)
-The prefix 11000000 indicates special encoding with type identifier 0
+-- Integer encoding using RDB's special integer length encoding scheme: https://rdb.fnordig.de/file_format.html#integers-as-string
+
+{- | Encode an 8-bit integer using RDB's special integer length encoding scheme
+    Format: [11000000] [XXXXXXXX] where XXXXXXXX is the 8-bit signed integer
 -}
-intPrefix8Bit :: Word8
-intPrefix8Bit = 0b11000000
+rdbVariableLengthEncode8BitInt :: RDBInt8 -> RDBPut
+rdbVariableLengthEncode8BitInt (RDBInt8 intVal) = do
+    genericRDBPut intPrefix8Bit
+    genericRDBPut @Int8 intVal
 
-rdbVariableLengthEncodeFor8BitIntAsStr :: RDBLengthPrefixedInt8 -> SPut
-rdbVariableLengthEncodeFor8BitIntAsStr (RDBLengthPrefixedInt8 intVal) = do
-    let prefixByte = intPrefix8Bit :: Word8
-    -- Write the prefix byte followed by the 8-bit integer
-    genericPutWithChecksum @Word8 prefixByte
-    genericPutWithChecksum @Int8 intVal
-
-{- | Decode an 8-bit integer using RDB's special integer format
-Format: [11000000] [XXXXXXXX] where XXXXXXXX is the 8-bit signed integer
-Expects prefix 11000000 with type identifier 0 in the last 6 bits
--}
-rdbVariableLengthDecode8BitIntFromStr :: SGet RDBLengthPrefixedInt8
-rdbVariableLengthDecode8BitIntFromStr = do
-    -- Read the prefix byte
-    prefixByte <- genericGetWithChecksum @Word8
-    -- Validate the prefix byte format and type identifier
+-- | Decode an 8-bit integer using RDB's special integer length encoding scheme
+rdbVariableLengthDecode8BitInt :: RDBGet RDBInt8
+rdbVariableLengthDecode8BitInt = do
+    prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
         then fail "Unexpected prefix byte while attempting to decode 8 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 0"
-        else
-            -- Read the 8-bit signed integer value
-            RDBLengthPrefixedInt8 <$> genericGetWithChecksum @Int8
+        else RDBInt8 <$> genericRDBGet @Int8
   where
-    -- Validate that prefix is 11000000 and type identifier (last 6 bits) is 0
+    -- Validate that prefix is correct and type identifier (last 6 bits) is 0
     verifyPrefixByte :: Word8 -> Bool
-    verifyPrefixByte prefixByte =
-        let expectedPrefixByte = intPrefix8Bit
-         in prefixByte == expectedPrefixByte
+    verifyPrefixByte = (== intPrefix8Bit)
 
-{- | Encode a 16-bit integer using RDB's special integer format
-Format: [11000001] [XXXXXXXX] [XXXXXXXX] where XXXXXXXXXXXXXXXX is the 16-bit signed integer
-Used for integers that fit within 16 bits (-32768 to 32767)
-The prefix 11000001 indicates special encoding with type identifier 1
+intPrefix8Bit :: Word8
+intPrefix8Bit = 0b11000000
+
+{- | Encode a 16-bit integer using RDB's special integer length encoding scheme
+    Format: [11000001] [XXXXXXXX] [XXXXXXXX] where XXXXXXXXXXXXXXXX is the 16-bit signed integer
 -}
-intPrefix16Bit :: Word8
-intPrefix16Bit = 0b11000001
+rdbVariableLengthEncode16BitInt :: RDBInt16 -> RDBPut
+rdbVariableLengthEncode16BitInt (RDBInt16 intVal) = do
+    genericRDBPut intPrefix16Bit
+    genericRDBPutUsing (putInt16le intVal)
 
-rdbVariableLengthEncodeFor16BitIntAsStr :: RDBLengthPrefixedInt16 -> SPut
-rdbVariableLengthEncodeFor16BitIntAsStr (RDBLengthPrefixedInt16 intVal) = do
-    let prefixByte = intPrefix16Bit
-    -- Write the prefix byte followed by the 16-bit integer in little-endian
-    genericPutWithChecksum @Word8 prefixByte
-    genericPutWithChecksumUsing (putInt16le intVal)
-
-{- | Decode a 16-bit integer using RDB's special integer format
-Format: [11000001] [XXXXXXXX] [XXXXXXXX] where XXXXXXXXXXXXXXXX is the 16-bit signed integer
-Expects prefix 11000001 with type identifier 1 in the last 6 bits
--}
-rdbVariableLengthDecode16BitIntFromStr :: SGet RDBLengthPrefixedInt16
-rdbVariableLengthDecode16BitIntFromStr = do
-    -- Read the prefix byte
-    prefixByte <- genericGetWithChecksum @Word8
-    -- Validate the prefix byte format and type identifier
+-- | Decode a 16-bit integer using RDB's special integer length encoding scheme
+rdbVariableLengthDecode16BitInt :: RDBGet RDBInt16
+rdbVariableLengthDecode16BitInt = do
+    prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
         then fail "Unexpected prefix byte while attempting to decode 16 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 1"
-        else
-            -- Read the 16-bit signed integer value in little-endian format
-            RDBLengthPrefixedInt16 <$> genericGetWithChecksumUsing getInt16le
+        else RDBInt16 <$> genericRDBGetUsing getInt16le
   where
-    -- Validate that prefix is 11000000 and type identifier (last 6 bits) is 1
+    -- Validate that prefix is correct and type identifier (last 6 bits) is 1
     verifyPrefixByte :: Word8 -> Bool
-    verifyPrefixByte prefixByte =
-        let expectedPrefixByte = intPrefix16Bit
-         in expectedPrefixByte == prefixByte
+    verifyPrefixByte = (== intPrefix16Bit)
 
-{- | Encode a 32-bit integer using RDB's special integer format
-Format: [11000010] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the 32-bit signed integer
-Used for integers that fit within 32 bits (-2147483648 to 2147483647)
-The prefix 11000010 indicates special encoding with type identifier 2
+intPrefix16Bit :: Word8
+intPrefix16Bit = 0b11000001
+
+{- | Encode a 32-bit integer using RDB's special integer length encoding scheme
+    Format: [11000010] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the 32-bit signed integer
 -}
-intPrefix32Bit :: Word8
-intPrefix32Bit = 0b11000010
+rdbVariableLengthEncode32BitInt :: RDBInt32 -> RDBPut
+rdbVariableLengthEncode32BitInt (RDBInt32 intVal) = do
+    genericRDBPut intPrefix32Bit
+    genericRDBPutUsing (putInt32le intVal)
 
-rdbVariableLengthEncodeFor32BitIntAsStr :: RDBLengthPrefixedInt32 -> SPut
-rdbVariableLengthEncodeFor32BitIntAsStr (RDBLengthPrefixedInt32 intVal) = do
-    let prefixByte = intPrefix32Bit
-    -- Write the prefix byte followed by the 32-bit integer in little-endian
-    genericPutWithChecksum @Word8 prefixByte
-    genericPutWithChecksumUsing (putInt32le intVal)
-
-{- | Decode a 32-bit integer using RDB's special integer format
-Format: [11000010] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the 32-bit signed integer
-Expects prefix 11000010 with type identifier 2 in the last 6 bits
--}
-rdbVariableLengthDecode32BitIntFromStr :: SGet RDBLengthPrefixedInt32
-rdbVariableLengthDecode32BitIntFromStr = do
-    -- Read the prefix byte
-    prefixByte <- genericGetWithChecksum @Word8
-    -- Validate the prefix byte format and type identifier
+-- | Decode a 32-bit integer using RDB's special integer length encoding scheme
+rdbVariableLengthDecode32BitInt :: RDBGet RDBInt32
+rdbVariableLengthDecode32BitInt = do
+    prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
         then fail "Unexpected prefix byte while attempting to decode 32 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 2"
-        else
-            -- Read the 32-bit signed integer value in little-endian format
-            RDBLengthPrefixedInt32 <$> genericGetWithChecksumUsing getInt32le
+        else RDBInt32 <$> genericRDBGetUsing getInt32le
   where
-    -- Validate that prefix is 11000000 and type identifier (last 6 bits) is 2
+    -- Validate that prefix is correct and type identifier (last 6 bits) is 2
     verifyPrefixByte :: Word8 -> Bool
-    verifyPrefixByte firstByte =
-        let expectedPrefixByte = intPrefix32Bit
-         in expectedPrefixByte == firstByte
+    verifyPrefixByte = (== intPrefix32Bit)
 
-{- | Length-prefixed integer encoding functions
-These functions encode standalone length values using the same prefixes as strings,
-but without any accompanying data bytes.
--}
+intPrefix32Bit :: Word8
+intPrefix32Bit = 0b11000010
 
-{- | Encode a 6-bit length value (0-63)
-Format: [00XXXXXX] where XXXXXX is the 6-bit length
+-- | Length prefix encoding functions. These functions encode standalone length prefix values following the rdb variable length encoding, but without any accompanying data bytes.
+
+{- | Encode a 6-bit length value
+    Format: [00XXXXXX] where XXXXXX is the 6-bit length
 -}
-rdbEncodeUInt8ToLengthPrefixedForm :: UInt8ValInRDBLengthPrefixForm -> SPut
-rdbEncodeUInt8ToLengthPrefixedForm (UInt8ValInRDBLengthPrefixForm len) = do
+rdbEncodeLengthPrefix8 :: RDBLengthPrefix6 -> RDBPut
+rdbEncodeLengthPrefix8 (RDBLengthPrefix6 lenVal) = do
     -- The value is already constrained to fit in 6 bits by the type system
     -- Top 2 bits are implicitly 00, so we can write the length directly
-    genericPutWithChecksum @Word8 len
+    genericRDBPut @Word8 lenVal
 
-{- | Decode a 6-bit length value (0-63)
-Format: [00XXXXXX] where XXXXXX is the 6-bit length
--}
-rdbDecodeUInt8FromLengthPrefixForm :: SGet UInt8ValInRDBLengthPrefixForm
-rdbDecodeUInt8FromLengthPrefixForm = do
-    byte <- genericGetWithChecksum @Word8
-    -- Verify the prefix is 00 (top 2 bits should be 0)
+-- | Decode a 6-bit length value
+rdbDecodeLengthPrefix6 :: RDBGet RDBLengthPrefix6
+rdbDecodeLengthPrefix6 = do
+    byte <- genericRDBGet @Word8
+    -- Verify the prefix, the first two bits, is 00 (top 2 bits should be 0)
     let byteHasExpectedPrefix = (byte `Bits.shiftR` 6) == 0
     if not byteHasExpectedPrefix
         then fail "Unexpected prefix for 6-bit length. Expected first two bits to be 00"
-        else pure $ UInt8ValInRDBLengthPrefixForm byte
+        else pure $ RDBLengthPrefix6 byte
 
-{- | Encode a 14-bit length value (0-16383)
-Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length
+{- | Encode a 14-bit length prefix
+    Format: [01XXXXXX][YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length
 -}
-rdbEncodeUInt16ToLengthPrefixedForm :: UInt16ValInRDBLengthPrefixForm -> SPut
-rdbEncodeUInt16ToLengthPrefixedForm (UInt16ValInRDBLengthPrefixForm len) = do
-    let prefix = 0b01000000 :: Word8
-    -- Extract upper 6 bits from the 16-bit value
-    let upperByte = fromIntegral @_ @Word8 (len `Bits.shiftR` 8)
+rdbEncodeLengthPrefix14 :: RDBLengthPrefix14 -> RDBPut
+rdbEncodeLengthPrefix14 (RDBLengthPrefix14 lenVal) = do
+    let prefixByte = bytePrefixFor14BitLengthPrefix
+    let byteFromLenValToBeCombinedWithPrefix = fromIntegral @_ @Word8 (lenVal `Bits.shiftR` 8)
     let sixBitsMask = 0b00111111
-    let upperByteWithBitsReset = upperByte Bits..&. sixBitsMask
-    let firstByteWithPrefix = prefix Bits..|. upperByteWithBitsReset
-    -- Extract lower 8 bits
-    let lowerByte = fromIntegral @_ @Word8 len
+    let byteFromLenValToBeCombinedWithPrefixWithFirstTwoBitsReset = byteFromLenValToBeCombinedWithPrefix Bits..&. sixBitsMask
+    let prefixWithBitsFromLenVal = prefixByte Bits..|. byteFromLenValToBeCombinedWithPrefixWithFirstTwoBitsReset
+    let remainingByteFromLenVal = fromIntegral @_ @Word8 lenVal
 
-    genericPutWithChecksum @Word8 firstByteWithPrefix
-    genericPutWithChecksum @Word8 lowerByte
+    genericRDBPut @Word8 prefixWithBitsFromLenVal
+    genericRDBPut @Word8 remainingByteFromLenVal
 
-{- | Decode a 14-bit length value (0-16383)
-Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length
--}
-rdbDecodeUInt16FromLengthPrefixForm :: SGet UInt16ValInRDBLengthPrefixForm
-rdbDecodeUInt16FromLengthPrefixForm = do
-    firstByte <- genericGetWithChecksum @Word8
-    -- Verify prefix is 01
+-- | Decode a 14-bit length prefix
+rdbDecodeLengthPrefix14 :: RDBGet RDBLengthPrefix14
+rdbDecodeLengthPrefix14 = do
+    firstByte <- genericRDBGet @Word8
+    -- Mask to extract the first two bits of the first byte and reset the remaining six bits
     let prefixMask = 0b11000000
-    let expectedPrefix = 0b01000000
-    let hasExpectedPrefix = (firstByte Bits..&. prefixMask) == expectedPrefix
-    if not hasExpectedPrefix
+    let byteHasExpectedPrefix = (firstByte Bits..&. prefixMask) == bytePrefixFor14BitLengthPrefix
+    if not byteHasExpectedPrefix
         then fail "Unexpected prefix for 14-bit length. Expected first two bits to be 01"
         else do
-            secondByte <- genericGetWithChecksum @Word8
-            -- Extract 6 bits from first byte and combine with second byte
+            secondByte <- genericRDBGet @Word8
+            -- We know that the last six bits of the first byte and all eight bits of the second byte represent the length, so we want to extract the last six bits of the first byte and combine them with the second byte to form the full 14-bit length
             let sixBitsMask = 0b00111111
-            let upperBits = fromIntegral @_ @Word16 (firstByte Bits..&. sixBitsMask)
-            let lowerBits = fromIntegral @_ @Word16 secondByte
-            let fullLength = (upperBits `Bits.shiftL` 8) Bits..|. lowerBits
-            pure $ UInt16ValInRDBLengthPrefixForm fullLength
+            let lastSixBitsFromFirstByte = fromIntegral @_ @Word16 (firstByte Bits..&. sixBitsMask)
+            let remainingByte = fromIntegral @_ @Word16 secondByte -- To Word16 for combining
+            let fullLength = (lastSixBitsFromFirstByte `Bits.shiftL` 8) Bits..|. remainingByte -- Combine to form full 14-bit length
+            pure $ RDBLengthPrefix14 fullLength
 
-{- | Encode a 32-bit length value (0-4294967295)
-Format: [10000000] [XXXXXXXX]...[XXXXXXXX] where X's represent the 32-bit length
--}
-rdbEncodeUInt32ToLengthPrefixedForm :: UInt32ValInRDBLengthPrefixForm -> SPut
-rdbEncodeUInt32ToLengthPrefixedForm (UInt32ValInRDBLengthPrefixForm len) = do
-    let prefixByte = 0b10000000 :: Word8
-    genericPutWithChecksum @Word8 prefixByte
-    genericPutWithChecksumUsing (putWord32be len)
+bytePrefixFor14BitLengthPrefix :: Word8
+bytePrefixFor14BitLengthPrefix = 0b01000000
 
-{- | Decode a 32-bit length value (0-4294967295)
-Format: [10000000] [XXXXXXXX]...[XXXXXXXX] where X's represent the 32-bit length
+{- | Encode a 32-bit length prefix
+    Format: [10000000] [XXXXXXXX]...[XXXXXXXX] where X's represent the 32-bit length
 -}
-rdbDecodeUInt32FromLengthPrefixForm :: SGet UInt32ValInRDBLengthPrefixForm
-rdbDecodeUInt32FromLengthPrefixForm = do
-    prefixByte <- genericGetWithChecksum @Word8
-    let expectedPrefix = 0b10000000 :: Word8
-    if prefixByte /= expectedPrefix
+rdbEncodeLengthPrefix32 :: RDBLengthPrefix32 -> RDBPut
+rdbEncodeLengthPrefix32 (RDBLengthPrefix32 lenVal) = do
+    genericRDBPut @Word8 bytePrefixFor32BitLengthPrefix
+    genericRDBPutUsing (putWord32be lenVal)
+
+-- | Decode a 32-bit length prefix (0-4294967295)
+rdbDecodeLengthPrefix32 :: RDBGet RDBLengthPrefix32
+rdbDecodeLengthPrefix32 = do
+    prefixByte <- genericRDBGet @Word8
+    if prefixByte /= bytePrefixFor32BitLengthPrefix
         then fail "Unexpected prefix for 32-bit length. Expected 10000000"
-        else UInt32ValInRDBLengthPrefixForm <$> genericGetWithChecksumUsing getWord32be
+        else RDBLengthPrefix32 <$> genericRDBGetUsing getWord32be
 
-{- | Encode a 64-bit length value (0-18446744073709551615)
-Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the 64-bit length
--}
-rdbEncodeUInt64ToLengthPrefixedForm :: UInt64ValInRDBLengthPrefixForm -> SPut
-rdbEncodeUInt64ToLengthPrefixedForm (UInt64ValInRDBLengthPrefixForm len) = do
-    let prefixByte = 0b10000001 :: Word8
-    genericPutWithChecksum @Word8 prefixByte
-    genericPutWithChecksumUsing (putWord64be len)
+bytePrefixFor32BitLengthPrefix :: Word8
+bytePrefixFor32BitLengthPrefix = 0b10000000
 
-{- | Decode a 64-bit length value (0-18446744073709551615)
-Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the 64-bit length
+{- | Encode a 64-bit length prefix
+    Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the 64-bit length
 -}
-rdbDecodeUInt64FromLengthPrefixForm :: SGet UInt64ValInRDBLengthPrefixForm
-rdbDecodeUInt64FromLengthPrefixForm = do
-    prefixByte <- genericGetWithChecksum @Word8
-    let expectedPrefix = 0b10000001 :: Word8
-    if prefixByte /= expectedPrefix
+rdbEncodeLengthPrefix64 :: RDBLengthPrefix64 -> RDBPut
+rdbEncodeLengthPrefix64 (RDBLengthPrefix64 len) = do
+    genericRDBPut @Word8 bytePrefixFor64BitLengthPrefix
+    genericRDBPutUsing (putWord64be len)
+
+-- | Decode a 64-bit length prefix (0-18446744073709551615)
+rdbDecodeLengthPrefix64 :: RDBGet RDBLengthPrefix64
+rdbDecodeLengthPrefix64 = do
+    prefixByte <- genericRDBGet @Word8
+    if prefixByte /= bytePrefixFor64BitLengthPrefix
         then fail "Unexpected prefix for 64-bit length. Expected 10000001"
-        else UInt64ValInRDBLengthPrefixForm <$> genericGetWithChecksumUsing getWord64be
+        else RDBLengthPrefix64 <$> genericRDBGetUsing getWord64be
+
+bytePrefixFor64BitLengthPrefix :: Word8
+bytePrefixFor64BitLengthPrefix = 0b10000001
+
+{-
+    Encode LZF compressed data in the format of [prefix][compressedLen][originalLen][data]
+    https://github.com/redis/redis/blob/81df8deca614e46cb113974dbac0b9ec3e6724e7/src/rdb.c#L362
+-}
+rdbEncodeLzfCompressedData :: LzfCompressedByteString -> RDBPut
+rdbEncodeLzfCompressedData LzfCompressedByteString{lzfCompressedByteString, compressedLen, originalLen} = do
+    genericRDBPut rdbLzfCompressedDataBinaryPrefix
+    rdbPut . toRDBLengthPrefix . fromIntegral $ compressedLen
+    rdbPut . toRDBLengthPrefix . fromIntegral $ originalLen
+    genericRDBPutUsing (putByteString lzfCompressedByteString)
+
+{-
+    Decode LZF compressed data from an RDB file
+    https://github.com/redis/redis/blob/81df8deca614e46cb113974dbac0b9ec3e6724e7/src/rdb.c#L383
+-}
+rdbDecodeLzfCompressedData :: RDBGet BS.ByteString
+rdbDecodeLzfCompressedData = do
+    prefixByte <- genericRDBGet @Word8
+    if prefixByte /= rdbLzfCompressedDataBinaryPrefix
+        then fail [i|Invalid prefix byte for LZF compressed datum. Expected prefix byte to be: #{show rdbLzfCompressedDataBinaryPrefix} but got: #{prefixByte}|]
+        else do
+            compressedLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix
+            originalLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix
+            lzfCompressedData <- genericRDBGetUsing (getByteString compressedLen)
+
+            let mDecompressedData = lzfDecompress (LzfCompressedByteString lzfCompressedData compressedLen originalLen)
+
+            maybe
+                (fail [i|Failed to decompress LZF compressed data. Original length: #{originalLen}, Compressed length: #{compressedLen}|])
+                pure
+                mDecompressedData
+
+rdbLzfCompressedDataBinaryPrefix :: Word8
+rdbLzfCompressedDataBinaryPrefix = 0b11000011
+
+attemptLzfSerializationWithFallback :: (BS.ByteString -> RDBPut) -> BS.ByteString -> RDBPut
+attemptLzfSerializationWithFallback fallbackSerialization byteStr =
+    do
+        config <- ask
+        let originalLen = BS.length byteStr
+            mExpectedCompressionSize = calculateExpectedCompressionSize originalLen
+            mCompressedData = lzfCompress byteStr mExpectedCompressionSize
+        if
+            | not config.useLzfCompression -> fallbackSerialization byteStr
+            | originalLen <= minimumDataLengthForSufficientCompression -> fallbackSerialization byteStr
+            | isNothing mExpectedCompressionSize -> fallbackSerialization byteStr
+            | Just lzfCompressedData <- mCompressedData -> rdbEncodeLzfCompressedData lzfCompressedData
+            | otherwise -> fallbackSerialization byteStr
+
+-- The type signature is this way because we want `f` to only have the "ability" of MonadFail from RDBGet, not anything else
+attemptLzfDeserializationWithFallback :: (MonadFail m, m a ~ RDBGet a) => (BS.ByteString -> m a) -> RDBGet a -> RDBGet a
+attemptLzfDeserializationWithFallback f fallbackDeserialization = (rdbDecodeLzfCompressedData >>= f) <|> fallbackDeserialization
+
+{-
+    This is necessary to avoid issues with very small inputs that cannot be effectively compressed. Due to the way lzf compressions works, small inputs may not have enough data to compress and the end result may even be expanded due to the overhead of the compression algorithm. Input that is smaller than or equal to this threshold is unlikely to benefit from compression. This threshold was chosen per this code in the redis codebase https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L455
+-}
+{-# WARNING in "x-unsafe-internals" minimumDataLengthForSufficientCompression "This value is exported for testing purposes only" #-}
+minimumDataLengthForSufficientCompression :: Int
+minimumDataLengthForSufficientCompression = 20
+
+-- For an lzf compression to be considered "sufficient/worth it" the compressed size ought to be 4 bytes smaller than the original (4 bytes compression at least)
+-- As defined here: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L368
+-- As in the redis code, if we cannot get lzf compression to shave off at least 4 bytes from the original size, we don't want to do it
+-- This function returns a Maybe to encapsulate the condition `val > 4` because as stated in the redis code "We require at least four bytes compression for this to be worth it". If we didn't return a Maybe, we'd have to do the `> 4` check wherever this function is used
+{-# WARNING in "x-unsafe-internals" calculateExpectedCompressionSize "This value is exported for testing purposes only" #-}
+calculateExpectedCompressionSize :: Int -> Maybe Int
+calculateExpectedCompressionSize num =
+    let val = num - 4
+     in if val > 4 then Just val else Nothing

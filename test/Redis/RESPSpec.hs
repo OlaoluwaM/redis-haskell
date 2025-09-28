@@ -106,7 +106,7 @@ spec_bulkstring_parser_unit_tests = do
 
 spec_array_parser_unit_tests :: Spec
 spec_array_parser_unit_tests = do
-    fdescribe "Array RESP data type parser" do
+    describe "Array RESP data type parser" do
         it "Succeeds when provided an empty array" do
             let input = [i|*0#{seqTerminator}|]
             let result = parseOnly arrayParser input

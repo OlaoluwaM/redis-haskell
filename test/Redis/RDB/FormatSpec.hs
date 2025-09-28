@@ -2,96 +2,115 @@ module Redis.RDB.FormatSpec where
 
 import Redis.RDB.Data
 import Redis.RDB.Format
+import Redis.RDB.TestConfig (genRDBConfig)
 import Test.Hspec
+import Test.Hspec.Hedgehog
 
 import Data.ByteString.Char8 qualified as BSC
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
 
-import Redis.Helper (encodeThenDecodeBinary)
+import Redis.Helper (encodeThenDecodeRDBBinary)
 
 spec_RDB_format_binary_serialization :: Spec
 spec_RDB_format_binary_serialization = do
-    describe "Roundtrip serialization of RDB structuure components" $ do
-        it "roundtrip encodes and decodes magic string correctly" $ do
+    describe "Roundtrip serialization of RDB structure components" $ do
+        it "roundtrip encodes and decodes magic string correctly" $ hedgehog $ do
             let magicString = Redis
-            encodeThenDecodeBinary magicString `shouldBe` magicString
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig magicString H.=== magicString
 
-        it "roundtrip encodes and decodes version strings correctly" $ do
-            let version = RDBVersion "0009"
-            encodeThenDecodeBinary version `shouldBe` version
+        it "roundtrip encodes and decodes version strings correctly" $ hedgehog $ do
+            version <- H.forAll $ Gen.enumBounded @_ @RDBVersion
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig version H.=== version
 
-        it "roundtrip encodes and decodes EOF marker correctly" $ do
-            encodeThenDecodeBinary EOF `shouldBe` EOF
+        it "roundtrip encodes and decodes EOF marker correctly" $ hedgehog $ do
+            let eofMarker = EOF
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig eofMarker H.=== eofMarker
 
-        it "roundtrip encodes and decodes expiry in milliseconds correctly" $ do
+        it "roundtrip encodes and decodes expiry in milliseconds correctly" $ hedgehog $ do
             let timestampMS = RDBUnixTimestampMS 1640995200000
                 valueType = Str
-                key = toRDBLengthPrefixedVal "testkey"
-                value = toRDBLengthPrefixedVal "testvalue"
+                key = toRDBVal "testkey"
+                value = toRDBVal "testvalue"
                 keyVal = KeyValWithExpiryInMS timestampMS valueType key value
                 opCode = FCOpCode keyVal
-            encodeThenDecodeBinary opCode `shouldBe` opCode
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig opCode H.=== opCode
 
-        it "roundtrip encodes and decodes expiry in seconds correctly" $ do
+        it "roundtrip encodes and decodes expiry in seconds correctly" $ hedgehog $ do
             let timestampS = RDBUnixTimestampS 1640995200
                 valueType = Str
-                key = toRDBLengthPrefixedVal "testkey"
-                value = toRDBLengthPrefixedVal "testvalue"
+                key = toRDBVal "testkey"
+                value = toRDBVal "testvalue"
                 keyVal = KeyValWithExpiryInS timestampS valueType key value
                 opCode = FDOpcode keyVal
-            encodeThenDecodeBinary opCode `shouldBe` opCode
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig opCode H.=== opCode
 
-        it "roundtrip encodes and decodes no expiry correctly" $ do
+        it "roundtrip encodes and decodes no expiry correctly" $ hedgehog $ do
             let valueType = Str
-                key = toRDBLengthPrefixedVal "testkey"
-                value = toRDBLengthPrefixedVal "testvalue"
+                key = toRDBVal "testkey"
+                value = toRDBVal "testvalue"
                 keyVal = KeyValWithNoExpiryInfo valueType key value
                 opCode = KeyValOpCode keyVal
-            encodeThenDecodeBinary opCode `shouldBe` opCode
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig opCode H.=== opCode
 
-        it "roundtrip encodes and decodes Redis version auxiliary field correctly" $ do
-            let redisVer = RedisVersion (RDBLengthPrefixedShortString (BSC.pack "7.0.0"))
+        it "roundtrip encodes and decodes Redis version auxiliary field correctly" $ hedgehog $ do
+            let redisVer = RedisVersion (RDBShortString (BSC.pack "7.0.0"))
                 auxField = AuxFieldRedisVer redisVer
-            encodeThenDecodeBinary auxField `shouldBe` auxField
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig auxField H.=== auxField
 
-        it "roundtrip encodes and decodes Redis bits auxiliary field correctly" $ do
+        it "roundtrip encodes and decodes Redis bits auxiliary field correctly" $ hedgehog $ do
             let redisBits = RedisBits64
                 auxField = AuxFieldRedisBits redisBits
-            encodeThenDecodeBinary auxField `shouldBe` auxField
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig auxField H.=== auxField
 
-        it "roundtrip encodes and decodes creation time auxiliary field correctly" $ do
+        it "roundtrip encodes and decodes creation time auxiliary field correctly" $ hedgehog $ do
             let ctime = CTime (RDBUnixTimestampS 1640995200)
                 auxField = AuxFieldCTime ctime
-            encodeThenDecodeBinary auxField `shouldBe` auxField
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig auxField H.=== auxField
 
-        it "roundtrip encodes and decodes used memory auxiliary field correctly" $ do
+        it "roundtrip encodes and decodes used memory auxiliary field correctly" $ hedgehog $ do
             let usedMem = UsedMem 1073741824 -- 1GB
                 auxField = AuxFieldUsedMem usedMem
-            encodeThenDecodeBinary auxField `shouldBe` auxField
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig auxField H.=== auxField
 
-        it "roundtrip encodes and decodes database selection correctly" $ do
+        it "roundtrip encodes and decodes database selection correctly" $ hedgehog $ do
             let dbSelect = SelectDB 20
-            encodeThenDecodeBinary dbSelect `shouldBe` dbSelect
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig dbSelect H.=== dbSelect
 
-        it "roundtrip encodes and decodes string value type correctly" $ do
+        it "roundtrip encodes and decodes string value type correctly" $ hedgehog $ do
             let valueType = Str
-            encodeThenDecodeBinary valueType `shouldBe` valueType
+            rdbConfig <- H.forAll genRDBConfig
+            encodeThenDecodeRDBBinary rdbConfig valueType H.=== valueType
 
         describe "Boundary Value and Edge Case Tests" $ do
-            it "handles zero-length key-value pairs" $ do
-                let emptyKey = toRDBLengthPrefixedVal BSC.empty
-                    emptyValue = toRDBLengthPrefixedVal BSC.empty
+            it "handles zero-length key-value pairs" $ hedgehog $ do
+                let emptyKey = toRDBVal BSC.empty
+                    emptyValue = toRDBVal BSC.empty
                     keyVal = KeyValWithNoExpiryInfo Str emptyKey emptyValue
                     opCode = KeyValOpCode keyVal
-                encodeThenDecodeBinary opCode `shouldBe` opCode
+                rdbConfig <- H.forAll genRDBConfig
+                encodeThenDecodeRDBBinary rdbConfig opCode H.=== opCode
 
-            it "handles very long keys and values" $ do
-                let longKey = toRDBLengthPrefixedVal (BSC.pack (replicate 1000 'k'))
-                    longValue = toRDBLengthPrefixedVal (BSC.pack (replicate 10000 'v'))
+            it "handles very long keys and values" $ hedgehog $ do
+                let longKey = toRDBVal (BSC.pack (replicate 1000 'k'))
+                    longValue = toRDBVal (BSC.pack (replicate 10000 'v'))
                     keyVal = KeyValWithNoExpiryInfo Str longKey longValue
                     opCode = KeyValOpCode keyVal
-                encodeThenDecodeBinary opCode `shouldBe` opCode
+                rdbConfig <- H.forAll genRDBConfig
+                encodeThenDecodeRDBBinary rdbConfig opCode H.=== opCode
 
-            it "handles edge case timestamps" $ do
+            it "handles edge case timestamps" $ hedgehog $ do
                 let epochStart = RDBUnixTimestampS 0
                     year2038 = RDBUnixTimestampS 2147483647
                     epochStartMS = RDBUnixTimestampMS 0
@@ -101,26 +120,27 @@ spec_RDB_format_binary_serialization = do
                         KeyValWithExpiryInS
                             epochStart
                             Str
-                            (toRDBLengthPrefixedVal "epoch")
-                            (toRDBLengthPrefixedVal "start")
+                            (toRDBVal "epoch")
+                            (toRDBVal "start")
                     keyVal2 =
                         KeyValWithExpiryInS
                             year2038
                             Str
-                            (toRDBLengthPrefixedVal "y2038")
-                            (toRDBLengthPrefixedVal "problem")
+                            (toRDBVal "y2038")
+                            (toRDBVal "problem")
                     keyVal3 =
                         KeyValWithExpiryInMS
                             epochStartMS
                             Str
-                            (toRDBLengthPrefixedVal "epoch_ms")
-                            (toRDBLengthPrefixedVal "start")
+                            (toRDBVal "epoch_ms")
+                            (toRDBVal "start")
                     keyVal4 =
                         KeyValWithExpiryInMS
                             farFutureMS
                             Str
-                            (toRDBLengthPrefixedVal "far_future")
-                            (toRDBLengthPrefixedVal "ms")
+                            (toRDBVal "far_future")
+                            (toRDBVal "ms")
 
                     opCodes = [FDOpcode keyVal1, FDOpcode keyVal2, FCOpCode keyVal3, FCOpCode keyVal4]
-                mapM_ (\op -> encodeThenDecodeBinary op `shouldBe` op) opCodes
+                rdbConfig <- H.forAll genRDBConfig
+                mapM_ (\op -> encodeThenDecodeRDBBinary rdbConfig op H.=== op) opCodes

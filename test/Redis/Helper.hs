@@ -2,21 +2,21 @@ module Redis.Helper (
     mkCmdReqStr,
     mkBulkString,
     bulkStrToOptionString,
-    encodeThenDecodeSBinary,
-    encodeThenDecodeBinary,
+    encodeThenDecodeRDBBinary,
     pingCmd,
     echoCmd,
     setCmd,
     getCmd,
 ) where
 
-import Redis.RDB.SBinary
+import Redis.RDB.Binary
 
 import Data.Binary (Binary (get, put))
 import Data.Binary.Get (runGet)
 import Data.Binary.Put (runPut, runPutM)
 import Data.ByteString (ByteString)
 import Data.Vector (fromList)
+import Redis.RDB.TestConfig (RDBConfig)
 import Redis.RESP (Array (..), BulkString (..), RESPDataType (MkArrayResponse, MkBulkStringResponse), serializeRESPDataType, toOptionString)
 
 mkCmdReqStr :: [RESPDataType] -> ByteString
@@ -40,8 +40,5 @@ setCmd = mkBulkString "SET"
 getCmd :: RESPDataType
 getCmd = mkBulkString "GET"
 
-encodeThenDecodeSBinary :: (SBinary a) => a -> a
-encodeThenDecodeSBinary = fst . runGet (execSGetWithChecksum getWithChecksum) . snd . runPutM . execSPutWithChecksum . putWithChecksum
-
-encodeThenDecodeBinary :: (Binary a) => a -> a
-encodeThenDecodeBinary = runGet get . runPut . put
+encodeThenDecodeRDBBinary :: (RDBBinary a) => RDBConfig -> a -> a
+encodeThenDecodeRDBBinary rdbConfig = fst . runGet (execRDBGet rdbConfig rdbGet) . snd . runPutM . execRDBPut rdbConfig . rdbPut

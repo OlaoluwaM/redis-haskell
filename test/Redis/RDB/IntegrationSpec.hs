@@ -3,12 +3,17 @@ module Redis.RDB.IntegrationSpec where
 import Redis.RDB.Data
 import Redis.RDB.Format
 import Test.Hspec
+import Test.Hspec.Hedgehog
 
-import Data.Binary qualified as Binary
+import Hedgehog qualified as H
+import Redis.RDB.Binary qualified as Binary
 
 import Control.Exception (SomeException, try)
 import Data.Foldable (for_)
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
+import Redis.Helper (encodeThenDecodeRDBBinary)
+import Redis.RDB.Config (RDBConfig (..))
+import Redis.RDB.TestConfig (defaultRDBConfig, genRDBConfig)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
@@ -16,13 +21,13 @@ createSampleRDBStructure :: POSIXTime -> RDBFile
 createSampleRDBStructure currentTime =
     RDBFile
         { magicString = Redis
-        , version = RDBVersion "0003"
+        , version = RDBv7
         , auxFieldEntries =
-            [ AuxFieldRedisVer $ RedisVersion $ RDBLengthPrefixedShortString "7.0.0"
+            [ AuxFieldRedisVer $ RedisVersion $ RDBShortString "7.0.0"
             , AuxFieldRedisBits RedisBits64
-            , AuxFieldCustom (toRDBLengthPrefixedStr "custom-key") (toRDBLengthPrefixedVal "custom-value")
+            , AuxFieldCustom (toRDBString "custom-key") (toRDBVal "custom-value")
             , AuxFieldCTime $ CTime (fromPosixTimeToRDBUnixTimestampS currentTime)
-            , AuxFieldCustom (toRDBLengthPrefixedStr "another-key") (toRDBLengthPrefixedVal "another-value")
+            , AuxFieldCustom (toRDBString "another-key") (toRDBVal "another-value")
             , AuxFieldUsedMem $ UsedMem 1048576 -- 1MB
             ]
         , dbEntries =
@@ -34,28 +39,28 @@ createSampleRDBStructure currentTime =
                         KeyValWithExpiryInMS
                             { expiryTimeMs = fromPosixTimeToRDBUnixTimestampMS $ currentTime + 300 -- Expires in 5 minutes
                             , valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "key1"
-                            , encodedValue = toRDBLengthPrefixedVal "Hello World"
+                            , encodedKey = toRDBVal "key1"
+                            , encodedValue = toRDBVal "Hello World"
                             }
                     , FDOpcode $
                         KeyValWithExpiryInS
                             { expiryTimeS = fromPosixTimeToRDBUnixTimestampS $ currentTime + 3600 -- Expires in 1 hour
                             , valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "counter"
-                            , encodedValue = toRDBLengthPrefixedVal "42"
+                            , encodedKey = toRDBVal "counter"
+                            , encodedValue = toRDBVal "42"
                             }
                     , FCOpCode $
                         KeyValWithExpiryInMS
                             { expiryTimeMs = fromPosixTimeToRDBUnixTimestampMS $ currentTime + 1800 -- Expires in 30 minutes
                             , valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "123"
-                            , encodedValue = toRDBLengthPrefixedVal "John Doe"
+                            , encodedKey = toRDBVal "123"
+                            , encodedValue = toRDBVal "John Doe"
                             }
                     , KeyValOpCode $
                         KeyValWithNoExpiryInfo
                             { valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "-439284723"
-                            , encodedValue = toRDBLengthPrefixedVal "Negative 32 bit integer"
+                            , encodedKey = toRDBVal "-439284723"
+                            , encodedValue = toRDBVal "Negative 32 bit integer"
                             }
                     ]
                 }
@@ -66,7 +71,7 @@ emptyRDBFile :: RDBFile
 emptyRDBFile =
     RDBFile
         { magicString = Redis
-        , version = RDBVersion "0009"
+        , version = RDBv7
         , auxFieldEntries = []
         , dbEntries = []
         }
@@ -75,9 +80,9 @@ rdbFileWithOnlyAuxFields :: RDBFile
 rdbFileWithOnlyAuxFields =
     RDBFile
         { magicString = Redis
-        , version = RDBVersion "0009"
+        , version = RDBv7
         , auxFieldEntries =
-            [ AuxFieldRedisVer $ RedisVersion $ RDBLengthPrefixedShortString "7.2.0"
+            [ AuxFieldRedisVer $ RedisVersion $ RDBShortString "7.2.0"
             , AuxFieldRedisBits RedisBits64
             , AuxFieldUsedMem $ UsedMem 2048
             ]
@@ -88,7 +93,7 @@ multiDatabaseRDBStructure :: RDBFile
 multiDatabaseRDBStructure =
     RDBFile
         { magicString = Redis
-        , version = RDBVersion "0009"
+        , version = RDBv7
         , auxFieldEntries = []
         , dbEntries =
             [ RDbEntry
@@ -98,8 +103,8 @@ multiDatabaseRDBStructure =
                     [ KeyValOpCode $
                         KeyValWithNoExpiryInfo
                             { valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "db0_key"
-                            , encodedValue = toRDBLengthPrefixedVal "db0_value"
+                            , encodedKey = toRDBVal "db0_key"
+                            , encodedValue = toRDBVal "db0_value"
                             }
                     ]
                 }
@@ -110,8 +115,8 @@ multiDatabaseRDBStructure =
                     [ KeyValOpCode $
                         KeyValWithNoExpiryInfo
                             { valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "db1_key"
-                            , encodedValue = toRDBLengthPrefixedVal "db1_value"
+                            , encodedKey = toRDBVal "db1_key"
+                            , encodedValue = toRDBVal "db1_value"
                             }
                     ]
                 }
@@ -122,8 +127,8 @@ multiDatabaseRDBStructure =
                     [ KeyValOpCode $
                         KeyValWithNoExpiryInfo
                             { valueType = Str
-                            , encodedKey = toRDBLengthPrefixedVal "db2_key"
-                            , encodedValue = toRDBLengthPrefixedVal "db2_value"
+                            , encodedKey = toRDBVal "db2_key"
+                            , encodedValue = toRDBVal "db2_value"
                             }
                     ]
                 }
@@ -140,14 +145,8 @@ exampleRDBFiles =
     , "keys_with_expiry.rdb"
     , "multiple_databases.rdb"
     , "non_ascii_values.rdb"
-    -- , "easily_compressible_string_key.rdb" -- Commented because it requires lzf compression which we do not yet support
+    , "easily_compressible_string_key.rdb"
     ]
-
-encodeThenDecodeBinaryRDBStructure :: RDBFile -> RDBFile
-encodeThenDecodeBinaryRDBStructure rdbFile =
-    let encoded = Binary.encode rdbFile
-        decoded = Binary.decode encoded
-     in decoded
 
 spec_RDB_integration_tests :: Spec
 spec_RDB_integration_tests = do
@@ -156,44 +155,56 @@ spec_RDB_integration_tests = do
             it "Encodes/decodes a sample RDB file successfully (without checksum)" $ do
                 currentTime <- getPOSIXTime
                 let rdbStructure = createSampleRDBStructure currentTime
-                encodeThenDecodeBinaryRDBStructure rdbStructure `shouldBe` rdbStructure
+                let rdbConfig = defaultRDBConfig{generateChecksum = False, skipChecksumValidation = True}
+                encodeThenDecodeRDBBinary rdbConfig rdbStructure `shouldBe` rdbStructure
 
             it "Encodes/decodes a sample RDB file successfully (with checksum)" $ do
                 currentTime <- getPOSIXTime
                 let rdbStructure = createSampleRDBStructure currentTime
-                let encoded = Binary.encode (RDBFileWithChecksum rdbStructure)
-                let decoded = Binary.decode @RDBFile encoded
+                let rdbConfig = defaultRDBConfig{generateChecksum = True, skipChecksumValidation = False}
+                let encoded = Binary.encode rdbConfig rdbStructure
+                let decoded = Binary.decode @RDBFile rdbConfig encoded
 
                 decoded `shouldBe` rdbStructure
 
-            it "Encodes/decodes an empty RDB file successfully" $ do
-                encodeThenDecodeBinaryRDBStructure emptyRDBFile `shouldBe` emptyRDBFile
+            it "Encodes/decodes an empty RDB file successfully" $ hedgehog $ do
+                rdbConfig <- H.forAll genRDBConfig
+                evalIO $ encodeThenDecodeRDBBinary rdbConfig emptyRDBFile `shouldBe` emptyRDBFile
 
-            it "Encodes/decodes an auxiliary-only RDB file successfully" $ do
-                encodeThenDecodeBinaryRDBStructure rdbFileWithOnlyAuxFields `shouldBe` rdbFileWithOnlyAuxFields
+            it "Encodes/decodes an auxiliary-only RDB file successfully" $ hedgehog $ do
+                rdbConfig <- H.forAll genRDBConfig
+                evalIO $ encodeThenDecodeRDBBinary rdbConfig rdbFileWithOnlyAuxFields `shouldBe` rdbFileWithOnlyAuxFields
 
-            it "handles multiple databases correctly" $ do
-                encodeThenDecodeBinaryRDBStructure multiDatabaseRDBStructure `shouldBe` multiDatabaseRDBStructure
+            it "handles multiple databases correctly" $ hedgehog $ do
+                rdbConfig <- H.forAll genRDBConfig
+                evalIO $ encodeThenDecodeRDBBinary rdbConfig multiDatabaseRDBStructure `shouldBe` multiDatabaseRDBStructure
 
-            it "encodes large RDB files efficiently" $ do
-                currentTime <- getPOSIXTime
+            it "encodes large RDB files efficiently" $ hedgehog $ do
+                currentTime <- evalIO getPOSIXTime
                 let largeRDB = createLargeRDB currentTime
-                encodeThenDecodeBinaryRDBStructure largeRDB `shouldBe` largeRDB
+                rdbConfig <- H.forAll genRDBConfig
+                evalIO $ encodeThenDecodeRDBBinary rdbConfig largeRDB `shouldBe` largeRDB
 
         describe "Decoding sample RDB Files" $ do
             for_ exampleRDBFiles $ \filename -> do
                 it ("successfully decodes " <> filename) $ do
                     let filepath = "test/input/example-rdb-files" </> filename
                     fileExists <- doesFileExist filepath
+                    let rdbConfig =
+                            defaultRDBConfig
+                                { useLzfCompression = True
+                                , skipChecksumValidation = False
+                                , generateChecksum = True
+                                }
+
                     if fileExists
                         then do
-                            result <- try (Binary.decodeFile filepath) :: IO (Either SomeException RDBFile)
+                            result <- try (Binary.decodeFile rdbConfig filepath) :: IO (Either SomeException RDBFile)
                             case result of
                                 Left err -> expectationFailure $ "Failed to decode " <> filename <> ": " <> show err
                                 Right decodedRDB -> do
                                     decodedRDB.magicString `shouldBe` Redis
-                                    case decodedRDB.version of
-                                        RDBVersion _ -> pure ()
+                                    decodedRDB.version `shouldSatisfy` (`elem` [minBound .. maxBound])
                         else expectationFailure $ "File not found: " <> filepath
 
 -- | Create a large RDB for performance testing
@@ -201,9 +212,9 @@ createLargeRDB :: POSIXTime -> RDBFile
 createLargeRDB currentTime =
     RDBFile
         { magicString = Redis
-        , version = RDBVersion "0009"
+        , version = RDBv7
         , auxFieldEntries =
-            [ AuxFieldRedisVer $ RedisVersion $ RDBLengthPrefixedShortString "7.0.0"
+            [ AuxFieldRedisVer $ RedisVersion $ RDBShortString "7.0.0"
             , AuxFieldRedisBits RedisBits64
             ]
         , dbEntries =
@@ -223,21 +234,21 @@ generateLargeKeyValList currentTime count =
             [ KeyValOpCode $
                 KeyValWithNoExpiryInfo
                     { valueType = Str
-                    , encodedKey = toRDBLengthPrefixedVal "persistent_key"
-                    , encodedValue = toRDBLengthPrefixedVal "persistent_value"
+                    , encodedKey = toRDBVal "persistent_key"
+                    , encodedValue = toRDBVal "persistent_value"
                     }
             , FCOpCode $
                 KeyValWithExpiryInMS
                     { expiryTimeMs = fromPosixTimeToRDBUnixTimestampMS $ currentTime + 3600
                     , valueType = Str
-                    , encodedKey = toRDBLengthPrefixedVal "expiring_key_ms"
-                    , encodedValue = toRDBLengthPrefixedVal "expiring_value_ms"
+                    , encodedKey = toRDBVal "expiring_key_ms"
+                    , encodedValue = toRDBVal "expiring_value_ms"
                     }
             , FDOpcode $
                 KeyValWithExpiryInS
                     { expiryTimeS = fromPosixTimeToRDBUnixTimestampS $ currentTime + 7200
                     , valueType = Str
-                    , encodedKey = toRDBLengthPrefixedVal "expiring_key_s"
-                    , encodedValue = toRDBLengthPrefixedVal "expiring_value_s"
+                    , encodedKey = toRDBVal "expiring_key_s"
+                    , encodedValue = toRDBVal "expiring_value_s"
                     }
             ]
