@@ -75,7 +75,7 @@ class RDBBinary a where
 
     rdbGet :: RDBGet a
     default rdbGet :: (Binary a) => RDBGet a
-    rdbGet = genericRDBGetUsing Data.Binary.get
+    rdbGet = genericRDBGetUsing get
 
 execRDBPut :: RDBConfig -> RDBPut -> PutM CheckSum
 execRDBPut config = flip execStateT initialChecksum . flip runReaderT config . runRDBPut

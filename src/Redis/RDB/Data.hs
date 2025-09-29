@@ -27,7 +27,6 @@ module Redis.RDB.Data (
     toPosixTimeFromRDBUnixTimestampS,
 ) where
 
-import Data.Binary
 import Redis.RDB.Binary
 
 import Data.Bits qualified as Bits
@@ -62,6 +61,7 @@ import Data.String (IsString (fromString))
 import Data.String.Interpolate (i)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.Generics (Generic)
 import Redis.RDB.Config (RDBConfig (..))
 import Redis.RDB.LZF (LzfCompressedByteString (..), lzfCompress, lzfDecompress)
