@@ -21,7 +21,7 @@ import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), T
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
-import Redis.Store (StoreState, StoreValue (..), mkStoreValue)
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (runTestM)
 
@@ -31,47 +31,47 @@ spec_set_cmd_tests = do
         it "should parse basic SET command with only required arguments" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def))
 
         it "should parse SET command with EX (seconds) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "EX", mkBulkString "60"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{ttlOption = EX (Tagged 60)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = EX (Tagged 60)}))
 
         it "should parse SET command with PX (milliseconds) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "PX", mkBulkString "30000"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{ttlOption = PX (Tagged 30000)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = PX (Tagged 30000)}))
 
         it "should parse SET command with EXAT (unix timestamp) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "EXAT", mkBulkString "1746057600"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{ttlOption = EXAT (Tagged 1746057600)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = EXAT (Tagged 1746057600)}))
 
         it "should parse SET command with PXAT (unix timestamp in ms) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "PXAT", mkBulkString "1746057600000"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{ttlOption = PXAT (Tagged 1746057600000)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = PXAT (Tagged 1746057600000)}))
 
         it "should parse SET command with KEEPTTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "KEEPTTL"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{ttlOption = KeepTTL}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = KeepTTL}))
 
         it "should parse SET command with NX option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "NX"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{setCondition = OnlyIfKeyDoesNotExist}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{setCondition = OnlyIfKeyDoesNotExist}))
 
         it "should parse SET command with XX option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "XX"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{setCondition = OnlyIfKeyExists}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{setCondition = OnlyIfKeyExists}))
 
         it "should parse SET command with GET option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "GET"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" def{returnOldVal = True}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{returnOldVal = True}))
 
         it "should parse multiple SET options together" do
             let cmdReq =
@@ -85,7 +85,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "GET"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" (SetCmdOpts{ttlOption = EX (Tagged 60), setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (SetCmdOpts{ttlOption = EX (Tagged 60), setCondition = OnlyIfKeyDoesNotExist, returnOldVal = True})))
 
         it "should parse options in any order" do
             let cmdReq =
@@ -99,7 +99,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "6000"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" (SetCmdOpts{ttlOption = PX (Tagged 6000), setCondition = OnlyIfKeyExists, returnOldVal = True})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (SetCmdOpts{ttlOption = PX (Tagged 6000), setCondition = OnlyIfKeyExists, returnOldVal = True})))
 
         it "should handle case insensitive option names" do
             let cmdReq =
@@ -112,7 +112,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "60"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" (SetCmdOpts{ttlOption = EX (Tagged 60), setCondition = Always, returnOldVal = True})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (SetCmdOpts{ttlOption = EX (Tagged 60), setCondition = Always, returnOldVal = True})))
 
         it "should accept the first condition when both XX and NX are provided" do
             let cmdReq =
@@ -124,7 +124,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "NX"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" (def{setCondition = OnlyIfKeyExists})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (def{setCondition = OnlyIfKeyExists})))
 
         it "should accept the first TTL option when multiple are provided" do
             let cmdReq =
@@ -138,7 +138,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "1000"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg "key" "value" (def{ttlOption = EX (Tagged 60)})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (def{ttlOption = EX (Tagged 60)})))
 
     describe "TTL Calculation Logic" do
         it "should correctly set up TTL with EX option" do
@@ -197,7 +197,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to update the value for the key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles basic SET command with only required arguments with new key" $ \initialStoreState -> do
@@ -211,7 +211,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to set new key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with EX and NX options when key doesn't exit" $ \_ -> do
@@ -243,7 +243,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure "Failed to update key bike:1 in store")
                         (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ "red"))) . (.value)) . readTVar)
-                        $ HashMap.lookup "bike:1" storeItems
+                        $ HashMap.lookup (StoreKey "bike:1") storeItems
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with XX option (returns NULL when key doesn't exist)" $ \_ -> do
@@ -285,7 +285,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . (.ttlTimestamp)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \initialStoreState -> do
@@ -304,7 +304,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . (.ttlTimestamp)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with KEEPTTL option" $ \initialStoreState -> do
@@ -331,7 +331,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . (.ttlTimestamp)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with GET option (returns NULL for new key)" $ \_ -> do
@@ -382,7 +382,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to set the key #{key} in store|])
                         (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with case-insensitive option names" $ \initialStoreState -> do
@@ -409,7 +409,7 @@ spec_set_cmd_tests = do
                     maybe
                         (pure $ expectationFailure [i|Failed to set the key #{key} in store|])
                         (fmap ((`shouldBe` Nothing) . (.ttlTimestamp)) . readTVar)
-                        $ HashMap.lookup key storeItems
+                        $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles overwriting a key with a different data type (should fail)" $ \initialStoreState -> do
@@ -427,15 +427,15 @@ initializeStoreState = do
         storeItems <-
             traverse
                 (sequenceA . second newTVar)
-                [ ("bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
-                , ("bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
-                , ("car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
-                , ("bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
-                , ("car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just (addUTCTime 3600 now)))
-                , ("user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
-                , ("temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just (addUTCTime 60 now)))
-                , ("counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
-                , ("colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
+                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
+                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
+                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
+                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
+                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just (addUTCTime 3600 now)))
+                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
+                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just (addUTCTime 60 now)))
+                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
+                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
                 ]
         newTVar $ HashMap.fromList storeItems
 

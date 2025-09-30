@@ -42,7 +42,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreState, StoreValue (..), mkStoreValue)
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), mkStoreValue)
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -50,11 +50,11 @@ import Redis.Store.Data (
  )
 import Redis.Utils (millisecondsToSeconds)
 
-data SetCmdArg = SetCmdArg {key :: ByteString, val :: ByteString, opts :: SetCmdOpts}
+data SetCmdArg = SetCmdArg {key :: StoreKey, val :: ByteString, opts :: SetCmdOpts}
     deriving stock (Eq, Show, Generic)
 
 instance ToJSON SetCmdArg where
-    toJSON (SetCmdArg key val opts) =
+    toJSON (SetCmdArg (StoreKey key) val opts) =
         let optsAsJSON = toJSON opts
          in object
                 [ "key" .= fromRight ("(blob)" :: Text) (decodeUtf8' key)
@@ -127,11 +127,11 @@ mkSetCmdOpts = SetCmdOpts
 
 mkSetCmdArg :: (MonadFail m) => [BulkString] -> m SetCmdArg
 mkSetCmdArg [] = fail "SET command requires at least 2 arguments. None were provided"
-mkSetCmdArg [BulkString key, BulkString val] = pure $ SetCmdArg{key, val, opts = def @SetCmdOpts}
+mkSetCmdArg [BulkString key, BulkString val] = pure $ SetCmdArg{key = StoreKey key, val, opts = def @SetCmdOpts}
 mkSetCmdArg (BulkString key : BulkString val : cmdOpts) = do
     let cmdOptsBytestring = toOptionString cmdOpts
     let result = AC.parseOnly parseSetCmdOptions cmdOptsBytestring
-    either fail (\setCmdOpts -> pure $ SetCmdArg{key, val, opts = setCmdOpts}) result
+    either fail (\setCmdOpts -> pure $ SetCmdArg{key = StoreKey key, val, opts = setCmdOpts}) result
 mkSetCmdArg _ = fail "SET command requires at least 2 arguments. None were provided"
 
 handleSet ::

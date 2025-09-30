@@ -11,9 +11,8 @@ module Redis.Helper (
 
 import Redis.RDB.Binary
 
-import Data.Binary (Binary (get, put))
 import Data.Binary.Get (runGet)
-import Data.Binary.Put (runPut, runPutM)
+import Data.Binary.Put (runPutM)
 import Data.ByteString (ByteString)
 import Data.Vector (fromList)
 import Redis.RDB.TestConfig (RDBConfig)

@@ -22,7 +22,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (BulkString), RESPDataType (Null), mkNonNullBulkString, nullBulkString, serializeRESPDataType)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreState, StoreValue (StoreValue))
+import Redis.Store (StoreKey (..), StoreState, StoreValue (StoreValue))
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -31,15 +31,15 @@ import Redis.Store.Data (
 
 -- https://redis.io/docs/latest/commands/get/
 
-newtype GetCmdArg = GetCmdArg {targetKey :: ByteString}
+newtype GetCmdArg = GetCmdArg {targetKey :: StoreKey}
     deriving stock (Eq, Show, Generic)
 
 instance ToJSON GetCmdArg where
-    toJSON (GetCmdArg targetKey) = toJSON @Text $ fromRight "(blob)" $ decodeUtf8' targetKey
+    toJSON (GetCmdArg (StoreKey targetKey)) = toJSON @Text $ fromRight "(blob)" $ decodeUtf8' targetKey
 
 mkGetCmdArg :: (MonadFail m) => [BulkString] -> m GetCmdArg
 mkGetCmdArg [] = fail "GET command requires an argument"
-mkGetCmdArg [BulkString targetKey] = pure $ GetCmdArg targetKey
+mkGetCmdArg [BulkString targetKey] = pure $ GetCmdArg (StoreKey targetKey)
 mkGetCmdArg _ = fail "GET command requires only 1 argument"
 
 handleGet ::

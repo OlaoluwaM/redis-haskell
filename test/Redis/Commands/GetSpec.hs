@@ -20,7 +20,7 @@ import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (getCmd, mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), nullBulkString, serializeRESPDataType)
-import Redis.Store (StoreState, mkStoreValue)
+import Redis.Store (StoreKey (..), StoreState, mkStoreValue)
 import Redis.Store.Data
 import Redis.Test (runTestM)
 
@@ -40,12 +40,12 @@ spec_get_cmd_tests = do
         it "should parse GET command with required key argument" $ do
             let cmdReq = mkCmdReqStr [getCmd, mkBulkString "mykey"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Get (GetCmdArg "mykey"))
+            result `shouldBe` Right (Get (GetCmdArg . StoreKey $ "mykey"))
 
         it "should be case-insensitive for command name" $ do
             let cmdReq = mkCmdReqStr [mkBulkString "GeT", mkBulkString "mykey"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Get (GetCmdArg "mykey"))
+            result `shouldBe` Right (Get (GetCmdArg . StoreKey $ "mykey"))
 
         it "should fail when no argument provided" $ do
             let cmdReq = mkCmdReqStr [getCmd]
@@ -60,7 +60,7 @@ spec_get_cmd_tests = do
         it "should accept non-text key argument" $ do
             let cmdReq = mkCmdReqStr [getCmd, mkBulkString "123"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Get (GetCmdArg "123"))
+            result `shouldBe` Right (Get (GetCmdArg (StoreKey "123")))
 
         context "recognizes various GET command formats" $ do
             for_
@@ -208,14 +208,14 @@ initializeStoreState = do
         storeItems <-
             traverse
                 (sequenceA . second newTVar)
-                [ ("bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
-                , ("bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
-                , ("car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
-                , ("bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
-                , ("car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just (addUTCTime 3600 now)))
-                , ("user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
-                , ("temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just (addUTCTime 60 now)))
-                , ("counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
-                , ("colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
+                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
+                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
+                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
+                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
+                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just (addUTCTime 3600 now)))
+                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
+                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just (addUTCTime 60 now)))
+                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
+                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
                 ]
         newTVar $ HashMap.fromList storeItems

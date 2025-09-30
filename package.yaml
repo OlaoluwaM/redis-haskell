@@ -117,6 +117,7 @@ library:
     - extra
     - filepath
     - Glob
+    - hashable
     # - heap # For modelling other redis data structures
     - optics
     - optparse-applicative
