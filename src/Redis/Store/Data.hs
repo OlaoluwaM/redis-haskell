@@ -3,7 +3,7 @@ module Redis.Store.Data (
     RedisHashMap (..),
     RedisList (..),
     RedisStr (..),
-    getStrTypeRepForRedisDataType,
+    showRedisDataType,
 ) where
 
 import Data.ByteString (ByteString)
@@ -25,7 +25,7 @@ newtype RedisList = RedisList (Seq ByteString)
 newtype RedisHashMap = RedisHashMap (HashMap ByteString ByteString)
     deriving stock (Eq, Show, Data)
 
-getStrTypeRepForRedisDataType :: (IsString a) => RedisDataType -> a
-getStrTypeRepForRedisDataType (MkRedisStr _) = "String"
-getStrTypeRepForRedisDataType (MkRedisList _) = "List"
-getStrTypeRepForRedisDataType (MkRedisHash _) = "Hash"
+showRedisDataType :: (IsString a) => RedisDataType -> a
+showRedisDataType (MkRedisStr _) = "String"
+showRedisDataType (MkRedisList _) = "List"
+showRedisDataType (MkRedisHash _) = "Hash"

@@ -31,7 +31,7 @@ import Data.ByteString.Char8 qualified as BSC
 
 import Control.Applicative (asum, (<|>))
 import Control.Applicative.Combinators (many, manyTill)
-import Control.Monad (unless)
+import Control.Monad (when)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift)
 import Data.Binary.Get (
@@ -198,8 +198,8 @@ data RDBMagicString = Redis
 -}
 
 -- Currently, we only support version 7, though, for now, we only support a subset of the features of version 7
-data RDBVersion = RDBv7
-    deriving stock (Show, Eq, Enum, Bounded)
+data RDBVersion = RDBv4 | RDBv5 | RDBv7
+    deriving stock (Show, Eq, Ord, Enum, Bounded)
 
 {- | Key-value entry types with different expiry behaviors.
 
@@ -459,10 +459,12 @@ instance RDBBinary RDBFile where
         version <- rdbGet @RDBVersion
         auxFieldEntries <- many $ rdbGet @AuxField
         dbEntries <- manyTill (rdbGet @RDbEntry) (rdbGet @EOF) -- Parse database entries until EOF marker
-        generatedChecksum <- State.get
-        -- From RDB v5 and up there should always be a checksum at the end of the rdbFile, even if it is just 0 https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L3678
-        checksum <- lift (toChecksum <$> getWord64le)
-        unless config.skipChecksumValidation $ do
+        let weShouldVerifyChecksum = not config.skipChecksumValidation && version >= RDBv5 && config.generateChecksum
+
+        when weShouldVerifyChecksum $ do
+            generatedChecksum <- State.get
+            -- From RDB v5 and up there should always be a checksum at the end of the rdbFile, even if it is just 0 https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L3678
+            checksum <- lift (toChecksum <$> getWord64le)
             if checksum == generatedChecksum || checksum == defaultChecksum
                 then pure ()
                 else fail [i|Wrong RDB checksum expected: #{generatedChecksum} but got #{checksum}.|]
@@ -487,10 +489,14 @@ instance RDBBinary RDbEntry where
 -- | RDB version is stored as 4 ASCII bytes (e.g., "0003")
 instance RDBBinary RDBVersion where
     rdbPut = \case
+        RDBv4 -> genericRDBPutUsing (putByteString "0004")
+        RDBv5 -> genericRDBPutUsing (putByteString "0005")
         RDBv7 -> genericRDBPutUsing (putByteString "0007")
     rdbGet = do
         versionStr <- genericRDBGetUsing (getByteString 4)
         case versionStr of
+            "0004" -> pure RDBv4
+            "0005" -> pure RDBv5
             "0007" -> pure RDBv7
             _ -> fail [i|Unsupported or invalid RDB version: #{versionStr}|]
 

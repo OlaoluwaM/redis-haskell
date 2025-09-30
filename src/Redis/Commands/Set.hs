@@ -46,7 +46,7 @@ import Redis.Store (StoreState, StoreValue (..), mkStoreValue)
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
-    getStrTypeRepForRedisDataType,
+    showRedisDataType,
  )
 import Redis.Utils (millisecondsToSeconds)
 
@@ -176,7 +176,7 @@ handleSet (SetCmdArg key newVal opts) = do
                         writeTVar kvStoreState (HashMap.insert key newStoreValAtKey kvStore)
                         pure . Right . bool defaultResponse (mkNonNullBulkString prevValAtKey) $ shouldReturnOldKeyValue
                     x -> pure $ do
-                        let valTypeAsStr = getStrTypeRepForRedisDataType @ByteString x
+                        let valTypeAsStr = showRedisDataType @ByteString x
                         Left @ByteString [i|(error) SET can only used on keys holding string values, but the value at key #{key} is of type #{valTypeAsStr}|]
 
     sendThroughSocket socket . fromEither . fmap serializeRESPDataType $ output

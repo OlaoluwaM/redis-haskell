@@ -26,7 +26,7 @@ import Redis.Store (StoreState, StoreValue (StoreValue))
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
-    getStrTypeRepForRedisDataType,
+    showRedisDataType,
  )
 
 -- https://redis.io/docs/latest/commands/get/
@@ -72,7 +72,7 @@ handleGet (GetCmdArg targetKey) = do
                                 let keyValTTLHasExpired = currentTime > ttl
                                 pure . bool (Right $ mkNonNullBulkString val) (Right nullBulkString) $ keyValTTLHasExpired
                     x -> do
-                        let actualValType = getStrTypeRepForRedisDataType @ByteString x
+                        let actualValType = showRedisDataType @ByteString x
                         pure . Left $ [i|(error) GET command only supports string values, but value at key #{targetKey} was of type #{actualValType}|]
 
     sendThroughSocket socket . either id serializeRESPDataType $ output
