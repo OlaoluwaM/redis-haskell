@@ -18,7 +18,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString, decodeUtf8BulkString', mkNonNullBulkString, mkNonNullRESPArray, serializeRESPDataType)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Server.Settings (ServerSettings (ServerSettings), serializeSettingsValue)
+import Redis.Server.Settings (ServerSettings (..), Setting (..), serializeSettingsValue)
 import System.FilePath.Glob (compile, match)
 
 -- https://redis.io/docs/latest/commands/config-get/
@@ -45,7 +45,7 @@ handleConfigGet (ConfigGetCmdArg configOptionPatternsToGet) = do
     let (ServerSettings serverSettings) = view #settings env
     let normalizedConfigGetOptionPatternsToGet = map (compile . T.unpack . T.toLower) configOptionPatternsToGet
 
-    let serverSettingOptions = HashMap.mapKeys (T.unpack . T.toLower) serverSettings
+    let serverSettingOptions = HashMap.mapKeys (T.unpack . T.toLower . (.setting)) serverSettings
 
     let filteredMap = HashMap.filterWithKey (\settingKey _ -> any (`match` settingKey) normalizedConfigGetOptionPatternsToGet) serverSettingOptions
     let result = concatMap (fromTuple . bimap fromString serializeSettingsValue) . HashMap.toList $ filteredMap

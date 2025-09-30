@@ -14,12 +14,14 @@ import Options.Applicative (
     helper,
     info,
     progDesc,
+    simpleVersioner,
     (<**>),
  )
 import Redis.Handler (handleCommandReq)
 import Redis.Server (runServer)
 import Redis.Server.Context (ServerContext (..))
 import Redis.Server.Settings (ServerSettings, serverSettingsOptParser)
+import Redis.Server.Version (redisVersion)
 import Redis.Store (StoreState, genInitialStore)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
@@ -29,15 +31,15 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
+    serverSettings <- execParser opts
     putStrLn $ "Redis server listening on port " <> port
     initialStore <- newTVarIO genInitialStore
-    serverSettings <- execParser opts
     runTCPServer Nothing port (handleRedisClientConnection initialStore serverSettings)
   where
     port :: String
     port = "6379"
 
-    opts = info (serverSettingsOptParser <**> helper) (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
+    opts = info (serverSettingsOptParser <**> helper <**> simpleVersioner redisVersion) (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
 
 handleRedisClientConnection :: StoreState -> ServerSettings -> Socket -> IO ()
 handleRedisClientConnection storeState serverSettings s = do

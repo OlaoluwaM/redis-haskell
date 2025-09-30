@@ -2,6 +2,7 @@ module Redis.Store (
     StoreState,
     StoreValue (..),
     StoreKey (..),
+    Store,
     genInitialStore,
     getItemFromStore,
     addItemToStore,

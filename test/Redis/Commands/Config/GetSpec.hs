@@ -15,7 +15,7 @@ import Redis.Commands.Parser (Command (..), ConfigSubCommand (..), commandParser
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr)
 import Redis.RESP (BulkString (..), RESPDataType (..), arrayParser, mkNonNullBulkString, mkNonNullRESPArray, respArrayToList, serializeRESPDataType)
-import Redis.Server.Settings (ServerSettings (..), SettingValue (..))
+import Redis.Server.Settings (ServerSettings (..), Setting (..), SettingValue (..))
 import Redis.Test (PassableTestContext (..), runTestM')
 
 -- Helper function to check if a parsed command is a ConfigGet command
@@ -41,27 +41,27 @@ globalTestServerSettings :: ServerSettings
 globalTestServerSettings =
     ServerSettings $
         HashMap.fromList
-            [ ("timeout", TextVal "300")
-            , ("tcp-keepalive", TextVal "300")
-            , ("databases", TextVal "16")
-            , ("maxmemory", TextVal "0")
-            , ("maxmemory-policy", TextVal "noeviction")
-            , ("save", TextVal "3600 1 300 100 60 10000")
-            , ("dir", TextVal "/var/lib/redis")
-            , ("dbfilename", TextVal "dump.rdb")
-            , ("rdbcompression", BoolVal True)
-            , ("rdbchecksum", BoolVal True)
-            , ("port", TextVal "6379")
-            , ("bind", TextVal "127.0.0.1")
-            , ("protected-mode", BoolVal True)
-            , ("tcp-backlog", TextVal "511")
-            , ("unixsocket", TextVal "")
-            , ("unixsocketperm", TextVal "0")
-            , ("loglevel", TextVal "notice")
-            , ("logfile", TextVal "")
-            , ("syslog-enabled", BoolVal False)
-            , ("syslog-ident", TextVal "redis")
-            , ("syslog-facility", TextVal "local0")
+            [ (Setting "timeout", TextVal "300")
+            , (Setting "tcp-keepalive", TextVal "300")
+            , (Setting "databases", TextVal "16")
+            , (Setting "maxmemory", TextVal "0")
+            , (Setting "maxmemory-policy", TextVal "noeviction")
+            , (Setting "save", TextVal "3600 1 300 100 60 10000")
+            , (Setting "dir", TextVal "/var/lib/redis")
+            , (Setting "dbfilename", TextVal "dump.rdb")
+            , (Setting "rdbcompression", BoolVal True)
+            , (Setting "rdbchecksum", BoolVal True)
+            , (Setting "port", TextVal "6379")
+            , (Setting "bind", TextVal "127.0.0.1")
+            , (Setting "protected-mode", BoolVal True)
+            , (Setting "tcp-backlog", TextVal "511")
+            , (Setting "unixsocket", TextVal "")
+            , (Setting "unixsocketperm", TextVal "0")
+            , (Setting "loglevel", TextVal "notice")
+            , (Setting "logfile", TextVal "")
+            , (Setting "syslog-enabled", BoolVal False)
+            , (Setting "syslog-ident", TextVal "redis")
+            , (Setting "syslog-facility", TextVal "local0")
             ]
 
 spec_config_get_cmd_tests :: Spec
@@ -149,7 +149,7 @@ spec_config_get_cmd_tests = do
         context "Happy Path Scenarios" $ do
             it "should retrieve specific config parameter when it exists" $ do
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout"]
-                let testSettings = ServerSettings{getSettings = HashMap.fromList [("timeout", IntVal 300)]}
+                let testSettings = ServerSettings{settings = HashMap.fromList [(Setting "timeout", IntVal 300)]}
                 result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
                 -- Expected format: ["timeout", "300"]
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "timeout", mkNonNullBulkString "300"]
@@ -157,7 +157,7 @@ spec_config_get_cmd_tests = do
 
             it "should retrieve multiple config parameters" $ do
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout", mkBulkString "search-on-timeout"]
-                let testSettings = ServerSettings (HashMap.fromList [("timeout", IntVal 400), ("search-on-timeout", BoolVal False)])
+                let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", IntVal 400), (Setting "search-on-timeout", BoolVal False)])
                 let testContext = PassableTestContext Nothing (Just testSettings)
 
                 result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
@@ -180,12 +180,12 @@ spec_config_get_cmd_tests = do
                 let testSettings =
                         ServerSettings
                             ( HashMap.fromList
-                                [ ("maxmemory", IntVal 0)
-                                , ("hash-max-listpack-entries", IntVal 512)
-                                , ("hash-max-ziplist-entries", IntVal 512)
-                                , ("set-max-intset-entries", IntVal 512)
-                                , ("zset-max-listpack-entries", IntVal 128)
-                                , ("zset-max-ziplist-entries", IntVal 128)
+                                [ (Setting "maxmemory", IntVal 0)
+                                , (Setting "hash-max-listpack-entries", IntVal 512)
+                                , (Setting "hash-max-ziplist-entries", IntVal 512)
+                                , (Setting "set-max-intset-entries", IntVal 512)
+                                , (Setting "zset-max-listpack-entries", IntVal 128)
+                                , (Setting "zset-max-ziplist-entries", IntVal 128)
                                 ]
                             )
 
@@ -217,17 +217,17 @@ spec_config_get_cmd_tests = do
                 let testSettings =
                         ServerSettings
                             ( HashMap.fromList
-                                [ ("maxmemory", IntVal 0)
-                                , ("hash-max-listpack-entries", IntVal 512)
-                                , ("hash-max-ziplist-entries", IntVal 512)
-                                , ("set-max-intset-entries", IntVal 512)
-                                , ("should-use-rdb", BoolVal True)
-                                , ("zset-max-listpack-entries", IntVal 128)
-                                , ("zset-max-ziplist-entries", IntVal 128)
-                                , ("timeout", IntVal 500)
-                                , ("search-threads", IntVal 20)
-                                , ("dir", TextVal "/tmp")
-                                , ("dbfilename", TextVal "file.dbd")
+                                [ (Setting "maxmemory", IntVal 0)
+                                , (Setting "hash-max-listpack-entries", IntVal 512)
+                                , (Setting "hash-max-ziplist-entries", IntVal 512)
+                                , (Setting "set-max-intset-entries", IntVal 512)
+                                , (Setting "should-use-rdb", BoolVal True)
+                                , (Setting "zset-max-listpack-entries", IntVal 128)
+                                , (Setting "zset-max-ziplist-entries", IntVal 128)
+                                , (Setting "timeout", IntVal 500)
+                                , (Setting "search-threads", IntVal 20)
+                                , (Setting "dir", TextVal "/tmp")
+                                , (Setting "dbfilename", TextVal "file.dbd")
                                 ]
                             )
 
@@ -269,12 +269,12 @@ spec_config_get_cmd_tests = do
             let testSettings =
                     ServerSettings
                         ( HashMap.fromList
-                            [ ("dbfilename", TextVal "dump.rdb")
-                            , ("logfile", TextVal "")
-                            , ("should-use-rdb", BoolVal True)
-                            , ("zset-max-listpack-entries", IntVal 128)
-                            , ("zset-max-ziplist-entries", IntVal 128)
-                            , ("use-file-persistence", BoolVal True)
+                            [ (Setting "dbfilename", TextVal "dump.rdb")
+                            , (Setting "logfile", TextVal "")
+                            , (Setting "should-use-rdb", BoolVal True)
+                            , (Setting "zset-max-listpack-entries", IntVal 128)
+                            , (Setting "zset-max-ziplist-entries", IntVal 128)
+                            , (Setting "use-file-persistence", BoolVal True)
                             ]
                         )
             let testContext = PassableTestContext Nothing (Just testSettings)
@@ -298,7 +298,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle exact parameter names case-sensitively" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "port"]
-            let testSettings = ServerSettings (HashMap.fromList [("PORT", TextVal "6379"), ("timeout", IntVal 300), ("retry-on-error", BoolVal True)])
+            let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "timeout", IntVal 300), (Setting "retry-on-error", BoolVal True)])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
             result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
@@ -310,27 +310,27 @@ spec_config_get_cmd_tests = do
             let testSettings =
                     ServerSettings $
                         HashMap.fromList
-                            [ ("timeout", TextVal "300")
-                            , ("tcp-keepalive", TextVal "300")
-                            , ("databases", TextVal "16")
-                            , ("maxmemory", TextVal "0")
-                            , ("maxmemory-policy", TextVal "noeviction")
-                            , ("save", TextVal "3600 1 300 100 60 10000")
-                            , ("dir", TextVal "/var/lib/redis")
-                            , ("dbfilename", TextVal "dump.rdb")
-                            , ("rdbcompression", BoolVal True)
-                            , ("rdbchecksum", BoolVal True)
-                            , ("port", TextVal "6379")
-                            , ("bind", TextVal "127.0.0.1")
-                            , ("protected-mode", BoolVal True)
-                            , ("tcp-backlog", TextVal "511")
-                            , ("unixsocket", TextVal "")
-                            , ("unixsocketperm", TextVal "0")
-                            , ("loglevel", TextVal "notice")
-                            , ("logfile", TextVal "")
-                            , ("syslog-enabled", BoolVal False)
-                            , ("syslog-ident", TextVal "redis")
-                            , ("syslog-facility", TextVal "local0")
+                            [ (Setting "timeout", TextVal "300")
+                            , (Setting "tcp-keepalive", TextVal "300")
+                            , (Setting "databases", TextVal "16")
+                            , (Setting "maxmemory", TextVal "0")
+                            , (Setting "maxmemory-policy", TextVal "noeviction")
+                            , (Setting "save", TextVal "3600 1 300 100 60 10000")
+                            , (Setting "dir", TextVal "/var/lib/redis")
+                            , (Setting "dbfilename", TextVal "dump.rdb")
+                            , (Setting "rdbcompression", BoolVal True)
+                            , (Setting "rdbchecksum", BoolVal True)
+                            , (Setting "port", TextVal "6379")
+                            , (Setting "bind", TextVal "127.0.0.1")
+                            , (Setting "protected-mode", BoolVal True)
+                            , (Setting "tcp-backlog", TextVal "511")
+                            , (Setting "unixsocket", TextVal "")
+                            , (Setting "unixsocketperm", TextVal "0")
+                            , (Setting "loglevel", TextVal "notice")
+                            , (Setting "logfile", TextVal "")
+                            , (Setting "syslog-enabled", BoolVal False)
+                            , (Setting "syslog-ident", TextVal "redis")
+                            , (Setting "syslog-facility", TextVal "local0")
                             ]
             let testContext = PassableTestContext Nothing (Just testSettings)
 
@@ -365,27 +365,27 @@ spec_config_get_cmd_tests = do
             let testSettings =
                     ServerSettings $
                         HashMap.fromList
-                            [ ("timeout", TextVal "300")
-                            , ("tcp-keepalive", TextVal "300")
-                            , ("databases", TextVal "16")
-                            , ("maxmemory", TextVal "0")
-                            , ("maxmemory-policy", TextVal "noeviction")
-                            , ("save", TextVal "3600 1 300 100 60 10000")
-                            , ("dir", TextVal "/var/lib/redis")
-                            , ("dbfilename", TextVal "dump.rdb")
-                            , ("rdbcompression", BoolVal True)
-                            , ("rdbchecksum", BoolVal True)
-                            , ("port", TextVal "6379")
-                            , ("bind", TextVal "127.0.0.1")
-                            , ("protected-mode", BoolVal True)
-                            , ("tcp-backlog", TextVal "511")
-                            , ("unixsocket", TextVal "")
-                            , ("unixsocketperm", TextVal "0")
-                            , ("loglevel", TextVal "notice")
-                            , ("logfile", TextVal "")
-                            , ("syslog-enabled", BoolVal False)
-                            , ("syslog-ident", TextVal "redis")
-                            , ("syslog-facility", TextVal "local0")
+                            [ (Setting "timeout", TextVal "300")
+                            , (Setting "tcp-keepalive", TextVal "300")
+                            , (Setting "databases", TextVal "16")
+                            , (Setting "maxmemory", TextVal "0")
+                            , (Setting "maxmemory-policy", TextVal "noeviction")
+                            , (Setting "save", TextVal "3600 1 300 100 60 10000")
+                            , (Setting "dir", TextVal "/var/lib/redis")
+                            , (Setting "dbfilename", TextVal "dump.rdb")
+                            , (Setting "rdbcompression", BoolVal True)
+                            , (Setting "rdbchecksum", BoolVal True)
+                            , (Setting "port", TextVal "6379")
+                            , (Setting "bind", TextVal "127.0.0.1")
+                            , (Setting "protected-mode", BoolVal True)
+                            , (Setting "tcp-backlog", TextVal "511")
+                            , (Setting "unixsocket", TextVal "")
+                            , (Setting "unixsocketperm", TextVal "0")
+                            , (Setting "loglevel", TextVal "notice")
+                            , (Setting "logfile", TextVal "")
+                            , (Setting "syslog-enabled", BoolVal False)
+                            , (Setting "syslog-ident", TextVal "redis")
+                            , (Setting "syslog-facility", TextVal "local0")
                             ]
 
             result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
@@ -396,27 +396,27 @@ spec_config_get_cmd_tests = do
             let testSettings =
                     ServerSettings $
                         HashMap.fromList
-                            [ ("timeout", TextVal "300")
-                            , ("tcp-keepalive", TextVal "300")
-                            , ("databases", TextVal "16")
-                            , ("maxmemory", TextVal "0")
-                            , ("maxmemory-policy", TextVal "noeviction")
-                            , ("save", TextVal "3600 1 300 100 60 10000")
-                            , ("dir", TextVal "/var/lib/redis")
-                            , ("dbfilename", TextVal "dump.rdb")
-                            , ("rdbcompression", BoolVal True)
-                            , ("rdbchecksum", BoolVal True)
-                            , ("port", TextVal "6379")
-                            , ("bind", TextVal "127.0.0.1")
-                            , ("protected-mode", BoolVal True)
-                            , ("tcp-backlog", TextVal "511")
-                            , ("unixsocket", TextVal "")
-                            , ("unixsocketperm", TextVal "0")
-                            , ("loglevel", TextVal "notice")
-                            , ("logfile", TextVal "")
-                            , ("syslog-enabled", BoolVal False)
-                            , ("syslog-ident", TextVal "redis")
-                            , ("syslog-facility", TextVal "local0")
+                            [ (Setting "timeout", TextVal "300")
+                            , (Setting "tcp-keepalive", TextVal "300")
+                            , (Setting "databases", TextVal "16")
+                            , (Setting "maxmemory", TextVal "0")
+                            , (Setting "maxmemory-policy", TextVal "noeviction")
+                            , (Setting "save", TextVal "3600 1 300 100 60 10000")
+                            , (Setting "dir", TextVal "/var/lib/redis")
+                            , (Setting "dbfilename", TextVal "dump.rdb")
+                            , (Setting "rdbcompression", BoolVal True)
+                            , (Setting "rdbchecksum", BoolVal True)
+                            , (Setting "port", TextVal "6379")
+                            , (Setting "bind", TextVal "127.0.0.1")
+                            , (Setting "protected-mode", BoolVal True)
+                            , (Setting "tcp-backlog", TextVal "511")
+                            , (Setting "unixsocket", TextVal "")
+                            , (Setting "unixsocketperm", TextVal "0")
+                            , (Setting "loglevel", TextVal "notice")
+                            , (Setting "logfile", TextVal "")
+                            , (Setting "syslog-enabled", BoolVal False)
+                            , (Setting "syslog-ident", TextVal "redis")
+                            , (Setting "syslog-facility", TextVal "local0")
                             ]
             let testContext = PassableTestContext Nothing (Just testSettings)
 
@@ -433,7 +433,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle case sensitivity correctly" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "TIMEOUT"] -- uppercase
-            let testSettings = ServerSettings (HashMap.fromList [("timeout", TextVal "300")])
+            let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", TextVal "300")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
             result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
@@ -446,9 +446,9 @@ spec_config_get_cmd_tests = do
             let specialSettings =
                     ServerSettings $
                         HashMap.fromList
-                            [ ("param-with-dash", TextVal "value1")
-                            , ("param_with_underscore", TextVal "value2")
-                            , ("param.with.dots", TextVal "value3")
+                            [ (Setting "param-with-dash", TextVal "value1")
+                            , (Setting "param_with_underscore", TextVal "value2")
+                            , (Setting "param.with.dots", TextVal "value3")
                             ]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*"]
             let testContext = PassableTestContext Nothing (Just specialSettings)
@@ -471,7 +471,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle empty string configuration values" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "logfile"]
-            let testSettings = ServerSettings (HashMap.fromList [("logfile", TextVal "")])
+            let testSettings = ServerSettings (HashMap.fromList [(Setting "logfile", TextVal "")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
             result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
@@ -480,7 +480,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle complex wildcard patterns with question marks" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "po?t"]
-            let testSettings = ServerSettings (HashMap.fromList [("port", TextVal "6379"), ("post", TextVal "value"), ("pont", TextVal "bridge")])
+            let testSettings = ServerSettings (HashMap.fromList [(Setting "port", TextVal "6379"), (Setting "post", TextVal "value"), (Setting "pont", TextVal "bridge")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
             result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
@@ -501,7 +501,7 @@ spec_config_get_cmd_tests = do
                 parsedResult
 
         it "should handle escaped special characters in patterns" $ do
-            let specialSettings = ServerSettings $ HashMap.fromList [("param*name", TextVal "special"), ("param-name", TextVal "normal")]
+            let specialSettings = ServerSettings $ HashMap.fromList [(Setting "param*name", TextVal "special"), (Setting "param-name", TextVal "normal")]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param\\*name"]
             let testContext = PassableTestContext Nothing (Just specialSettings)
 
@@ -515,7 +515,7 @@ spec_config_get_cmd_tests = do
             let largeSettings =
                     ServerSettings $
                         HashMap.fromList
-                            [("param" <> T.pack (show n), TextVal ("value" <> T.pack (show n))) | n <- [1 .. 10 :: Int]]
+                            [(Setting ("param" <> T.pack (show n)), TextVal ("value" <> T.pack (show n))) | n <- [1 .. 10 :: Int]]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param5"]
             let testContext = PassableTestContext Nothing (Just largeSettings)
 
@@ -525,7 +525,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle very long parameter names" $ do
             let longParamName = T.pack $ "very-long-parameter-name-" <> replicate 100 'x'
-            let longSettings = ServerSettings $ HashMap.fromList [(longParamName, TextVal "longvalue")]
+            let longSettings = ServerSettings $ HashMap.fromList [(Setting longParamName, TextVal "longvalue")]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString (encodeUtf8 longParamName)]
             let testContext = PassableTestContext Nothing (Just longSettings)
 
@@ -538,7 +538,7 @@ spec_config_get_cmd_tests = do
 
         it "should handle very long parameter values" $ do
             let longValue = T.pack $ replicate 1000 'a'
-            let longSettings = ServerSettings $ HashMap.fromList [("longparam", TextVal longValue)]
+            let longSettings = ServerSettings $ HashMap.fromList [(Setting "longparam", TextVal longValue)]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "longparam"]
             let testContext = PassableTestContext Nothing (Just longSettings)
 
