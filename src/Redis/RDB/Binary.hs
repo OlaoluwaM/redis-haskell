@@ -15,7 +15,7 @@ module Redis.RDB.Binary (
     decodeOrFail,
     encodeFile,
     decodeFile,
-    decodeFileOrFail,
+    decodeOrFail,
 ) where
 
 import Data.ByteString qualified as BS
@@ -146,9 +146,12 @@ encode config = snd . runPutM . execRDBPut config . rdbPut
 decode :: (RDBBinary a) => RDBConfig -> BSL.ByteString -> a
 decode config = fst . runGet (execRDBGet config rdbGet)
 
-decodeOrFail ::
+decodeOrFail :: (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either (BSL.ByteString, ByteOffset, String) a
+decodeOrFail config = fmap (\(_, _, x) -> x) . decodeOrFailWithValueAndMetadata config
+
+decodeOrFailWithValueAndMetadata ::
     (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either (BSL.ByteString, ByteOffset, String) (BSL.ByteString, ByteOffset, a)
-decodeOrFail config = runGetOrFail (fst <$> execRDBGet config rdbGet)
+decodeOrFailWithValueAndMetadata config = runGetOrFail (fst <$> execRDBGet config rdbGet)
 
 encodeFile :: (RDBBinary a) => RDBConfig -> FilePath -> a -> IO ()
 encodeFile config filePath v = BSL.writeFile filePath (encode config v)
