@@ -115,6 +115,7 @@ library:
     - deepseq
     - envparse
     - extra
+    - exceptions
     - filepath
     - Glob
     - hashable
@@ -122,6 +123,7 @@ library:
     - optics
     - optparse-applicative
     - parser-combinators
+    - path
     - safe
     - split
     - stm
@@ -151,6 +153,7 @@ tests:
       - hspec-hedgehog
       - hedgehog
       - optics
+      - path
       - tagged
       - tasty
       - tasty-discover

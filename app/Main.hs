@@ -2,8 +2,9 @@ module Main (main) where
 
 import Data.ByteString qualified as BS
 
+import Control.Applicative (optional)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Network.Run.TCP (runTCPServer)
 import Network.Socket (Socket)
 import Network.Socket.ByteString (recv)
@@ -20,7 +21,7 @@ import Options.Applicative (
 import Redis.Handler (handleCommandReq)
 import Redis.Server (runServer)
 import Redis.Server.Context (ServerContext (..))
-import Redis.Server.Settings (ServerSettings, serverSettingsOptParser)
+import Redis.Server.Settings (ServerSettings, Settings (..), serverSettings)
 import Redis.Server.Version (redisVersion)
 import Redis.Store (StoreState, genInitialStore)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
@@ -31,15 +32,15 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
-    serverSettings <- execParser opts
+    serverSettings <- execParser serverSettingsParser
     putStrLn $ "Redis server listening on port " <> port
     initialStore <- newTVarIO genInitialStore
-    runTCPServer Nothing port (handleRedisClientConnection initialStore serverSettings)
+    runTCPServer Nothing port (handleRedisClientConnection initialStore serverSettings.settingsFromCommandLine)
   where
     port :: String
     port = "6379"
 
-    opts = info (serverSettingsOptParser <**> helper <**> simpleVersioner redisVersion) (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
+    serverSettingsParser = info (serverSettings <**> helper <**> simpleVersioner redisVersion) (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
 
 handleRedisClientConnection :: StoreState -> ServerSettings -> Socket -> IO ()
 handleRedisClientConnection storeState serverSettings s = do
