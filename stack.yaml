@@ -8,7 +8,8 @@
 resolver: lts-23.18
 
 packages:
-  - .
+  - codecrafters-redis
+  - codecrafters-redis-ffi
 
 extra-deps:
   - text-ascii-1.2.1
