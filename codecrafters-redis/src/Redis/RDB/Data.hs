@@ -1,15 +1,15 @@
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 
 module Redis.RDB.Data (
     RDBStringOrIntVal (..),
     RDBString (..),
-    RDBShortString (..),
-    RDBMediumString (..),
-    RDBLongString (..),
-    RDBExtraLongString (..),
+    RDBShortString,
+    RDBMediumString,
+    RDBLongString,
+    RDBExtraLongString,
     RDBInt8 (..),
     RDBInt16 (..),
     RDBInt32 (..),
@@ -43,7 +43,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
 import Control.Applicative (Alternative (..), asum)
-import Control.DeepSeq (NFData)
+import Control.DeepSeq (NFData (..))
 import Control.Monad.Reader (ask)
 import Data.Binary.Get (
     getByteString,
@@ -67,12 +67,11 @@ import Data.Binary.Put (
     putWord64be,
     putWord64le,
  )
-import Data.Data (Proxy (..), typeRep)
+import Data.Data (Proxy (..))
 import Data.Either (isRight)
 import Data.Fixed (Pico)
 import Data.Int (Int16, Int32, Int8)
 import Data.Maybe (isNothing)
-import Data.String.Interpolate (i)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -80,9 +79,13 @@ import GHC.Generics (Generic)
 import GHC.TypeLits (natVal)
 import Redis.RDB.Config (RDBConfig (..))
 import Redis.RDB.LZF (LzfCompressedByteString (..), lzfCompress, lzfDecompress)
-import Redis.Utils (millisecondsToSeconds, secondsToMilliseconds)
-import Refined (And, From, GreaterThan, LessThan, Predicate (..), Refined, refine, refineFail, throwRefineOtherException, unrefine)
-import Refined.Unsafe (reallyUnsafeRefine)
+import Redis.RDB.Rerefined (refineErrorWithContext)
+import Redis.Utils (genericShow, millisecondsToSeconds, secondsToMilliseconds)
+import Rerefined (Refined, refine, unrefine, unsafeRefine)
+import Rerefined.Orphans ()
+import Rerefined.Predicate (Predicate (..), Refine (..))
+import Rerefined.Predicates (And, CompareLength, CompareValue, Sign (..), validateVia)
+import Rerefined.Predicates.Operators (type (.<), type (.<=), type (.>), type (.>=))
 
 {-
     Okay, so the RDB spec describes what a variant of variable-length encoding that we shall refer to as rdb-variable-length encoding since this variant differs subtly from the standard variable-length encoding. Now, that said, the rdb-variable length encoding is mostly for the length of things to ensure that the length is stored smartly and efficiently, not using more space/bytes than necessary. However, Redis also uses this encoding/algorithm to sometimes encode integers hence we have the RDBLengthPrefix6, RDBLengthPrefix14, and RDBLengthPrefix32, types which encode integers as if they were a length of a string but without the accompany byte sequence you'd expect for a string.
@@ -98,64 +101,41 @@ import Refined.Unsafe (reallyUnsafeRefine)
 
 data RDBStringLength = ShortString | MediumString | LongString | ExtraLongString
 
--- newtype RDBShortString' = RDBShortString' {rdbShortString :: BS.ByteString}
---     deriving stock (Show, Eq, Ord, Generic)
---     deriving newtype (IsString)
---     deriving anyclass (NFData)
+instance Predicate ShortString where
+    type PredicateName d ShortString = "ShortString"
+
+instance Predicate MediumString where
+    type PredicateName d MediumString = "MediumString"
+
+instance Predicate LongString where
+    type PredicateName d LongString = "LongString"
+
+instance Predicate ExtraLongString where
+    type PredicateName d ExtraLongString = "ExtraLongString"
 
 type RDBShortString = Refined ShortString BS.ByteString
+type RDBShortStringCompareLen = (And (CompareLength (.>=) 0) (CompareLength (.<) SixBitUpperBound))
 
-instance Predicate ShortString BS.ByteString where
-    validate p bs =
-        let len = BS.length bs
-         in case refine @SixBitLengthPrefixBounds len of
-                Right _ -> Nothing
-                Left err ->
-                    throwRefineOtherException
-                        (typeRep p)
-                        [i|RDBShortString must have length between 0 (inclusive) and #{show shortStringLenCutoff} (exclusive), got #{show len}. #{show err} |]
-
--- newtype RDBMediumString = RDBMediumString {rdbMediumString :: BS.ByteString}
---     deriving stock (Show, Eq, Ord, Generic)
---     deriving newtype (IsString)
---     deriving anyclass (NFData)
+instance Refine ShortString BS.ByteString where
+    validate = validateVia @RDBShortStringCompareLen
 
 type RDBMediumString = Refined MediumString BS.ByteString
+type RDBMediumStringCompareLen = (And (CompareLength (.>=) SixBitUpperBound) (CompareLength (.<) FourteenBitUpperBound))
 
-instance Predicate MediumString BS.ByteString where
-    validate p bs =
-        let len = BS.length bs
-         in case refine @FourteenBitLengthPrefixBounds len of
-                Right _ -> Nothing
-                Left err -> throwRefineOtherException (typeRep p) [i|RDBMediumString must have length between #{show shortStringLenCutoff} (inclusive) and #{show mediumStringLenCutoff} (exclusive), got #{show len}. #{show err} |]
-
--- newtype RDBLongString = RDBLongString {rdbLongString :: BS.ByteString}
---     deriving stock (Show, Eq, Ord, Generic)
---     deriving newtype (IsString)
---     deriving anyclass (NFData)
+instance Refine MediumString BS.ByteString where
+    validate = validateVia @RDBMediumStringCompareLen
 
 type RDBLongString = Refined LongString BS.ByteString
+type RDBLongStringCompareLen = (And (CompareLength (.>=) FourteenBitUpperBound) (CompareLength (.<) ThirtyTwoBitUpperBound))
 
-instance Predicate LongString BS.ByteString where
-    validate p bs =
-        let len = BS.length bs
-         in case refine @ThirtyTwoBitLengthPrefixBounds len of
-                Right _ -> Nothing
-                Left err -> throwRefineOtherException (typeRep p) [i|RDBLongString must have length between #{show mediumStringLenCutoff} (inclusive) and #{show longStringLenCutoff} (exclusive), got #{show len}. #{show err} |]
-
--- newtype RDBExtraLongString = RDBExtraLongString {rdbExtraLongString :: BS.ByteString}
---     deriving stock (Show, Eq, Ord, Generic)
---     deriving newtype (IsString)
---     deriving anyclass (NFData)
+instance Refine LongString BS.ByteString where
+    validate = validateVia @RDBLongStringCompareLen
 
 type RDBExtraLongString = Refined ExtraLongString BS.ByteString
+type RDBExtraLongStringCompareLen = (CompareLength (.>=) ThirtyTwoBitUpperBound)
 
-instance Predicate ExtraLongString BS.ByteString where
-    validate p bs =
-        let len = BS.length bs
-         in case refine @SixtyFourBitLengthPrefixBounds len of
-                Right _ -> Nothing
-                Left err -> throwRefineOtherException (typeRep p) [i|RDBExtraLongString must have length between #{show longStringLenCutoff} (inclusive) and #{show $ maxBound @Word64} (inclusive), got #{show len}. #{show err} |]
+instance Refine ExtraLongString BS.ByteString where
+    validate = validateVia @RDBExtraLongStringCompareLen
 
 -- NOTE: The rdb variable length encoding also includes special support for serializing integers as string as defined here https://rdb.fnordig.de/file_format.html#integers-as-string. The resulting byte sequence is in little-endian. Below are the types that represent integers to be serialized according to the special rdb variable - length encoding rules for integers
 
@@ -189,12 +169,12 @@ newtype RDBDouble = RDBDouble {rdbDouble :: Double}
 
 type SixBitUpperBound = 64 -- Equivalent to (1<<6) in C
 type FourteenBitUpperBound = 16384 -- Equivalent to (1<<14) in C
-type ThirtyTwoBitUpperBound = 4294967296 -- Equivalent to UINT32_MAX in C
+type ThirtyTwoBitUpperBound = 4294967295 -- Equivalent to UINT32_MAX in C
 
-type SixBitLengthPrefixBounds = (And (From 0) (LessThan SixBitUpperBound))
-type FourteenBitLengthPrefixBounds = (And (GreaterThan SixBitUpperBound) (LessThan FourteenBitUpperBound))
-type ThirtyTwoBitLengthPrefixBounds = (And (GreaterThan FourteenBitUpperBound) (LessThan ThirtyTwoBitUpperBound))
-type SixtyFourBitLengthPrefixBounds = (GreaterThan ThirtyTwoBitUpperBound)
+type SixBitLengthPrefixBounds = (And (CompareValue (.>=) Pos 0) (CompareValue (.<) Pos SixBitUpperBound))
+type FourteenBitLengthPrefixBounds = (And (CompareValue (.>=) Pos SixBitUpperBound) (CompareValue (.<) Pos FourteenBitUpperBound))
+type ThirtyTwoBitLengthPrefixBounds = (And (CompareValue (.>=) Pos FourteenBitUpperBound) (CompareValue (.<=) Pos ThirtyTwoBitUpperBound))
+type SixtyFourBitLengthPrefixBounds = (CompareValue (.>) Pos ThirtyTwoBitUpperBound)
 
 -- | 6-bit length prefix
 type RDBLengthPrefix6 = Refined SixBitLengthPrefixBounds Word8
@@ -252,7 +232,6 @@ instance RDBBinary RDBStringOrIntVal where
         asum
             [ MkRDBInt <$> rdbGet
             , MkRDBString <$> rdbGet
-            , fail "Failed to decode RDBStringOrIntVal"
             ]
 
 instance RDBBinary RDBInt where
@@ -266,7 +245,6 @@ instance RDBBinary RDBInt where
             [ MkRDBInt8 <$> rdbGet
             , MkRDBInt16 <$> rdbGet
             , MkRDBInt32 <$> rdbGet
-            , fail "Failed to decode RDBInt"
             ]
 
 instance RDBBinary RDBInt8 where
@@ -294,24 +272,23 @@ instance RDBBinary RDBString where
             , RDBMediumString <$> rdbGet
             , RDBLongString <$> rdbGet
             , RDBExtraLongString <$> rdbGet
-            , fail "Failed to decode RDBString"
             ]
 
 instance RDBBinary RDBShortString where
     rdbPut = attemptLzfSerializationWithFallback rdbVariableLengthEncodeShortString
-    rdbGet = attemptLzfDeserializationWithFallback refineFail rdbVariableLengthDecodeShortString
+    rdbGet = attemptLzfDeserializationWithFallback (refineErrorWithContext "RDBShortString deserialization") rdbVariableLengthDecodeShortString
 
 instance RDBBinary RDBMediumString where
     rdbPut = attemptLzfSerializationWithFallback rdbVariableLengthEncodeMediumString
-    rdbGet = attemptLzfDeserializationWithFallback refineFail rdbVariableLengthDecodeMediumString
+    rdbGet = attemptLzfDeserializationWithFallback (refineErrorWithContext "RDBMediumString deserialization") rdbVariableLengthDecodeMediumString
 
 instance RDBBinary RDBLongString where
     rdbPut = attemptLzfSerializationWithFallback rdbVariableLengthEncodeLongString
-    rdbGet = attemptLzfDeserializationWithFallback refineFail rdbVariableLengthDecodeLongString
+    rdbGet = attemptLzfDeserializationWithFallback (refineErrorWithContext "RDBLongString deserialization") rdbVariableLengthDecodeLongString
 
 instance RDBBinary RDBExtraLongString where
     rdbPut = attemptLzfSerializationWithFallback rdbVariableLengthEncodeExtraLongString
-    rdbGet = attemptLzfDeserializationWithFallback refineFail rdbVariableLengthDecodeExtraLongString
+    rdbGet = attemptLzfDeserializationWithFallback (refineErrorWithContext "RDBExtraLongString deserialization") rdbVariableLengthDecodeExtraLongString
 
 instance RDBBinary RDBLengthPrefix where
     rdbPut = \case
@@ -326,7 +303,6 @@ instance RDBBinary RDBLengthPrefix where
             , RDBLengthPrefix14 <$> rdbGet
             , RDBLengthPrefix32 <$> rdbGet
             , RDBLengthPrefix64 <$> rdbGet
-            , fail "Failed to decode int val in rdb length prefix form"
             ]
 
 instance RDBBinary RDBLengthPrefix6 where
@@ -366,12 +342,12 @@ instance RDBBinary RDBUnixTimestampMS where
 -- This logic of this function, particularly the bounds/limits in each case, is based off the `rdbSaveLen` redis function: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L157
 toRDBLengthPrefix :: Word -> RDBLengthPrefix
 toRDBLengthPrefix num
-    -- These uses of `reallyUnsafeRefine` are safe because the guards preceding conditions that the target num is valid within the branch
-    | isRight (refine @SixBitLengthPrefixBounds num) = RDBLengthPrefix6 (reallyUnsafeRefine . fromIntegral $ num)
-    | isRight (refine @FourteenBitLengthPrefixBounds num) = RDBLengthPrefix14 (reallyUnsafeRefine . fromIntegral $ num)
-    | isRight (refine @ThirtyTwoBitLengthPrefixBounds num) = RDBLengthPrefix32 (reallyUnsafeRefine . fromIntegral $ num)
-    -- Using `reallyUnsafeRefine` here is safe because the guards above ensures that num is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
-    | otherwise = RDBLengthPrefix64 (reallyUnsafeRefine . fromIntegral $ num)
+    -- These uses of `unsafeRefine` are safe because the guards preceding conditions that the target num is valid within the branch
+    | isRight (refine @SixBitLengthPrefixBounds num) = RDBLengthPrefix6 (unsafeRefine . fromIntegral $ num)
+    | isRight (refine @FourteenBitLengthPrefixBounds num) = RDBLengthPrefix14 (unsafeRefine . fromIntegral $ num)
+    | isRight (refine @ThirtyTwoBitLengthPrefixBounds num) = RDBLengthPrefix32 (unsafeRefine . fromIntegral $ num)
+    -- Using `unsafeRefine` here is safe because the guards above ensures that num is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
+    | otherwise = RDBLengthPrefix64 (unsafeRefine . fromIntegral $ num)
 
 {-# WARNING in "x-unsafe-internals" shortStringLenCutoff "This value is exported for testing purposes only" #-}
 shortStringLenCutoff :: (Num a) => a
@@ -392,21 +368,21 @@ toRDBStringOrIntVal byteStr
     | Just num <- tryParseAsInt8 byteStr = MkRDBInt (MkRDBInt8 (RDBInt8 num))
     | Just num <- tryParseAsInt16 byteStr = MkRDBInt (MkRDBInt16 (RDBInt16 num))
     | Just num <- tryParseAsInt32 byteStr = MkRDBInt (MkRDBInt32 (RDBInt32 num))
-    -- These uses of `reallyUnsafeRefine` are safe because the guards preceding conditions that the target num is valid within the branc
-    | isRight (refine @ShortString byteStr) = MkRDBString (RDBShortString (reallyUnsafeRefine byteStr))
-    | isRight (refine @MediumString byteStr) = MkRDBString (RDBMediumString (reallyUnsafeRefine byteStr))
-    | isRight (refine @LongString byteStr) = MkRDBString (RDBLongString (reallyUnsafeRefine byteStr))
-    -- Using `reallyUnsafeRefine` here is safe because the guards above ensure that byteStr is not a stringified number and that its size is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
-    | otherwise = MkRDBString (RDBExtraLongString (reallyUnsafeRefine byteStr))
+    -- These uses of `unsafeRefine` are safe because the guard conditions ensure that the `byteStr` is valid for each corresponding case
+    | isRight (refine @ShortString byteStr) = MkRDBString (RDBShortString (unsafeRefine byteStr))
+    | isRight (refine @MediumString byteStr) = MkRDBString (RDBMediumString (unsafeRefine byteStr))
+    | isRight (refine @LongString byteStr) = MkRDBString (RDBLongString (unsafeRefine byteStr))
+    -- Using `unsafeRefine` here is safe because the guards above ensure that byteStr is not a stringified number and that its size is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
+    | otherwise = MkRDBString (RDBExtraLongString (unsafeRefine byteStr))
 
 toRDBString :: BS.ByteString -> RDBString
 toRDBString byteStr
-    -- These uses of `reallyUnsafeRefine` are safe because the guards preceding conditions that the target num is valid within the branch
-    | isRight (refine @ShortString byteStr) = RDBShortString (reallyUnsafeRefine byteStr)
-    | isRight (refine @MediumString byteStr) = RDBMediumString (reallyUnsafeRefine byteStr)
-    | isRight (refine @LongString byteStr) = RDBLongString (reallyUnsafeRefine byteStr)
-    -- Using `reallyUnsafeRefine` here is safe because the guards above ensure that the size of the byteStr is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
-    | otherwise = RDBExtraLongString (reallyUnsafeRefine byteStr)
+    -- These uses of `unsafeRefine` are safe because the guard conditions ensure that the `byteStr` is valid for each corresponding case
+    | isRight (refine @ShortString byteStr) = RDBShortString (unsafeRefine byteStr)
+    | isRight (refine @MediumString byteStr) = RDBMediumString (unsafeRefine byteStr)
+    | isRight (refine @LongString byteStr) = RDBLongString (unsafeRefine byteStr)
+    -- Using `unsafeRefine` here is safe because the guards above ensure that the size of the byteStr is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
+    | otherwise = RDBExtraLongString (unsafeRefine byteStr)
 
 fromRDBString :: RDBString -> BS.ByteString
 fromRDBString (RDBShortString byteStr) = unrefine byteStr
@@ -471,12 +447,13 @@ isValid64BitLength len = len >= longStringLenCutoff
     Format: [00XXXXXX] where XXXXXX is the string's 6-bit length followed by the actual byte string data
 -}
 rdbVariableLengthEncodeShortString :: RDBShortString -> RDBPut
-rdbVariableLengthEncodeShortString byteStr = do
-    -- It's safe to use `reallyUnsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBShortString` ensures that the length is within the valid range for a 6-bit length prefix
-    let shortRdbByteStrLen = reallyUnsafeRefine $ fromIntegral @_ @Word8 $ length byteStr
+rdbVariableLengthEncodeShortString refinedByteStr = do
+    let byteStr = unrefine refinedByteStr
+    -- It's safe to use `unsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBShortString` ensures that the length is within the valid range for a 6-bit length prefix
+    let shortRdbByteStrLen = unsafeRefine $ fromIntegral @_ @Word8 $ BS.length byteStr
     let lengthPrefix = shortRdbByteStrLen
     rdbEncodeLengthPrefix8 lengthPrefix
-    genericRDBPutUsing . putByteString . unrefine $ byteStr
+    genericRDBPutUsing . putByteString $ byteStr
 
 -- | Decode a short string using RDB's variable length encoding
 rdbVariableLengthDecodeShortString :: RDBGet RDBShortString
@@ -484,18 +461,19 @@ rdbVariableLengthDecodeShortString = do
     shortByteStrLen <- rdbDecodeLengthPrefix6
     let shortByteStrLenInt = fromIntegral @_ @Int . unrefine $ shortByteStrLen
     unrefinedByteStr <- genericRDBGetUsing (getByteString shortByteStrLenInt)
-    refineFail unrefinedByteStr
+    refineErrorWithContext "RDBShortString refinement" unrefinedByteStr
 
 {- | Encode medium length string using RDB's variable length encoding
     Format: [01XXXXXX] [YYYYYYYY] where XXXXXXYYYYYYYY is the the string's 14-bit length followed by the actual byte string data
 -}
 rdbVariableLengthEncodeMediumString :: RDBMediumString -> RDBPut
-rdbVariableLengthEncodeMediumString byteStr = do
-    -- It's safe to use `reallyUnsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBMediumString` ensures that the length is within the valid range for a 14-bit length prefix
-    let mediumRdbByteStrLen = reallyUnsafeRefine . fromIntegral @_ @Word16 $ length byteStr
+rdbVariableLengthEncodeMediumString refinedByteStr = do
+    let byteStr = unrefine refinedByteStr
+    -- It's safe to use `unsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBMediumString` ensures that the length is within the valid range for a 14-bit length prefix
+    let mediumRdbByteStrLen = unsafeRefine . fromIntegral @_ @Word16 $ BS.length byteStr
     let lengthPrefix = mediumRdbByteStrLen
     rdbEncodeLengthPrefix14 lengthPrefix
-    genericRDBPutUsing . putByteString . unrefine $ byteStr
+    genericRDBPutUsing . putByteString $ byteStr
 
 -- | Decode a medium length string using RDB's variable length encoding
 rdbVariableLengthDecodeMediumString :: RDBGet RDBMediumString
@@ -503,18 +481,19 @@ rdbVariableLengthDecodeMediumString = do
     mediumByteStrLen <- rdbDecodeLengthPrefix14
     let mediumByteStrLenInt = fromIntegral @_ @Int . unrefine $ mediumByteStrLen
     unrefinedByteStr <- genericRDBGetUsing (getByteString mediumByteStrLenInt)
-    refineFail unrefinedByteStr
+    refineErrorWithContext "RDBMediumString refinement" unrefinedByteStr
 
 {- | Encode a long string using RDB's variable length encoding
     Format: [10000000] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] [XXXXXXXX] where X's represent the string's 32-bit length followed by the actual byte string data
 -}
 rdbVariableLengthEncodeLongString :: RDBLongString -> RDBPut
-rdbVariableLengthEncodeLongString byteStr = do
-    -- It's safe to use `reallyUnsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBLongString` ensures that the length is within the valid range for a 32-bit length prefix
-    let longRdbStrLen = reallyUnsafeRefine . fromIntegral @_ @Word32 $ length byteStr
+rdbVariableLengthEncodeLongString refinedByteStr = do
+    let byteStr = unrefine refinedByteStr
+    -- It's safe to use `unsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBLongString` ensures that the length is within the valid range for a 32-bit length prefix
+    let longRdbStrLen = unsafeRefine . fromIntegral @_ @Word32 $ BS.length byteStr
     let lengthPrefix = longRdbStrLen
     rdbEncodeLengthPrefix32 lengthPrefix
-    genericRDBPutUsing . putByteString . unrefine $ byteStr
+    genericRDBPutUsing . putByteString $ byteStr
 
 -- | Decode a long string using RDB's variable length encoding
 rdbVariableLengthDecodeLongString :: RDBGet RDBLongString
@@ -522,18 +501,19 @@ rdbVariableLengthDecodeLongString = do
     longByteStrLen <- rdbDecodeLengthPrefix32
     let longByteStrLenInt = fromIntegral @_ @Int . unrefine $ longByteStrLen
     unrefinedByteStr <- genericRDBGetUsing (getByteString longByteStrLenInt)
-    refineFail unrefinedByteStr
+    refineErrorWithContext "RDBLongString refinement" unrefinedByteStr
 
 {- | Encode an extra long string using RDB's variable length encoding
     Format: [10000001] [XXXXXXXX]...[XXXXXXXX] where X's represent the string's 64-bit length followed by the actual byte string data
 -}
 rdbVariableLengthEncodeExtraLongString :: RDBExtraLongString -> RDBPut
-rdbVariableLengthEncodeExtraLongString byteStr = do
-    -- It's safe to use `reallyUnsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBExtraLongString` ensures that the length is within the valid range for a 64-bit length prefix
-    let extraLongRdbStrLen = reallyUnsafeRefine . fromIntegral @_ @Word64 $ length byteStr
+rdbVariableLengthEncodeExtraLongString refinedByteStr = do
+    let byteStr = unrefine refinedByteStr
+    -- It's safe to use `unsafeRefine` here because the `Predicate` instance for the refined type underlying `RDBExtraLongString` ensures that the length is within the valid range for a 64-bit length prefix
+    let extraLongRdbStrLen = unsafeRefine . fromIntegral @_ @Word64 $ BS.length byteStr
     let lengthPrefix = extraLongRdbStrLen
     rdbEncodeLengthPrefix64 lengthPrefix
-    genericRDBPutUsing . putByteString . unrefine $ byteStr
+    genericRDBPutUsing . putByteString $ byteStr
 
 -- | Decode an extra long string using RDB's variable length encoding
 rdbVariableLengthDecodeExtraLongString :: RDBGet RDBExtraLongString
@@ -541,7 +521,7 @@ rdbVariableLengthDecodeExtraLongString = do
     extraLongByteStrLen <- rdbDecodeLengthPrefix64
     let extraLongByteStrLenInt = fromIntegral @_ @Int . unrefine $ extraLongByteStrLen
     unrefinedByteStr <- genericRDBGetUsing (getByteString extraLongByteStrLenInt)
-    refineFail unrefinedByteStr
+    refineErrorWithContext "RDBExtraLongString refinement" unrefinedByteStr
 
 -- Integer encoding using RDB's special integer length encoding scheme: https://rdb.fnordig.de/file_format.html#integers-as-string
 
@@ -559,7 +539,12 @@ rdbVariableLengthDecode8BitInt = do
     prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
-        then fail "Unexpected prefix byte while attempting to decode 8 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 0"
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBInt8 prefix byte verification"
+                    ("Unexpected prefix byte while attempting to decode 8 bit integer. Expected " <> genericShow intPrefix8Bit <> ", but got: " <> genericShow prefixByte)
         else RDBInt8 <$> genericRDBGet @Int8
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 0
@@ -583,7 +568,12 @@ rdbVariableLengthDecode16BitInt = do
     prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
-        then fail "Unexpected prefix byte while attempting to decode 16 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 1"
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBInt16 prefix byte verification"
+                    ("Unexpected prefix byte while attempting to decode 16 bit integer. Expected " <> genericShow intPrefix16Bit <> ", but got: " <> genericShow prefixByte)
         else RDBInt16 <$> genericRDBGetUsing getInt16le
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 1
@@ -607,7 +597,12 @@ rdbVariableLengthDecode32BitInt = do
     prefixByte <- genericRDBGet @Word8
     let isPrefixByteValid = verifyPrefixByte prefixByte
     if not isPrefixByteValid
-        then fail "Unexpected prefix byte while attempting to decode 32 bit integer. Expected the first two bits of the prefix byte to be 11 and the last 6 bits to equal 2"
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBInt32 prefix byte verification"
+                    ("Unexpected prefix byte while attempting to decode 32 bit integer. Expected " <> genericShow intPrefix32Bit <> ", but got: " <> genericShow prefixByte)
         else RDBInt32 <$> genericRDBGetUsing getInt32le
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 2
@@ -649,9 +644,12 @@ rdbDecodeLengthPrefix6 = do
     let byteHasExpectedPrefix = (byte `Bits.shiftR` 6) == 0
     if not byteHasExpectedPrefix
         then
-            fail
-                [i||Unexpected prefix for 6-bit length. Expected first two bits to be 00, got byte: #{show byte} |]
-        else refineFail byte
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBLengthPrefix6 prefix byte verification"
+                    ("Unexpected prefix for 6-bit length. Expected first two bits to be 00, but got: " <> genericShow byte)
+        else refineErrorWithContext "RDBLengthPrefix6 refinement" byte
 
 {- | Encode a 14-bit length prefix
     Format: [01XXXXXX][YYYYYYYY] where XXXXXXYYYYYYYY is the 14-bit length
@@ -677,7 +675,12 @@ rdbDecodeLengthPrefix14 = do
     let prefixMask = 0b11000000
     let byteHasExpectedPrefix = (firstByte Bits..&. prefixMask) == bytePrefixFor14BitLengthPrefix
     if not byteHasExpectedPrefix
-        then fail $ "Unexpected prefix for 14-bit length. Expected first two bits to be 01, but got: " <> show firstByte
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBLengthPrefix14 prefix byte verification"
+                    ("Unexpected prefix for 14-bit length. Expected " <> genericShow bytePrefixFor14BitLengthPrefix <> ", but got: " <> genericShow firstByte)
         else do
             secondByte <- genericRDBGet @Word8
             -- We know that the last six bits of the first byte and all eight bits of the second byte represent the length, so we want to extract the last six bits of the first byte and combine them with the second byte to form the full 14-bit length
@@ -685,7 +688,7 @@ rdbDecodeLengthPrefix14 = do
             let lastSixBitsFromFirstByte = fromIntegral @_ @Word16 (firstByte Bits..&. sixBitsMask)
             let remainingByte = fromIntegral @_ @Word16 secondByte -- To Word16 for combining
             let unRefinedFullLengthVal = (lastSixBitsFromFirstByte `Bits.shiftL` 8) Bits..|. remainingByte -- Combine to form full 14-bit length
-            refineFail unRefinedFullLengthVal
+            refineErrorWithContext "RDBLengthPrefix14 refinement" unRefinedFullLengthVal
 
 bytePrefixFor14BitLengthPrefix :: Word8
 bytePrefixFor14BitLengthPrefix = 0b01000000
@@ -704,10 +707,13 @@ rdbDecodeLengthPrefix32 :: RDBGet RDBLengthPrefix32
 rdbDecodeLengthPrefix32 = do
     prefixByte <- genericRDBGet @Word8
     if prefixByte /= bytePrefixFor32BitLengthPrefix
-        then fail "Unexpected prefix for 32-bit length. Expected 10000000"
-        else do
-            unrefinedLenVal <- genericRDBGetUsing getWord32be
-            refineFail unrefinedLenVal
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBLengthPrefix32 prefix byte verification"
+                    ("Unexpected prefix for 32-bit length. Expected " <> genericShow bytePrefixFor32BitLengthPrefix <> ", but got: " <> genericShow prefixByte)
+        else refineErrorWithContext "RDBLengthPrefix32 refinement" =<< genericRDBGetUsing getWord32be
 
 bytePrefixFor32BitLengthPrefix :: Word8
 bytePrefixFor32BitLengthPrefix = 0b10000000
@@ -726,10 +732,13 @@ rdbDecodeLengthPrefix64 :: RDBGet RDBLengthPrefix64
 rdbDecodeLengthPrefix64 = do
     prefixByte <- genericRDBGet @Word8
     if prefixByte /= bytePrefixFor64BitLengthPrefix
-        then fail "Unexpected prefix for 64-bit length. Expected 10000001"
-        else do
-            unrefinedLenVal <- genericRDBGetUsing getWord64be
-            refineFail unrefinedLenVal
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "RDBLengthPrefix64 prefix byte verification"
+                    ("Unexpected prefix for 64-bit length. Expected " <> genericShow bytePrefixFor64BitLengthPrefix <> ", but got: " <> genericShow prefixByte)
+        else refineErrorWithContext "RDBLengthPrefix64 refinement" =<< genericRDBGetUsing getWord64be
 
 bytePrefixFor64BitLengthPrefix :: Word8
 bytePrefixFor64BitLengthPrefix = 0b10000001
@@ -753,7 +762,12 @@ rdbDecodeLzfCompressedData :: RDBGet BS.ByteString
 rdbDecodeLzfCompressedData = do
     prefixByte <- genericRDBGet @Word8
     if prefixByte /= rdbLzfCompressedDataBinaryPrefix
-        then fail [i|Invalid prefix byte for LZF compressed datum. Expected prefix byte to be: #{show rdbLzfCompressedDataBinaryPrefix} but got: #{prefixByte}|]
+        then
+            throwRDBError $
+                MKRDBErrorArg
+                    ValidationError
+                    "LZF prefix byte verification"
+                    ("Unexpected LZF compressed data prefix byte. Expected: " <> genericShow rdbLzfCompressedDataBinaryPrefix <> ", but got: " <> genericShow prefixByte)
         else do
             compressedLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix
             originalLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix
@@ -762,7 +776,12 @@ rdbDecodeLzfCompressedData = do
             let mDecompressedData = lzfDecompress (LzfCompressedByteString lzfCompressedData compressedLen originalLen)
 
             maybe
-                (fail [i|Failed to decompress LZF compressed data. Original length: #{originalLen}, Compressed length: #{compressedLen}|])
+                ( throwRDBError $
+                    MKRDBErrorArg
+                        ParseError
+                        "LZF decompression"
+                        ("Failed to decompress LZF compressed data. Original length: " <> genericShow originalLen <> ", Compressed length: " <> genericShow compressedLen)
+                )
                 pure
                 mDecompressedData
 
@@ -770,22 +789,27 @@ rdbLzfCompressedDataBinaryPrefix :: Word8
 rdbLzfCompressedDataBinaryPrefix = 0b11000011
 
 attemptLzfSerializationWithFallback :: forall (p :: RDBStringLength). (Refined p BS.ByteString -> RDBPut) -> Refined p BS.ByteString -> RDBPut
-attemptLzfSerializationWithFallback fallbackSerialization byteStr =
+attemptLzfSerializationWithFallback fallbackSerialization refinedByteStr =
     do
         config <- ask
-        let originalLen = length byteStr
+        let byteStr = unrefine refinedByteStr
+            originalLen = BS.length byteStr
             mExpectedCompressionSize = calculateExpectedCompressionSize originalLen
-            mCompressedData = lzfCompress (unrefine byteStr) mExpectedCompressionSize
+            mCompressedData = lzfCompress byteStr mExpectedCompressionSize
         if
-            | not config.useLzfCompression -> fallbackSerialization byteStr
-            | originalLen <= minimumDataLengthForSufficientCompression -> fallbackSerialization byteStr
-            | isNothing mExpectedCompressionSize -> fallbackSerialization byteStr
+            | not config.useLzfCompression -> fallbackSerialization refinedByteStr
+            | originalLen <= minimumDataLengthForSufficientCompression -> fallbackSerialization refinedByteStr
+            | isNothing mExpectedCompressionSize -> fallbackSerialization refinedByteStr
             | Just lzfCompressedData <- mCompressedData -> rdbEncodeLzfCompressedData lzfCompressedData
-            | otherwise -> fallbackSerialization byteStr
+            | otherwise -> fallbackSerialization refinedByteStr
 
 -- The type signature is this way because we want `f` to only have the "ability" of MonadFail from RDBGet, not anything else
-attemptLzfDeserializationWithFallback :: (MonadFail m, m a ~ RDBGet a) => (BS.ByteString -> m a) -> RDBGet a -> RDBGet a
-attemptLzfDeserializationWithFallback f fallbackDeserialization = (rdbDecodeLzfCompressedData >>= f) <|> fallbackDeserialization
+attemptLzfDeserializationWithFallback :: (MonadRDBError m, m a ~ RDBGet a) => (BS.ByteString -> m a) -> RDBGet a -> RDBGet a
+attemptLzfDeserializationWithFallback f fallbackDeserialization = do
+    config <- ask
+    if config.useLzfCompression
+        then (rdbDecodeLzfCompressedData >>= f) <|> fallbackDeserialization
+        else fallbackDeserialization
 
 {-
     This is necessary to avoid issues with very small inputs that cannot be effectively compressed. Due to the way lzf compressions works, small inputs may not have enough data to compress and the end result may even be expanded due to the overhead of the compression algorithm. Input that is smaller than or equal to this threshold is unlikely to benefit from compression. This threshold was chosen per this code in the redis codebase https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L455

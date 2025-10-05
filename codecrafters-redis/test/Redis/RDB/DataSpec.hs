@@ -5,19 +5,15 @@ import Test.Hspec
 import Test.Hspec.Hedgehog
 import Test.Tasty
 
-import Data.ByteString.Char8 qualified as BSC
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Data.Either (isLeft)
+import Data.ByteString qualified as BSC
 import Data.Int (Int16, Int32, Int64, Int8)
-import Data.Word (Word16, Word32, Word64, Word8)
-import Redis.Helper (encodeThenDecodeRDBBinary)
+import Data.Word (Word32, Word64)
 import Redis.RDB.Binary (decodeOrFail, encode)
-import Redis.RDB.TestConfig (defaultRDBConfig, genRDBConfig)
-import Redis.Utils (myTracePrettyM)
-import Test.Tasty.ExpectedFailure (expectFail)
+import Redis.RDB.TestConfig (genRDBConfig)
 import Test.Tasty.Hedgehog (testProperty)
 
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
@@ -42,9 +38,9 @@ roundTripRDBLengthPrefixEncoding = H.property $ do
 -- Trial and error puts 30 tests as the sweet spot
 roundTripRDBStringEncoding :: H.Property
 roundTripRDBStringEncoding = withTests 30 $ H.property $ do
-    rdbString <- toRDBString <$> H.forAll (Gen.bytes (Range.exponential 0 (fromIntegral (maxBound @Int64))))
+    rdbString <- H.forAll (Gen.bytes (Range.exponential 0 (fromIntegral (maxBound @Int64))))
     rdbConfig <- H.forAll genRDBConfig
-    H.tripping rdbString (encode rdbConfig) (decodeOrFail rdbConfig)
+    H.tripping (toRDBString rdbString) (encode rdbConfig) (decodeOrFail rdbConfig)
 
 roundTripRDBInt8Encoding :: H.Property
 roundTripRDBInt8Encoding = H.property $ do
@@ -91,6 +87,11 @@ roundTripRDBDoubleEncoding = H.property $ do
 spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
     describe "Edge Cases and Corner Cases" $ do
+        modifyMaxSuccess (const 10) $ it "Example test for long strings" $ hedgehog $ do
+            let sampleString = toRDBString $ BSC.replicate 67108864 97
+            rdbConfig <- H.forAll genRDBConfig
+            H.tripping sampleString (encode rdbConfig) (decodeOrFail rdbConfig)
+
         it "handles Unicode and special characters in strings" $ hedgehog $ do
             let unicodeStr = "héllo 世界 🚀 \n\t\r"
                 unicodeString = toRDBString unicodeStr

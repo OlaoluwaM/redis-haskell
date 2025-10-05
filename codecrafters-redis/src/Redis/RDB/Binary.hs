@@ -15,18 +15,26 @@ module Redis.RDB.Binary (
     decodeOrFail,
     encodeFile,
     decodeFile,
-    decodeOrFail,
+    RDBError (..),
+    RDBErrorType (..),
+    MonadRDBError (..),
+    RDBErrorArg (..),
 ) where
+
+import Prettyprinter
 
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy.Internal qualified as BSL
+import Data.Sequence qualified as Seq
 
-import Control.Applicative (Alternative)
+import Control.Applicative (Alternative (..), (<|>))
 import Control.Monad (when)
-import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), ask)
-import Control.Monad.State.Strict (MonadState, StateT (runStateT), execStateT, modify)
+import Control.Monad.Except (ExceptT (..), MonadError, runExceptT, throwError)
+import Control.Monad.Reader (MonadReader, ReaderT (..), ask)
+import Control.Monad.State.Strict (MonadState, StateT (..), execStateT, modify)
 import Control.Monad.Trans (MonadTrans (..), lift)
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Binary (Binary (get, put))
 import Data.Binary.Get (
     ByteOffset,
@@ -40,7 +48,11 @@ import Data.Binary.Get (
     runGetIncremental,
     runGetOrFail,
  )
+import Data.Binary.Get.Internal (lookAheadE)
 import Data.Binary.Put (PutM, putLazyByteString, runPut, runPutM)
+import Data.Foldable (Foldable (toList))
+import Data.Sequence (Seq)
+import Data.Text (Text)
 import GHC.IO.Handle.FD (withBinaryFile)
 import GHC.IO.IOMode (IOMode (..))
 import Redis.RDB.CRC64 (CheckSum, crc64, initialChecksum)
@@ -49,20 +61,72 @@ import Redis.RDB.Config (RDBConfig (..))
 -- ReaderT so we may be able to perform serialization based on some configuration
 -- StateT to maintain the checksum state during serialization/deserialization
 
-newtype RDBPutT e m a = RDBPutT (ReaderT e (StateT CheckSum m) a)
-    deriving newtype (Monad, Functor, Applicative, MonadState CheckSum, MonadReader e)
+newtype RDBPutT r m a = RDBPutT (ReaderT r (StateT CheckSum m) a)
+    deriving newtype (Monad, Functor, Applicative, MonadState CheckSum, MonadReader r)
 
 instance MonadTrans (RDBPutT e) where
     lift = RDBPutT . lift . lift
 
-newtype RDBGetT e m a = RDBGetT (ReaderT e (StateT CheckSum m) a)
-    deriving newtype (Monad, Functor, Applicative, MonadState CheckSum, MonadReader e, Alternative, MonadFail)
+newtype RDBGetT r e m a = RDBGetT (ReaderT r (StateT CheckSum (ExceptT e m)) a)
+    deriving newtype (Monad, Functor, Applicative, MonadState CheckSum, MonadReader r, MonadError e)
 
-instance MonadTrans (RDBGetT e) where
-    lift = RDBGetT . lift . lift
+instance MonadTrans (RDBGetT e r) where
+    lift = RDBGetT . lift . lift . lift
+
+instance (Monoid e) => Alternative (RDBGetT r e Get) where
+    empty = RDBGetT . lift . lift $ empty
+    RDBGetT ma <|> RDBGetT mb = RDBGetT $ ReaderT $ \r -> StateT $ \s -> ExceptT $ do
+        ex <- lookAheadE $ runExceptT $ runStateT (runReaderT ma r) s
+        case ex of
+            Left e -> fmap (either (Left . (e <>)) Right) (runExceptT $ runStateT (runReaderT mb r) s)
+            Right x -> pure (Right x)
 
 type RDBPut = RDBPutT RDBConfig PutM ()
-type RDBGet a = RDBGetT RDBConfig Get a
+type RDBGet a = RDBGetT RDBConfig (Seq RDBError) Get a
+
+data RDBError = RDBError
+    { bytesOffset :: Maybe ByteOffset
+    -- ^ Byte position where error occurred in the input stream
+    , errType :: RDBErrorType
+    -- ^ Classification of the error type
+    , context :: Text
+    -- ^ Description of where in the parsing process this error occurred
+    , msg :: Text
+    -- ^ Human-readable description of what went wrong
+    }
+    deriving stock (Show)
+
+data RDBErrorType = ValidationError | ParseError | RefinementError
+    deriving stock (Show)
+
+instance Pretty RDBError where
+    pretty RDBError{bytesOffset, errType, context, msg} =
+        let offsetInfo = maybe mempty (\offset -> " at position" <+> pretty offset) bytesOffset
+         in vsep
+                [ "RDB Error" <> offsetInfo <> ":"
+                , indent 4 $
+                    vsep
+                        [ "Type:" <+> viaShow errType
+                        , "Context:" <+> pretty context
+                        , "Details:" <+> pretty msg
+                        ]
+                ]
+
+    prettyList = (\items -> line <> "Errors:" <+> line <> indent 2 items) . align . vsep . map pretty
+
+data RDBErrorArg = MKRDBErrorArg
+    { rdbErrorType :: RDBErrorType
+    , rdbErrorContext :: Text
+    , rdbErrorMsg :: Text
+    }
+
+class (MonadError (Seq RDBError) m) => MonadRDBError m where
+    throwRDBError :: RDBErrorArg -> m a
+
+instance MonadRDBError (RDBGetT r (Seq RDBError) Get) where
+    throwRDBError (MKRDBErrorArg errType context msg) = do
+        currentOffset <- lift bytesRead
+        throwError (Seq.singleton (RDBError (Just currentOffset) errType context msg))
 
 class RDBBinary a where
     rdbPut :: a -> RDBPut
@@ -84,9 +148,13 @@ execRDBPut config = flip execStateT initialChecksum . flip runReaderT config . r
     runRDBPut (RDBPutT comp) = comp
 
 execRDBGet :: RDBConfig -> RDBGet a -> Get (a, CheckSum)
-execRDBGet config = flip runStateT initialChecksum . flip runReaderT config . runRDBGet
+execRDBGet config getComp = do
+    resultE <- runExceptT . flip runStateT initialChecksum . flip runReaderT config . runRDBGet $ getComp
+    case resultE of
+        Right val -> pure val
+        Left errs -> fail . show . prettyList . toList $ errs
   where
-    runRDBGet :: RDBGet a -> ReaderT RDBConfig (StateT CheckSum Get) a
+    runRDBGet :: RDBGet a -> ReaderT RDBConfig (StateT CheckSum (ExceptT (Seq RDBError) Get)) a
     runRDBGet (RDBGetT comp) = comp
 
 updateChecksum :: (MonadState CheckSum m) => BSL.ByteString -> m ()
@@ -146,8 +214,8 @@ encode config = snd . runPutM . execRDBPut config . rdbPut
 decode :: (RDBBinary a) => RDBConfig -> BSL.ByteString -> a
 decode config = fst . runGet (execRDBGet config rdbGet)
 
-decodeOrFail :: (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either (BSL.ByteString, ByteOffset, String) a
-decodeOrFail config = fmap (\(_, _, x) -> x) . decodeOrFailWithValueAndMetadata config
+decodeOrFail :: (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either String a
+decodeOrFail config = bimap (\(_, _, x) -> x) (\(_, _, x) -> x) . decodeOrFailWithValueAndMetadata config
 
 decodeOrFailWithValueAndMetadata ::
     (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either (BSL.ByteString, ByteOffset, String) (BSL.ByteString, ByteOffset, a)

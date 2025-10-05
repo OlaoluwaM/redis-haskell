@@ -41,30 +41,12 @@ import Data.Binary.Put (
     putWord64le,
  )
 import Data.Default (Default (..))
-import Data.String.Interpolate (i)
 import Data.Word (Word8)
 import Redis.RDB.CRC64 (CheckSum, fromChecksum, toChecksum)
 import Redis.RDB.Config (RDBConfig (..))
-import Refined
-import Refined.Unsafe (reallyUnsafeRefine)
-
-{-
-    NOTE: We're using reallyUnsafeRefine here instead of refineTH because the TH version seems to be negatively interacting with our FFI calls to C causing dynamic linking errors when we try to compile the project. This seems to be bug in GHC and is even reproducible should you have a project with a C FFI import used either directly or indirectly with TH. This can also happen with FFI exports: https://gitlab.haskell.org/ghc/ghc/-/issues/20674
-
-    Below is an example of the error message:
-
-        GHC.Linker.Loader.dynLoadObjs: Loading temp shared object failed
-        During interactive linking, GHCi couldn't find the following symbol:
-          /tmp/ghc1148774_0/libghc_3.so: undefined symbol: lzf_decompress
-        This may be due to you not asking GHCi to load extra object files,
-        archives or DLLs needed by your current session.  Restart GHCi, specifying
-
-        the missing library using the -L/path/to/object/dir and -lmissinglibname
-        flags, or simply by naming the relevant files on the GHCi command line.
-        Alternatively, this link failure might indicate a bug in GHCi.
-        If you suspect the latter, please report this as a GHC bug:
-          https://www.haskell.org/ghc/reportabug
--}
+import Redis.Utils (genericShow)
+import Rerefined (unrefine)
+import Rerefined.Refine.TH (refineTH)
 
 {- | Redis RDB Format Implementation
 
@@ -478,14 +460,18 @@ instance RDBBinary RDBFile where
         auxFieldEntries <- many $ rdbGet @AuxField
         dbEntries <- manyTill (rdbGet @RDbEntry) (rdbGet @EOF) -- Parse database entries until EOF marker
         let weShouldVerifyChecksum = not config.skipChecksumValidation && version >= RDBv5 && config.generateChecksum
-
         when weShouldVerifyChecksum $ do
             generatedChecksum <- State.get
             -- From RDB v5 and up there should always be a checksum at the end of the rdbFile, even if it is just 0 https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L3678
             checksum <- lift (toChecksum <$> getWord64le)
             if checksum == generatedChecksum || checksum == defaultChecksum
                 then pure ()
-                else fail $ "Wrong RDB checksum expected: " <> show generatedChecksum <> " but got " <> show checksum <> "."
+                else
+                    throwRDBError $
+                        MKRDBErrorArg
+                            ValidationError
+                            "RDB Checksum Validation"
+                            ("Wrong RDB checksum expected: " <> genericShow generatedChecksum <> " but got: " <> genericShow checksum)
 
         pure (RDBFile magicString version auxFieldEntries dbEntries)
 
@@ -516,7 +502,12 @@ instance RDBBinary RDBVersion where
             "0004" -> pure RDBv4
             "0005" -> pure RDBv5
             "0007" -> pure RDBv7
-            _ -> fail $ "Unsupported or invalid RDB version: " <> show versionStr
+            _ ->
+                throwRDBError $
+                    MKRDBErrorArg
+                        ParseError
+                        "RDB Version Parsing"
+                        ("Unsupported or invalid RDB version: " <> genericShow versionStr)
 
 -- | Magic string is exactly "REDIS" (5 ASCII bytes)
 instance RDBBinary RDBMagicString where
@@ -525,7 +516,12 @@ instance RDBBinary RDBMagicString where
         magicStr <- genericRDBGetUsing (getByteString 5)
         if magicStr == "REDIS"
             then pure Redis
-            else fail "Invalid RDB magic string"
+            else
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "RDB magic string check"
+                        ("Invalid RDB magic string: " <> genericShow magicStr)
 
 -- | KeyValueOpCode encoding with proper opcode prefixes
 instance RDBBinary KeyValueOpCode where
@@ -539,7 +535,6 @@ instance RDBBinary KeyValueOpCode where
             [ FDOpcode <$> rdbGet
             , FCOpCode <$> rdbGet
             , KeyValOpCode <$> rdbGet -- Should be last since it's most permissive
-            , fail "Unknown KeyValueOpCode with unsupported value encoding"
             ]
 
 -- | EOF marker is a single 0xFF byte
@@ -549,7 +544,12 @@ instance RDBBinary EOF where
         tag <- genericRDBGet @Word8
         if tag == eofOpCodeByteTag
             then pure EOF
-            else fail $ "Expected EOF marker (" <> show eofOpCodeByteTag <> ") got " <> show tag <> " instead."
+            else
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "EOF op code check"
+                        ("Expected EOF marker (" <> genericShow eofOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
 
 -- | Millisecond expiry: 0xFC + 8-byte little-endian timestamp + value type + key + value
 instance RDBBinary KeyValWithExpiryInMS where
@@ -563,7 +563,12 @@ instance RDBBinary KeyValWithExpiryInMS where
     rdbGet = do
         tag <- genericRDBGet @Word8
         if tag /= keyValWithExpiryInMSOpCodeByteTag
-            then fail $ "Expected KeyValWithExpiryInMS marker (" <> show keyValWithExpiryInMSOpCodeByteTag <> ") got " <> show tag <> " instead."
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "KeyValWithExpiryInMS op code check"
+                        ("Expected KeyValWithExpiryInMS marker (" <> genericShow keyValWithExpiryInMSOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
             else KeyValWithExpiryInMS <$> rdbGet <*> rdbGet <*> rdbGet <*> rdbGet
 
 -- | Second expiry: 0xFD + 4-byte little-endian timestamp + value type + key + value
@@ -578,7 +583,12 @@ instance RDBBinary KeyValWithExpiryInS where
     rdbGet = do
         tag <- genericRDBGet @Word8
         if tag /= keyValWithExpiryInSpCodeByteTag
-            then fail $ "Expected KeyValWithExpiryInS marker (" <> show keyValWithExpiryInSpCodeByteTag <> ") got " <> show tag <> " instead."
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "KeyValWithExpiryInS op code check"
+                        ("Expected KeyValWithExpiryInS marker (" <> genericShow keyValWithExpiryInSpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
             else KeyValWithExpiryInS <$> rdbGet <*> rdbGet <*> rdbGet <*> rdbGet
 
 -- | No expiry format: value type + key + value (no opcode prefix)
@@ -609,7 +619,12 @@ instance RDBBinary AuxField where
     rdbGet = do
         tag <- genericRDBGet @Word8
         if tag /= auxiliaryFieldOpCodeByteTag
-            then fail $ "Expected AuxField marker (" <> show auxiliaryFieldOpCodeByteTag <> ") got " <> show tag <> " instead."
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "AuxField opcode check"
+                        ("Expected AuxField marker (" <> genericShow auxiliaryFieldOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
             else do
                 asum
                     [ AuxFieldRedisVer <$> rdbGet @RedisVersion
@@ -617,52 +632,60 @@ instance RDBBinary AuxField where
                     , AuxFieldCTime <$> rdbGet @CTime
                     , AuxFieldUsedMem <$> rdbGet @UsedMem
                     , AuxFieldCustom <$> rdbGet @RDBStringOrIntVal <*> rdbGet @RDBStringOrIntVal
-                    , fail "Unknown auxiliary field with unsupported value encoding"
                     ]
 
 {- | Redis architecture bits encoding (32-bit or 64-bit).
     Stores "redis-bits" key with "32" or "64" value as variable-length strings.
 -}
-redisBitsStr = $$(refineTH "redis-bits") :: RDBShortString
-
-archVal32 = $$(refineTH "32") :: RDBShortString
-archVal64 = $$(refineTH "64") :: RDBShortString
 instance RDBBinary RedisBits where
     rdbPut x =
         do
             -- Write "redis-bits" key followed by architecture value
-            rdbPut @RDBShortString redisBitsStr
+            rdbPut @RDBShortString $$(refineTH "redis-bits")
             case x of
-                RedisBits32 -> rdbPut @RDBShortString archVal32
-                RedisBits64 -> rdbPut @RDBShortString archVal64
-    rdbGet =
-        let redisBitsStr = $$(refineTH "redis-bits") :: RDBShortString
-         in do
-                -- Parse and validate "redis-bits" key
-                key <- rdbGet @RDBShortString -- "redis-bits" is 10 bytes
-                if key /= redisBitsStr
-                    then fail $ "Expected redis-bits marker \"redis-bits\" got " <> show key <> " instead"
-                    else do
-                        -- Parse architecture value ("32" or "64")
-                        architectureVal <- rdbGet @RDBShortString
-                        case unrefine architectureVal of
-                            "32" -> pure RedisBits32
-                            "64" -> pure RedisBits64
-                            _ -> fail "Unknown redis-bits aux field value"
+                RedisBits32 -> rdbPut @RDBShortString $$(refineTH "32")
+                RedisBits64 -> rdbPut @RDBShortString $$(refineTH "64")
+    rdbGet = do
+        -- Parse and validate "redis-bits" key
+        key <- rdbGet @RDBShortString -- "redis-bits" is 10 bytes
+        if key /= $$(refineTH "redis-bits")
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "redis-bits prefix check"
+                        ("Expected redis-bits prefix \"redis-bits\" got " <> genericShow key <> " instead")
+            else do
+                -- Parse architecture value ("32" or "64")
+                architectureVal <- rdbGet @RDBShortString
+                case unrefine architectureVal of
+                    "32" -> pure RedisBits32
+                    "64" -> pure RedisBits64
+                    _ ->
+                        throwRDBError $
+                            MKRDBErrorArg
+                                ParseError
+                                "redis-bits value parsing"
+                                ("Unknown redis-bits aux field value: " <> genericShow architectureVal)
 
 {- | Redis version string encoding.
     Stores "redis-ver" key with version string value (e.g., "7.0.0").
 -}
 instance RDBBinary RedisVersion where
-    rdbPut version = do
+    rdbPut (RedisVersion version) = do
         -- Write "redis-ver" key followed by version string
-        rdbPut @RDBShortString (reallyUnsafeRefine "redis-ver")
+        rdbPut @RDBShortString $$(refineTH "redis-ver")
         rdbPut version
     rdbGet = do
         -- Parse and validate "redis-ver" key
         key <- rdbGet @RDBShortString -- "redis-ver" is 10 bytes
-        if key /= (reallyUnsafeRefine "redis-ver")
-            then fail $ "Expected redis-ver marker \"redis-ver\" got " <> show key <> " instead"
+        if key /= $$(refineTH "redis-ver")
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "redis-ver prefix check"
+                        ("Expected redis-ver prefix \"redis-ver\" got " <> genericShow key <> " instead")
             else do
                 -- Parse version string value
                 RedisVersion <$> rdbGet @RDBShortString
@@ -673,7 +696,7 @@ instance RDBBinary RedisVersion where
 instance RDBBinary CTime where
     rdbPut (CTime cTime) = do
         -- Write "ctime" key followed by timestamp as string
-        rdbPut @RDBShortString (reallyUnsafeRefine "ctime")
+        rdbPut @RDBShortString $$(refineTH "ctime")
         -- Using the Data.ByteString.Char8.pack to go from string to ByteString since we expect (show posixTime) to be an ASCII string (made up of only numeric symbols)
         -- We also convert to string like is done here: https://github.com/redis/redis/blob/f6f16746e1d4bc51960158d9a896e1aa0a2c7dbd/src/rdb.c#L1257
         rdbPut (toRDBString (BSC.pack . show $ cTime.getRDBUnixTimestampS))
@@ -681,8 +704,13 @@ instance RDBBinary CTime where
     rdbGet = do
         -- Parse and validate "ctime" key
         key <- rdbGet @RDBShortString -- "ctime" is 5 bytes
-        if key /= (reallyUnsafeRefine "ctime")
-            then fail $ "Expected ctime marker \"ctime\" got " <> show key <> " instead"
+        if key /= $$(refineTH "ctime")
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "ctime prefix check"
+                        ("Expected ctime prefix \"ctime\" got " <> genericShow key <> " instead")
             else do
                 -- Parse timestamp string and convert to numeric value
                 timeStr <- rdbGet @RDBString
@@ -690,7 +718,12 @@ instance RDBBinary CTime where
                 -- \^ Using the Data.ByteString.Char8 to unpack to string since we expect an ASCII string (made up of only numeric symbols)
                 case cTimeM of
                     Just (cTime, "") -> pure $ CTime (RDBUnixTimestampS cTime)
-                    _ -> fail "Invalid POSIX time format in ctime field"
+                    _ ->
+                        throwRDBError $
+                            MKRDBErrorArg
+                                ParseError
+                                "ctime field format/value check"
+                                "Invalid POSIX time format/value in ctime field: expected an integer with no trailing characters"
 
 {- | Memory usage (used-mem) encoding in bytes.
     Stores "used-mem" key with memory usage as variable-length string value.
@@ -698,20 +731,30 @@ instance RDBBinary CTime where
 instance RDBBinary UsedMem where
     rdbPut (UsedMem mem) = do
         -- Write "used-mem" key followed by memory value as string
-        rdbPut @RDBShortString (reallyUnsafeRefine "used-mem")
+        rdbPut @RDBShortString $$(refineTH "used-mem")
         rdbPut (toRDBString (BSC.pack . show $ mem))
 
     rdbGet = do
         -- Parse and validate "used-mem" key
         key <- rdbGet @RDBShortString -- "used-mem" is 8 characters
-        if key /= (reallyUnsafeRefine "used-mem")
-            then fail $ "Expected used-mem marker \"used-mem\" got " <> show key <> " instead"
+        if key /= $$(refineTH "used-mem")
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "used-mem prefix check"
+                        ("Expected used-mem prefix \"used-mem\" got " <> genericShow key <> " instead")
             else do
                 -- Parse memory value string and convert to integer
                 memVal <- fromRDBString <$> rdbGet @RDBString
                 case BSC.readInt memVal of
                     Just (memInt, "") -> pure $ UsedMem memInt
-                    _ -> fail "Invalid used-mem format: expected an integer"
+                    _ ->
+                        throwRDBError $
+                            MKRDBErrorArg
+                                ParseError
+                                "used-mem field format/value check"
+                                "Invalid used-mem format/value: expected an integer with no trailing characters"
 
 {- | Database selection (SelectDB) encoding with 0xFE opcode.
     Format: [0xFE][database-index-as-string]
@@ -727,7 +770,12 @@ instance RDBBinary SelectDB where
         -- Read and validate database selection opcode
         tag <- genericRDBGet @Word8
         if tag /= selectDBOpCodeByteTag
-            then fail $ "Expected SelectDB marker (" <> show selectDBOpCodeByteTag <> ") got " <> show tag <> " instead."
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "SelectDB prefix check"
+                        ("Expected SelectDB prefix (" <> genericShow selectDBOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
             else do
                 -- Parse database index from variable-length encoding
                 SelectDB <$> rdbGet @RDBLengthPrefix6
@@ -745,7 +793,12 @@ instance RDBBinary ResizeDB where
     rdbGet = do
         tag <- genericRDBGet @Word8
         if tag /= resizeDBOpCodeByteTag
-            then fail $ "Expected ResizeDB marker (" <> show resizeDBOpCodeByteTag <> ") got " <> show tag <> " instead."
+            then
+                throwRDBError $
+                    MKRDBErrorArg
+                        ValidationError
+                        "ResizeDB prefix check"
+                        ("Expected ResizeDB prefix (" <> genericShow resizeDBOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
             else do
                 numOfKeys <- rdbGet @RDBLengthPrefix6
                 numOfKeysWithExpiry <- rdbGet @RDBLengthPrefix6
@@ -762,4 +815,9 @@ instance RDBBinary ValueType where
         tag <- genericRDBGet @Word8
         case tag of
             0 -> pure Str
-            _ -> fail ("Unknown ValueType: " <> show tag)
+            _ ->
+                throwRDBError $
+                    MKRDBErrorArg
+                        ParseError
+                        "ValueType byte check"
+                        ("Unknown or unsupported RDB value type: " <> genericShow tag)

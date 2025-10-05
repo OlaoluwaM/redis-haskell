@@ -110,6 +110,7 @@ parseSetCmdOptions =
 
     ttlOptionParser :: Parser TTLOption
     ttlOptionParser =
+        -- We can probably keep asum here since we're okay with returning empty should all the parsers fail
         asum
             [ numberedTTLOptionParser "EX" <&> EX . Tagged . floor -- rounding down to avoid creating time out of thin air
             , numberedTTLOptionParser "PX" <&> PX . Tagged

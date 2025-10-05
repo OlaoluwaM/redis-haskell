@@ -2,7 +2,8 @@ module Redis.Helper (
     mkCmdReqStr,
     mkBulkString,
     bulkStrToOptionString,
-    encodeThenDecodeRDBBinary,
+    encodeThenDecodeUsingRDBBinary,
+    encodeThenDecodeOrFailUsingRDBBinary,
     pingCmd,
     echoCmd,
     setCmd,
@@ -11,8 +12,7 @@ module Redis.Helper (
 
 import Redis.RDB.Binary
 
-import Data.Binary.Get (runGet)
-import Data.Binary.Put (runPutM)
+
 import Data.ByteString (ByteString)
 import Data.Vector (fromList)
 import Redis.RDB.TestConfig (RDBConfig)
@@ -39,5 +39,8 @@ setCmd = mkBulkString "SET"
 getCmd :: RESPDataType
 getCmd = mkBulkString "GET"
 
-encodeThenDecodeRDBBinary :: (RDBBinary a) => RDBConfig -> a -> a
-encodeThenDecodeRDBBinary rdbConfig = fst . runGet (execRDBGet rdbConfig rdbGet) . snd . runPutM . execRDBPut rdbConfig . rdbPut
+encodeThenDecodeUsingRDBBinary :: (RDBBinary a) => RDBConfig -> a -> a
+encodeThenDecodeUsingRDBBinary rdbConfig = decode rdbConfig . encode rdbConfig
+
+encodeThenDecodeOrFailUsingRDBBinary :: (RDBBinary a) => RDBConfig -> a -> Either String a
+encodeThenDecodeOrFailUsingRDBBinary rdbConfig = decodeOrFail rdbConfig . encode rdbConfig

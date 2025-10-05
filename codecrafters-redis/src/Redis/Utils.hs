@@ -9,12 +9,14 @@ module Redis.Utils (
     toUpperBs,
     showUsingBase,
     combineDecimalDigits,
+    genericShow
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
+import Data.String (IsString (..))
 import Debug.Pretty.Simple
 
 myTracePretty :: (Show a) => String -> a -> a
@@ -53,3 +55,6 @@ showUsingBase base num = go num ""
 combineDecimalDigits :: [Int] -> Int
 combineDecimalDigits [] = 0
 combineDecimalDigits digits = sum $ zipWith (\digit numOfZeros -> digit * (10 ^ numOfZeros)) (reverse digits) [0 ..]
+
+genericShow :: (IsString s, Show a) => a -> s
+genericShow = fromString . show
