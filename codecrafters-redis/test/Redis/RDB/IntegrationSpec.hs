@@ -5,20 +5,23 @@ module Redis.RDB.IntegrationSpec where
 import Redis.RDB.Data
 import Redis.RDB.Format
 import Test.Hspec
-import Test.Hspec.Hedgehog
+import Test.Hspec.Hedgehog hiding (assert)
 
 import Hedgehog qualified as H
 import Redis.RDB.Binary qualified as Binary
 
 import Control.Exception (SomeException, try)
-import Data.Foldable (for_)
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
-import Path (parseRelFile, reldir, toFilePath, (</>))
+import Data.Traversable (for)
+import Path (addExtension, parseRelFile, reldir, toFilePath, (</>))
 import Redis.Helper (encodeThenDecodeUsingRDBBinary)
 import Redis.RDB.Config (RDBConfig (..))
 import Redis.RDB.TestConfig (defaultRDBConfig, genRDBConfig)
 import Rerefined.Refine.TH (refineTH)
 import System.Directory (doesFileExist)
+import Test.Tasty (TestTree)
+import Test.Tasty.Golden (goldenVsFile)
+import Test.Tasty.HUnit (assertFailure)
 
 createSampleRDBStructure :: POSIXTime -> RDBFile
 createSampleRDBStructure currentTime =
@@ -141,14 +144,14 @@ multiDatabaseRDBStructure =
 -- | List of example RDB files to test
 exampleRDBFiles :: [String]
 exampleRDBFiles =
-    [ "rdb_version_5_with_checksum.rdb"
-    , "empty_database.rdb"
-    , "expiration.rdb"
-    , "integer_keys.rdb"
-    , "keys_with_expiry.rdb"
-    , "multiple_databases.rdb"
-    , "non_ascii_values.rdb"
-    , "easily_compressible_string_key.rdb"
+    [ "rdb_version_5_with_checksum"
+    , "empty_database"
+    , "expiration"
+    , "integer_keys"
+    , "keys_with_expiry"
+    , "multiple_databases"
+    , "non_ascii_values"
+    , "easily_compressible_string_key"
     ]
 
 spec_RDB_integration_tests :: Spec
@@ -188,28 +191,30 @@ spec_RDB_integration_tests = do
                 rdbConfig <- H.forAll genRDBConfig
                 evalIO $ encodeThenDecodeUsingRDBBinary rdbConfig largeRDB `shouldBe` largeRDB
 
-        describe "Decoding sample RDB Files" $ do
-            for_ exampleRDBFiles $ \rawTestFilename -> do
-                it ("successfully decodes " <> rawTestFilename) $ do
-                    testFilename <- parseRelFile rawTestFilename
-                    let filepath = [reldir|test/input/example-rdb-files|] </> testFilename
-                    fileExists <- doesFileExist (toFilePath filepath)
-                    let rdbConfig =
-                            defaultRDBConfig
-                                { useLzfCompression = True
-                                , skipChecksumValidation = False
-                                , generateChecksum = True
-                                }
+test_Decoding_sample_rdb_file :: IO [TestTree]
+test_Decoding_sample_rdb_file = do
+    for exampleRDBFiles $ \rawTestFilename -> do
+        testFilename <- parseRelFile rawTestFilename
+        filepath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/input|] </> testFilename
+        fileExists <- doesFileExist (toFilePath filepath)
+        let rdbConfig =
+                defaultRDBConfig
+                    { useLzfCompression = True
+                    , skipChecksumValidation = False
+                    , generateChecksum = True
+                    }
 
-                    if fileExists
-                        then do
-                            result <- try (Binary.decodeFile rdbConfig (toFilePath filepath)) :: IO (Either SomeException RDBFile)
-                            case result of
-                                Left err -> expectationFailure $ "Failed to decode " <> show filepath <> ": " <> show err
-                                Right decodedRDB -> do
-                                    decodedRDB.magicString `shouldBe` Redis
-                                    decodedRDB.version `shouldSatisfy` (`elem` [minBound .. maxBound])
-                        else expectationFailure $ "File not found: " <> show filepath
+        if fileExists
+            then do
+                goldenPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/golden|] </> testFilename
+                outputPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/output|] </> testFilename
+                result <- try (Binary.decodeFile rdbConfig (toFilePath filepath)) :: IO (Either SomeException RDBFile)
+                case result of
+                    Left err -> assertFailure ("Failed to decode " <> show filepath <> ": " <> show err)
+                    Right decodedRDB ->
+                        pure $
+                            goldenVsFile ("Golden test for " <> rawTestFilename) (toFilePath goldenPath) (toFilePath outputPath) (Binary.encodeFile rdbConfig (toFilePath outputPath) decodedRDB)
+            else assertFailure ("File not found: " <> show filepath)
 
 -- | Create a large RDB for performance testing
 createLargeRDB :: POSIXTime -> RDBFile

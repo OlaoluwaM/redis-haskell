@@ -142,6 +142,7 @@ tests:
       - directory
       - filepath
       - hspec
+      - hspec-golden
       - hspec-hedgehog
       - hedgehog
       - optics
@@ -152,7 +153,9 @@ tests:
       - tasty
       - tasty-discover
       - tasty-expected-failure
+      - tasty-golden
       - tasty-hspec
       - tasty-hedgehog
+      - tasty-hunit
       - unordered-containers
       - vector

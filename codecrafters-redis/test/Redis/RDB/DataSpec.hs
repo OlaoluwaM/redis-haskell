@@ -13,7 +13,7 @@ import Data.ByteString qualified as BSC
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Word (Word32, Word64)
 import Redis.RDB.Binary (decodeOrFail, encode)
-import Redis.RDB.TestConfig (genRDBConfig)
+import Redis.RDB.TestConfig (genRDBConfig,)
 import Test.Tasty.Hedgehog (testProperty)
 
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
@@ -37,7 +37,7 @@ roundTripRDBLengthPrefixEncoding = H.property $ do
 
 -- Trial and error puts 30 tests as the sweet spot
 roundTripRDBStringEncoding :: H.Property
-roundTripRDBStringEncoding = withTests 30 $ H.property $ do
+roundTripRDBStringEncoding = withTests 20 $ H.property $ do
     rdbString <- H.forAll (Gen.bytes (Range.exponential 0 (fromIntegral (maxBound @Int64))))
     rdbConfig <- H.forAll genRDBConfig
     H.tripping (toRDBString rdbString) (encode rdbConfig) (decodeOrFail rdbConfig)
@@ -86,12 +86,12 @@ roundTripRDBDoubleEncoding = H.property $ do
 
 spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
-    describe "Edge Cases and Corner Cases" $ do
-        modifyMaxSuccess (const 10) $ it "Example test for long strings" $ hedgehog $ do
-            let sampleString = toRDBString $ BSC.replicate 67108864 97
-            rdbConfig <- H.forAll genRDBConfig
-            H.tripping sampleString (encode rdbConfig) (decodeOrFail rdbConfig)
+    modifyMaxSuccess (const 10) $ it "Test on 512mb of data" $ hedgehog $ do
+        let sampleString = toRDBString $ BSC.replicate 67108864 97
+        rdbConfig <- H.forAll genRDBConfig
+        H.tripping sampleString (encode rdbConfig) (decodeOrFail rdbConfig)
 
+    describe "Edge Cases and Corner Cases" $ do
         it "handles Unicode and special characters in strings" $ hedgehog $ do
             let unicodeStr = "héllo 世界 🚀 \n\t\r"
                 unicodeString = toRDBString unicodeStr

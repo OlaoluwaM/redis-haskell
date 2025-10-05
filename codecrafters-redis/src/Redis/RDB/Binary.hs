@@ -112,7 +112,7 @@ instance Pretty RDBError where
                         ]
                 ]
 
-    prettyList = (\items -> line <> "Errors:" <+> line <> indent 2 items) . align . vsep . map pretty
+    prettyList = (\items -> line <> "Errors:" <+> line <> indent 2 items) . align . vsep . map ((<> line) . pretty)
 
 data RDBErrorArg = MKRDBErrorArg
     { rdbErrorType :: RDBErrorType
