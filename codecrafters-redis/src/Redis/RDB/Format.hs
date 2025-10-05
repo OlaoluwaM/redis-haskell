@@ -27,6 +27,7 @@ import Redis.RDB.Data
 import Control.Monad.State.Strict qualified as State
 import Data.ByteString.Char8 qualified as BSC
 
+import Bits.Show (showFiniteBits)
 import Control.Applicative (asum, (<|>))
 import Control.Applicative.Combinators (many, manyTill)
 import Control.Monad (when)
@@ -549,7 +550,7 @@ instance RDBBinary EOF where
                     MKRDBErrorArg
                         ValidationError
                         "EOF op code check"
-                        ("Expected EOF marker (" <> genericShow eofOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected EOF marker (" <> showFiniteBits eofOpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
 
 -- | Millisecond expiry: 0xFC + 8-byte little-endian timestamp + value type + key + value
 instance RDBBinary KeyValWithExpiryInMS where
@@ -568,7 +569,7 @@ instance RDBBinary KeyValWithExpiryInMS where
                     MKRDBErrorArg
                         ValidationError
                         "KeyValWithExpiryInMS op code check"
-                        ("Expected KeyValWithExpiryInMS marker (" <> genericShow keyValWithExpiryInMSOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected KeyValWithExpiryInMS marker (" <> showFiniteBits keyValWithExpiryInMSOpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
             else KeyValWithExpiryInMS <$> rdbGet <*> rdbGet <*> rdbGet <*> rdbGet
 
 -- | Second expiry: 0xFD + 4-byte little-endian timestamp + value type + key + value
@@ -588,7 +589,7 @@ instance RDBBinary KeyValWithExpiryInS where
                     MKRDBErrorArg
                         ValidationError
                         "KeyValWithExpiryInS op code check"
-                        ("Expected KeyValWithExpiryInS marker (" <> genericShow keyValWithExpiryInSpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected KeyValWithExpiryInS marker (" <> showFiniteBits keyValWithExpiryInSpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
             else KeyValWithExpiryInS <$> rdbGet <*> rdbGet <*> rdbGet <*> rdbGet
 
 -- | No expiry format: value type + key + value (no opcode prefix)
@@ -624,7 +625,7 @@ instance RDBBinary AuxField where
                     MKRDBErrorArg
                         ValidationError
                         "AuxField opcode check"
-                        ("Expected AuxField marker (" <> genericShow auxiliaryFieldOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected AuxField marker (" <> showFiniteBits auxiliaryFieldOpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
             else do
                 asum
                     [ AuxFieldRedisVer <$> rdbGet @RedisVersion
@@ -775,7 +776,7 @@ instance RDBBinary SelectDB where
                     MKRDBErrorArg
                         ValidationError
                         "SelectDB prefix check"
-                        ("Expected SelectDB prefix (" <> genericShow selectDBOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected SelectDB prefix (" <> showFiniteBits selectDBOpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
             else do
                 -- Parse database index from variable-length encoding
                 SelectDB <$> rdbGet @RDBLengthPrefix6
@@ -798,7 +799,7 @@ instance RDBBinary ResizeDB where
                     MKRDBErrorArg
                         ValidationError
                         "ResizeDB prefix check"
-                        ("Expected ResizeDB prefix (" <> genericShow resizeDBOpCodeByteTag <> ") got " <> genericShow tag <> " instead.")
+                        ("Expected ResizeDB prefix (" <> showFiniteBits resizeDBOpCodeByteTag <> ") got " <> showFiniteBits tag <> " instead.")
             else do
                 numOfKeys <- rdbGet @RDBLengthPrefix6
                 numOfKeysWithExpiry <- rdbGet @RDBLengthPrefix6

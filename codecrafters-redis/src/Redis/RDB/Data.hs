@@ -86,6 +86,7 @@ import Rerefined.Orphans ()
 import Rerefined.Predicate (Predicate (..), Refine (..))
 import Rerefined.Predicates (And, CompareLength, CompareValue, Sign (..), validateVia)
 import Rerefined.Predicates.Operators (type (.<), type (.<=), type (.>), type (.>=))
+import Bits.Show (showFiniteBits)
 
 {-
     Okay, so the RDB spec describes what a variant of variable-length encoding that we shall refer to as rdb-variable-length encoding since this variant differs subtly from the standard variable-length encoding. Now, that said, the rdb-variable length encoding is mostly for the length of things to ensure that the length is stored smartly and efficiently, not using more space/bytes than necessary. However, Redis also uses this encoding/algorithm to sometimes encode integers hence we have the RDBLengthPrefix6, RDBLengthPrefix14, and RDBLengthPrefix32, types which encode integers as if they were a length of a string but without the accompany byte sequence you'd expect for a string.
@@ -544,7 +545,7 @@ rdbVariableLengthDecode8BitInt = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBInt8 prefix byte verification"
-                    ("Unexpected prefix byte while attempting to decode 8 bit integer. Expected " <> genericShow intPrefix8Bit <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected prefix byte while attempting to decode 8 bit integer. Expected " <> showFiniteBits intPrefix8Bit <> ", but got: " <> showFiniteBits prefixByte)
         else RDBInt8 <$> genericRDBGet @Int8
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 0
@@ -573,7 +574,7 @@ rdbVariableLengthDecode16BitInt = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBInt16 prefix byte verification"
-                    ("Unexpected prefix byte while attempting to decode 16 bit integer. Expected " <> genericShow intPrefix16Bit <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected prefix byte while attempting to decode 16 bit integer. Expected " <> showFiniteBits intPrefix16Bit <> ", but got: " <> showFiniteBits prefixByte)
         else RDBInt16 <$> genericRDBGetUsing getInt16le
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 1
@@ -602,7 +603,7 @@ rdbVariableLengthDecode32BitInt = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBInt32 prefix byte verification"
-                    ("Unexpected prefix byte while attempting to decode 32 bit integer. Expected " <> genericShow intPrefix32Bit <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected prefix byte while attempting to decode 32 bit integer. Expected " <> showFiniteBits intPrefix32Bit <> ", but got: " <> showFiniteBits prefixByte)
         else RDBInt32 <$> genericRDBGetUsing getInt32le
   where
     -- Validate that prefix is correct and type identifier (last 6 bits) is 2
@@ -648,7 +649,7 @@ rdbDecodeLengthPrefix6 = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBLengthPrefix6 prefix byte verification"
-                    ("Unexpected prefix for 6-bit length. Expected first two bits to be 00, but got: " <> genericShow byte)
+                    ("Unexpected prefix for 6-bit length. Expected first two bits to be 00, but got: " <> showFiniteBits byte)
         else refineErrorWithContext "RDBLengthPrefix6 refinement" byte
 
 {- | Encode a 14-bit length prefix
@@ -680,7 +681,7 @@ rdbDecodeLengthPrefix14 = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBLengthPrefix14 prefix byte verification"
-                    ("Unexpected prefix for 14-bit length. Expected " <> genericShow bytePrefixFor14BitLengthPrefix <> ", but got: " <> genericShow firstByte)
+                    ("Unexpected prefix for 14-bit length. Expected " <> showFiniteBits bytePrefixFor14BitLengthPrefix <> ", but got: " <> showFiniteBits firstByte)
         else do
             secondByte <- genericRDBGet @Word8
             -- We know that the last six bits of the first byte and all eight bits of the second byte represent the length, so we want to extract the last six bits of the first byte and combine them with the second byte to form the full 14-bit length
@@ -712,7 +713,7 @@ rdbDecodeLengthPrefix32 = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBLengthPrefix32 prefix byte verification"
-                    ("Unexpected prefix for 32-bit length. Expected " <> genericShow bytePrefixFor32BitLengthPrefix <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected prefix for 32-bit length. Expected " <> showFiniteBits bytePrefixFor32BitLengthPrefix <> ", but got: " <> showFiniteBits prefixByte)
         else refineErrorWithContext "RDBLengthPrefix32 refinement" =<< genericRDBGetUsing getWord32be
 
 bytePrefixFor32BitLengthPrefix :: Word8
@@ -737,7 +738,7 @@ rdbDecodeLengthPrefix64 = do
                 MKRDBErrorArg
                     ValidationError
                     "RDBLengthPrefix64 prefix byte verification"
-                    ("Unexpected prefix for 64-bit length. Expected " <> genericShow bytePrefixFor64BitLengthPrefix <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected prefix for 64-bit length. Expected " <> showFiniteBits bytePrefixFor64BitLengthPrefix <> ", but got: " <> showFiniteBits prefixByte)
         else refineErrorWithContext "RDBLengthPrefix64 refinement" =<< genericRDBGetUsing getWord64be
 
 bytePrefixFor64BitLengthPrefix :: Word8
@@ -767,7 +768,7 @@ rdbDecodeLzfCompressedData = do
                 MKRDBErrorArg
                     ValidationError
                     "LZF prefix byte verification"
-                    ("Unexpected LZF compressed data prefix byte. Expected: " <> genericShow rdbLzfCompressedDataBinaryPrefix <> ", but got: " <> genericShow prefixByte)
+                    ("Unexpected LZF compressed data prefix byte. Expected: " <> showFiniteBits rdbLzfCompressedDataBinaryPrefix <> ", but got: " <> showFiniteBits prefixByte)
         else do
             compressedLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix
             originalLen <- fromRDBLengthPrefix @Int <$> rdbGet @RDBLengthPrefix

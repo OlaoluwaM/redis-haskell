@@ -20,7 +20,7 @@ import Redis.RDB.TestConfig (defaultRDBConfig, genRDBConfig)
 import Rerefined.Refine.TH (refineTH)
 import System.Directory (doesFileExist)
 import Test.Tasty (TestTree)
-import Test.Tasty.Golden (goldenVsFile)
+import Test.Tasty.Golden (goldenVsFileDiff)
 import Test.Tasty.HUnit (assertFailure)
 
 createSampleRDBStructure :: POSIXTime -> RDBFile
@@ -206,14 +206,18 @@ test_Decoding_sample_rdb_file = do
 
         if fileExists
             then do
+                {-
+                    We *could* set the goldenPath to be the same as the inputs rdb file path, but there are some nuances with the implementation of our RDBBinary that makes this prone to false negatives, one being that some of the input rdb files have checksums while other only have the default checksum. Our implementation can be configured to either generate or not generate checksums, but not both at once. We *could* associate a configuration object with each input file name in the list above, but then we'd run into the second issue, namely, our implementation is more *complete* than the examples we have, structurally at least. You see where the sample rdb files might have certain fields omitted, our implementation might place a placeholder value for those fields and so on
+                -}
                 goldenPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/golden|] </> testFilename
                 outputPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/output|] </> testFilename
                 result <- try (Binary.decodeFile rdbConfig (toFilePath filepath)) :: IO (Either SomeException RDBFile)
                 case result of
                     Left err -> assertFailure ("Failed to decode " <> show filepath <> ": " <> show err)
                     Right decodedRDB ->
+                        -- We could also use the `delta` program for diffing, but that would necessitate the complexity of checking whether it is installed
                         pure $
-                            goldenVsFile ("Golden test for " <> rawTestFilename) (toFilePath goldenPath) (toFilePath outputPath) (Binary.encodeFile rdbConfig (toFilePath outputPath) decodedRDB)
+                            goldenVsFileDiff ("Golden test for " <> rawTestFilename) (\ref new -> ["diff", "-u", ref, new]) (toFilePath goldenPath) (toFilePath outputPath) (Binary.encodeFile rdbConfig (toFilePath outputPath) decodedRDB)
             else assertFailure ("File not found: " <> show filepath)
 
 -- | Create a large RDB for performance testing
