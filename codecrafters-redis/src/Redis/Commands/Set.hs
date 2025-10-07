@@ -42,7 +42,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), mkStoreValue)
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), mkStoreValue, TTLTimestamp (TTLTimestamp), TTLPrecision (..))
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -182,11 +182,11 @@ handleSet (SetCmdArg key newVal opts) = do
 
     sendThroughSocket socket . fromEither . fmap serializeRESPDataType $ output
 
-setupTTLCalculation :: UTCTime -> Maybe UTCTime -> TTLOption -> Maybe UTCTime
+setupTTLCalculation :: UTCTime -> Maybe TTLTimestamp -> TTLOption -> Maybe TTLTimestamp
 setupTTLCalculation currentTime currentTTLForItem = \case
-    (EX t) -> Just $ addUTCTime (fromInteger @NominalDiffTime (untag t)) currentTime
-    (PX t) -> Just $ addUTCTime (realToFrac @_ @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime -- t is in milliseconds so we must convert to seconds
-    (EXAT t) -> Just $ posixSecondsToUTCTime (untag t)
-    (PXAT t) -> Just $ posixSecondsToUTCTime . realToFrac . millisecondsToSeconds $ untag t -- t is POSIX milliseconds so we must convert it to seconds
+    (EX t) -> Just $ TTLTimestamp (addUTCTime (fromInteger @NominalDiffTime (untag t)) currentTime) Seconds
+    (PX t) -> Just $ TTLTimestamp (addUTCTime (realToFrac @_ @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime) Milliseconds
+    (EXAT t) -> Just $ TTLTimestamp (posixSecondsToUTCTime (untag t)) Seconds
+    (PXAT t) -> Just $ TTLTimestamp (posixSecondsToUTCTime . realToFrac . millisecondsToSeconds $ untag t) Milliseconds
     KeepTTL -> currentTTLForItem
     DiscardTTL -> Nothing

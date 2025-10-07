@@ -22,7 +22,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (BulkString), RESPDataType (Null), mkNonNullBulkString, nullBulkString, serializeRESPDataType)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreKey (..), StoreState, StoreValue (StoreValue))
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLTimestamp (..))
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -69,7 +69,7 @@ handleGet (GetCmdArg targetKey) = do
                         case ttlM of
                             Nothing -> pure . Right $ mkNonNullBulkString val
                             Just ttl -> do
-                                let keyValTTLHasExpired = currentTime > ttl
+                                let keyValTTLHasExpired = currentTime > ttl.timestamp
                                 pure . bool (Right $ mkNonNullBulkString val) (Right nullBulkString) $ keyValTTLHasExpired
                     x -> do
                         let actualValType = showRedisDataType @ByteString x

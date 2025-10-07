@@ -221,6 +221,7 @@ data RDBVersion = RDBv4 | RDBv5 | RDBv7
     The choice between millisecond and second precision depends on the application's
     timing requirements and storage efficiency considerations.
 -}
+-- https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L1195
 data KeyValueOpCode = FCOpCode KeyValWithExpiryInMS | KeyValOpCode KeyValWithNoExpiryInfo | FDOpcode KeyValWithExpiryInS
     deriving stock (Show, Eq)
 

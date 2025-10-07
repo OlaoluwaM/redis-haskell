@@ -20,7 +20,7 @@ import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (getCmd, mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), nullBulkString, serializeRESPDataType)
-import Redis.Store (StoreKey (..), StoreState, mkStoreValue)
+import Redis.Store (StoreKey (..), StoreState, TTLPrecision (..), TTLTimestamp (..), mkStoreValue)
 import Redis.Store.Data
 import Redis.Test (runTestM)
 
@@ -212,9 +212,9 @@ initializeStoreState = do
                 , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
                 , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
                 , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
-                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just (addUTCTime 3600 now)))
+                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just $ TTLTimestamp (addUTCTime 3600 now) Milliseconds))
                 , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
-                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just (addUTCTime 60 now)))
+                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just $ TTLTimestamp (addUTCTime 60 now) Seconds))
                 , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
                 , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
                 ]
