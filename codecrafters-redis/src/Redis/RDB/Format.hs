@@ -381,7 +381,7 @@ instance Default ResizeDB where
     - "ctime": Creation timestamp
     - "used-mem": Memory usage in bytes
 -}
-data AuxField = AuxFieldRedisVer RedisVersion | AuxFieldRedisBits RedisBits | AuxFieldCTime CTime | AuxFieldUsedMem UsedMem | AuxFieldCustom RDBStringOrIntVal RDBStringOrIntVal
+data AuxField = AuxFieldRedisVer RedisVersion | AuxFieldRedisBits RedisBits | AuxFieldCTime CTime | AuxFieldUsedMem UsedMem | AuxFieldCustom RDBString RDBStringOrIntVal
     deriving stock (Show, Eq)
 
 -- | Memory usage information in bytes at the time of RDB creation
@@ -633,7 +633,7 @@ instance RDBBinary AuxField where
                     , AuxFieldRedisBits <$> rdbGet @RedisBits
                     , AuxFieldCTime <$> rdbGet @CTime
                     , AuxFieldUsedMem <$> rdbGet @UsedMem
-                    , AuxFieldCustom <$> rdbGet @RDBStringOrIntVal <*> rdbGet @RDBStringOrIntVal
+                    , AuxFieldCustom <$> rdbGet @RDBString <*> rdbGet @RDBStringOrIntVal
                     ]
 
 {- | Redis architecture bits encoding (32-bit or 64-bit).

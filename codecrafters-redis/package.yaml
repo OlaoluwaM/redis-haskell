@@ -114,7 +114,6 @@ library:
     - parser-combinators
     - path
     - prettyprinter
-    - refined
     - rerefined
     - safe
     - split
@@ -147,7 +146,6 @@ tests:
       - hedgehog
       - optics
       - path
-      - refined
       - rerefined
       - tagged
       - tasty
