@@ -31,9 +31,9 @@ createSampleRDBStructure currentTime =
         , auxFieldEntries =
             [ AuxFieldRedisVer . RedisVersion $ $$(refineTH "7.0.0")
             , AuxFieldRedisBits RedisBits64
-            , AuxFieldCustom (toRDBStringOrIntVal "custom-key") (toRDBStringOrIntVal "custom-value")
+            , AuxFieldCustom (toRDBString "custom-key") (toRDBStringOrIntVal "custom-value")
             , AuxFieldCTime $ CTime (fromPosixTimeToRDBUnixTimestampS currentTime)
-            , AuxFieldCustom (toRDBStringOrIntVal "another-key") (toRDBStringOrIntVal "another-value")
+            , AuxFieldCustom (toRDBString "another-key") (toRDBStringOrIntVal "another-value")
             , AuxFieldUsedMem $ UsedMem 1048576 -- 1MB
             ]
         , dbEntries =

@@ -19,7 +19,7 @@ import Control.Applicative.Permutations (
     intercalateEffect,
     toPermutationWithDefault,
  )
-import Control.Concurrent.STM (atomically, newTVar, readTVar, readTVarIO, writeTVar)
+import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..))
 import Data.Aeson (ToJSON (..), object, (.=))
@@ -42,7 +42,7 @@ import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic, view)
 import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
 import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), mkStoreValue, TTLTimestamp (TTLTimestamp), TTLPrecision (..))
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLPrecision (..), TTLTimestamp (TTLTimestamp), mkStoreValue)
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -158,14 +158,14 @@ handleSet (SetCmdArg key newVal opts) = do
     let defaultResponse = SimpleString "OK"
 
     output <- liftIO $ atomically $ do
-        currentStoreValAtKeyM <- maybe (pure Nothing) (fmap Just . readTVar) $ HashMap.lookup key kvStore
+        let currentStoreValAtKeyM = HashMap.lookup key kvStore
 
         case (currentStoreValAtKeyM, setCondition) of
             (Nothing, OnlyIfKeyExists) -> pure (Right Null)
             (Just _, OnlyIfKeyDoesNotExist) -> pure (Right Null)
             (Nothing, _) -> do
                 let newTTLForItemAtKey = calculateTTL Nothing opts.ttlOption
-                newStoreValAtKey <- newTVar $ mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
+                let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
                 writeTVar kvStoreState (HashMap.insert key newStoreValAtKey kvStore)
                 pure . Right . bool defaultResponse Null $ shouldReturnOldKeyValue
             (Just currentStoreValAtKey, _) -> do
@@ -173,7 +173,7 @@ handleSet (SetCmdArg key newVal opts) = do
                 let newTTLForItemAtKey = calculateTTL currentTTLForItem opts.ttlOption
                 case currentValAtKey of
                     (MkRedisStr (RedisStr prevValAtKey)) -> do
-                        newStoreValAtKey <- newTVar $ mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
+                        let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
                         writeTVar kvStoreState (HashMap.insert key newStoreValAtKey kvStore)
                         pure . Right . bool defaultResponse (mkNonNullBulkString prevValAtKey) $ shouldReturnOldKeyValue
                     x -> pure $ do

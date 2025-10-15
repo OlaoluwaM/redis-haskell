@@ -6,9 +6,6 @@ import Redis.Store.Data
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text.Encoding qualified as T
 
-import Control.Concurrent.STM (TVar, atomically, readTVar, readTVarIO)
-import Control.Monad (filterM)
-import Control.Monad.IO.Class (MonadIO (..))
 import Data.Default (Default (..))
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds)
@@ -23,13 +20,12 @@ import Redis.Server.Version (redisVersion)
 import Redis.Store (Store, StoreKey (..), StoreValue (..), TTLTimestamp (..))
 import Rerefined (unsafeRefine)
 
-serializeRedisStore :: (MonadIO m) => POSIXTime -> ServerSettings -> Store -> m RDBFile
-serializeRedisStore creationTime settings store = do
+serializeRedisStore :: POSIXTime -> ServerSettings -> Store -> RDBFile
+serializeRedisStore creationTime settings store =
     let totalNumOfKeys = calcNumOfKeysInStore store
-    numOfKeysWithTTL <- calculateNumOfKeysWithTTLInStore store
-    keyValEntries <- mkRDBKeyValEntries store
-    pure $
-        RDBFile
+        numOfKeysWithTTL = calculateNumOfKeysWithTTLInStore store
+        keyValEntries = mkRDBKeyValEntries store
+     in RDBFile
             { magicString = Redis
             , version = RDBv7
             , auxFieldEntries = mkAuxFields settings creationTime
@@ -50,27 +46,20 @@ mkAuxFields (ServerSettings settings) creationTime =
 calcNumOfKeysInStore :: Store -> Word
 calcNumOfKeysInStore store = fromIntegral $ length $ HashMap.keys store
 
-calculateNumOfKeysWithTTLInStore :: (MonadIO m) => Store -> m Word
-calculateNumOfKeysWithTTLInStore store = do
-    let foo = HashMap.toList store
-    g <-
-        filterM
-            ( \(_, storeValTvar) -> liftIO $ atomically $ do
-                StoreValue{ttlTimestamp} <- readTVar storeValTvar
-                pure $ isJust ttlTimestamp
-            )
-            foo
-    pure $ fromIntegral $ length g
-
-mkRDBKeyValEntries :: forall m. (MonadIO m) => Store -> m [KeyValueOpCode]
-mkRDBKeyValEntries store = mapM (uncurry mkRDBKeyValEntry) (HashMap.toList store)
+calculateNumOfKeysWithTTLInStore :: Store -> Word
+calculateNumOfKeysWithTTLInStore = calcNumOfKeysInStore . HashMap.filter hasTTL
   where
-    mkRDBKeyValEntry :: StoreKey -> TVar StoreValue -> m KeyValueOpCode
-    mkRDBKeyValEntry key storeValTvar = do
-        storeVal <- liftIO $ readTVarIO storeValTvar
+    hasTTL :: StoreValue -> Bool
+    hasTTL StoreValue{ttlTimestamp} = isJust ttlTimestamp
+
+mkRDBKeyValEntries :: Store -> [KeyValueOpCode]
+mkRDBKeyValEntries store = map (uncurry mkRDBKeyValEntry) (HashMap.toList store)
+  where
+    mkRDBKeyValEntry :: StoreKey -> StoreValue -> KeyValueOpCode
+    mkRDBKeyValEntry key storeVal = do
         case (storeVal.value, storeVal.ttlTimestamp) of
-            (MkRedisStr strVal, Just ttl) -> pure $ mkKeyValStrEntryForValWithExpiry key strVal ttl
-            (MkRedisStr strVal, Nothing) -> pure $ mkKeyValStrEntryForValWithoutExpiry key strVal
+            (MkRedisStr strVal, Just ttl) -> mkKeyValStrEntryForValWithExpiry key strVal ttl
+            (MkRedisStr strVal, Nothing) -> mkKeyValStrEntryForValWithoutExpiry key strVal
             x -> error $ "Only string values are supported right now in the Redis store. So this error really shouldn't have happened " <> show x
 
     mkKeyValStrEntryForValWithExpiry :: StoreKey -> RedisStr -> TTLTimestamp -> KeyValueOpCode

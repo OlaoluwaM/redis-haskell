@@ -9,7 +9,6 @@ import Data.Sequence qualified as Seq
 import Control.Concurrent.STM (atomically, newTVar, readTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
-import Data.Bifunctor (Bifunctor (second))
 import Data.ByteString (ByteString)
 import Data.Default (def)
 import Data.String.Interpolate (i)
@@ -21,7 +20,7 @@ import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), T
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLPrecision (..), TTLTimestamp (..), mkStoreValue, getItemTTLValue)
+import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLPrecision (..), TTLTimestamp (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (runTestM)
 
@@ -194,9 +193,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to update the value for the key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to update the value for the key #{key} in store|])
+                            ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value))
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -208,9 +208,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to set new key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to set new key #{key} in store|])
+                            ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value))
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -240,9 +241,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure "Failed to update key bike:1 in store")
-                        (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ "red"))) . (.value)) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure "Failed to update key bike:1 in store")
+                            ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ "red"))) . (.value))
                         $ HashMap.lookup (StoreKey "bike:1") storeItems
                 result `shouldBe` serializeRESPDataType Null
 
@@ -282,9 +284,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
+                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -301,9 +304,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
+                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -328,9 +332,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq2) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
+                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -379,9 +384,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to set the key #{key} in store|])
-                        (fmap ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value)) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to set the key #{key} in store|])
+                            ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value))
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` serializeRESPDataType Null
 
@@ -406,9 +412,10 @@ spec_set_cmd_tests = do
                 result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq2) (Just initialStoreState))
                 atomically $ do
                     storeItems <- readTVar initialStoreState
-                    maybe
-                        (pure $ expectationFailure [i|Failed to set the key #{key} in store|])
-                        (fmap ((`shouldBe` Nothing) . getItemTTLValue) . readTVar)
+                    pure
+                        $ maybe
+                            (expectationFailure [i|Failed to set the key #{key} in store|])
+                            ((`shouldBe` Nothing) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -424,9 +431,7 @@ initializeStoreState :: IO StoreState
 initializeStoreState = do
     now <- getCurrentTime
     atomically $ do
-        storeItems <-
-            traverse
-                (sequenceA . second newTVar)
+        let storeItems =
                 [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
                 , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
                 , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)

@@ -6,7 +6,6 @@ import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (atomically, newTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
-import Data.Bifunctor
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (for_)
@@ -205,9 +204,7 @@ initializeStoreState :: IO StoreState
 initializeStoreState = do
     now <- getCurrentTime
     atomically $ do
-        storeItems <-
-            traverse
-                (sequenceA . second newTVar)
+        let storeItems =
                 [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
                 , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
                 , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)

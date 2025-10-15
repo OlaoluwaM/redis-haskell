@@ -37,16 +37,16 @@ newtype StoreKey = StoreKey {key :: ByteString}
     deriving stock (Eq, Show)
     deriving newtype (Hashable)
 
-type Store = HashMap StoreKey (TVar StoreValue)
-type StoreState = TVar (HashMap StoreKey (TVar StoreValue))
+type Store = HashMap StoreKey StoreValue
+type StoreState = TVar Store
 
 genInitialStore :: Store
 genInitialStore = HashMap.empty
 
-getItemFromStore :: StoreKey -> Store -> Maybe (TVar StoreValue)
+getItemFromStore :: StoreKey -> Store -> Maybe StoreValue
 getItemFromStore = HashMap.lookup
 
-addItemToStore :: StoreKey -> TVar StoreValue -> Store -> Store
+addItemToStore :: StoreKey -> StoreValue -> Store -> Store
 addItemToStore = HashMap.insert
 
 mkStoreValue :: RedisDataType -> UTCTime -> Maybe TTLTimestamp -> StoreValue

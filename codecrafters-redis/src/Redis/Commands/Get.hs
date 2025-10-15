@@ -62,8 +62,7 @@ handleGet (GetCmdArg targetKey) = do
         let targetItemM = HashMap.lookup targetKey kvStore
         case targetItemM of
             Nothing -> pure . Right $ Null
-            Just targetItemVar -> do
-                (StoreValue valForTargetKey _ ttlM) <- readTVar targetItemVar
+            Just (StoreValue valForTargetKey _ ttlM) -> do
                 case valForTargetKey of
                     (MkRedisStr (RedisStr val)) -> do
                         case ttlM of
