@@ -24,15 +24,30 @@ import GHC.Generics (Generic)
 import Options.Applicative (
     Parser,
     argument,
+    auto,
     help,
     long,
     maybeReader,
     metavar,
     option,
     optional,
+    value,
  )
 import Options.Applicative.Types (ReadM, readerAsk)
-import Path
+import Path (
+    Abs,
+    Dir,
+    File,
+    Path,
+    SomeBase (..),
+    filename,
+    parseAbsDir,
+    parseAbsFile,
+    parseRelDir,
+    parseRelFile,
+    reldir,
+    relfile,
+ )
 
 -- Redis configurations as defined https://redis.io/docs/latest/operate/oss_and_stack/management/config/
 -- This module particularly implements the ability to set those configurations using command line options and arguments (https://redis.io/docs/latest/operate/oss_and_stack/management/config/#passing-arguments-using-the-command-line)
@@ -66,18 +81,6 @@ serverSettings =
         <$> optional parserForRedisConfigArgument
         <*> parserForCommandLineServerSettings
 
-parserForCommandLineServerSettings :: Parser ServerSettings
-parserForCommandLineServerSettings =
-    (\x y -> ServerSettings . HashMap.fromList . catMaybes $ [x, y])
-        <$> optional
-            ( (const (Setting "dir") &&& DirPathVal . Abs)
-                <$> option (maybeReader parseAbsDir <|> fail "Invalid path provided for rdb dir") (long "dir" <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file")
-            )
-        <*> optional
-            ( (const (Setting "dbfilename") &&& FilePathVal . Rel)
-                <$> option (maybeReader parseRelFile <|> fail "Invalid rdb file name") (long "dbfilename" <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension")
-            )
-
 parserForRedisConfigArgument :: Parser RedisConfFile
 parserForRedisConfigArgument =
     argument
@@ -108,3 +111,49 @@ serializeSettingsValue = \case
     BoolVal boolVal -> fromString . show $ boolVal
     FilePathVal x -> fromString . show $ x
     DirPathVal x -> fromString . show $ x
+
+parserForCommandLineServerSettings :: Parser ServerSettings
+parserForCommandLineServerSettings =
+    ServerSettings . HashMap.fromList . catMaybes
+        <$> sequenceA
+            [ optional rdbFileDirectoryParser
+            , optional rdbFilenameParser
+            , optional rdbCompressionParser
+            , optional rdbChecksumParser
+            ]
+
+{- | Parser for RDB directory setting
+This aligns with the default value for `dir` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L516
+-}
+rdbFileDirectoryParser :: Parser (Setting, SettingValue)
+rdbFileDirectoryParser =
+    (const (Setting "dir") &&& DirPathVal)
+        <$> option
+            (maybeReader (fmap Abs . parseAbsDir) <|> maybeReader (fmap Rel . parseRelDir))
+            (long "dir" <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file" <> value (Rel [reldir|./|]))
+
+{- | Parser for RDB filename setting
+This aligns with the default value for `dbfilename` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L493
+-}
+rdbFilenameParser :: Parser (Setting, SettingValue)
+rdbFilenameParser =
+    (const (Setting "dbfilename") &&& FilePathVal . Rel)
+        <$> option
+            (maybeReader parseRelFile)
+            (long "dbfilename" <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension" <> value [relfile|dump.rdb|])
+
+{- | Parser for RDB compression setting
+These align with the default values for `rdbcompression` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L466
+-}
+rdbCompressionParser :: Parser (Setting, SettingValue)
+rdbCompressionParser =
+    (const (Setting "rdbcompression") &&& BoolVal)
+        <$> option auto (long "rdbcompression" <> metavar "RDB_COMPRESSION" <> help "Enable or disable RDB compression (default: enabled)" <> value True)
+
+{- | Parser for RDB checksum setting
+These align with the default values for `rdbchecksum` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L475
+-}
+rdbChecksumParser :: Parser (Setting, SettingValue)
+rdbChecksumParser =
+    (const (Setting "rdbchecksum") &&& BoolVal)
+        <$> option auto (long "rdbchecksum" <> metavar "RDB_CHECKSUM" <> help "Enable or disable RDB checksum (default: enabled)" <> value True)
