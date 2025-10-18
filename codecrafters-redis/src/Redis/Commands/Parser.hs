@@ -20,6 +20,7 @@ import Data.Attoparsec.ByteString (Parser)
 import Data.ByteString (ByteString)
 import Data.Char (toUpper)
 import Data.Either.Extra (maybeToEither)
+import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -28,6 +29,7 @@ import Redis.Commands.Config.Get (ConfigGetCmdArg, mkConfigGetCmdArg)
 import Redis.Commands.Echo (EchoCmdArg, mkEchoCmdArg)
 import Redis.Commands.Get (GetCmdArg, mkGetCmdArg)
 import Redis.Commands.Ping (PingCmdArg, mkPingCmdArg)
+import Redis.Commands.Save (mkSaveCmdArg)
 import Redis.Commands.Set (SetCmdArg, mkSetCmdArg)
 import Redis.Helpers (withCustomError)
 import Redis.Orphans ()
@@ -43,7 +45,7 @@ data ParsedCommand = ParsedCommand {command :: BulkString, args :: [BulkString]}
     deriving stock (Eq, Show)
 
 -- NOTE: Remember to update the `mkCommand` function if you add new commands
-data Command = Ping PingCmdArg | Echo EchoCmdArg | Set SetCmdArg | Get GetCmdArg | Config ConfigSubCommand | InvalidCommand Text
+data Command = Ping PingCmdArg | Echo EchoCmdArg | Set SetCmdArg | Get GetCmdArg | Config ConfigSubCommand | Save | InvalidCommand Text
     deriving stock (Eq, Show, Generic)
 
 data ConfigSubCommand = ConfigGet ConfigGetCmdArg
@@ -94,6 +96,7 @@ mkCommand (ParsedCommand (BulkString cmdStr) parsedArgs) = case (cmdStr, parsedA
             Right (ParsedCommand (BulkString "GET") x) -> ConfigGet <$> mkConfigGetCmdArg x
             Right (ParsedCommand (BulkString unimplementedSubCommandStr) _) -> handleUnimplementedSubCmd "CONFIG" unimplementedSubCommandStr ["SET"]
         pure $ Config subCommand
+    ("SAVE", xs) -> mkSaveCmdArg xs $> Save
     (unimplementedCommandStr, _) -> handleUnimplementedCmd unimplementedCommandStr
 
 parseSubCommandFor :: String -> [BulkString] -> Either String ParsedCommand

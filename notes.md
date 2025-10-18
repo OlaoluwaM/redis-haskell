@@ -1,9 +1,12 @@
 # Ephemeral Notes and Jottings
 
-I'd be interested in switching over redis-haskell to using effectful over mtl
+## Notes
 
-We want and RDB Val type that is only made up of ints and strings, not RDBVal, leave out floats for now
+## To-dos
 
-Look to removing FormatSpec in favor of just IntegrationSpec
-
-Make UsedMem a Word, not Int
+- [ ] Implement the `RESTORE` command
+- [ ] Add tests for the new `SAVE` command
+- [ ] Add tests for the `RESTORE` commandd
+- [ ] Implement `BGSAVE` command
+- [ ] Implement `LASTSave` command
+- [ ] I'd be interested in switching over redis-haskell to using effectful over mtl
