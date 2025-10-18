@@ -339,7 +339,7 @@ newtype SelectDB
     deriving stock (Show, Eq)
 
 instance Default SelectDB where
-    def = SelectDB $$(refineTH 0) -- Default to database 0
+    def = SelectDB $$(refineTH 0) -- Default to database 0. Most redis instances use only database 0 as multiple databases in a single instance is discouraged in favor of multiple instances. https://stackoverflow.com/questions/16221563/whats-the-point-of-multiple-redis-databases
 
 {- | Memory allocation optimization hints (opcode 0xFB).
 
@@ -385,7 +385,7 @@ data AuxField = AuxFieldRedisVer RedisVersion | AuxFieldRedisBits RedisBits | Au
     deriving stock (Show, Eq)
 
 -- | Memory usage information in bytes at the time of RDB creation
-newtype UsedMem = UsedMem Int
+newtype UsedMem = UsedMem Word
     deriving stock (Show, Eq)
 
 -- | RDB file creation timestamp as Unix time
@@ -749,7 +749,7 @@ instance RDBBinary UsedMem where
             else do
                 -- Parse memory value string and convert to integer
                 memVal <- fromRDBString <$> rdbGet @RDBString
-                case BSC.readInt memVal of
+                case BSC.readWord memVal of
                     Just (memInt, "") -> pure $ UsedMem memInt
                     _ ->
                         throwRDBError $

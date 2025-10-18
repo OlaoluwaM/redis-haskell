@@ -24,6 +24,8 @@ module Redis.RDB.Data (
     toRDBString,
     fromRDBString,
     toRDBStringOrIntVal,
+    fromRDBStringOrIntVal,
+    fromRDBInt,
     fromPosixTimeToRDBUnixTimestampMS,
     toPosixTimeFromRDBUnixTimestampMS,
     fromPosixTimeToRDBUnixTimestampS,
@@ -42,6 +44,7 @@ import Data.Bits qualified as Bits
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
+import Bits.Show (showFiniteBits)
 import Control.Applicative (Alternative (..), asum)
 import Control.DeepSeq (NFData (..))
 import Control.Monad.Reader (ask)
@@ -72,6 +75,7 @@ import Data.Either (isRight)
 import Data.Fixed (Pico)
 import Data.Int (Int16, Int32, Int8)
 import Data.Maybe (isNothing)
+import Data.String (fromString)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -86,7 +90,6 @@ import Rerefined.Orphans ()
 import Rerefined.Predicate (Predicate (..), Refine (..))
 import Rerefined.Predicates (And, CompareLength, CompareValue, Sign (..), validateVia)
 import Rerefined.Predicates.Operators (type (.<), type (.<=), type (.>), type (.>=))
-import Bits.Show (showFiniteBits)
 
 {-
     Okay, so the RDB spec describes what a variant of variable-length encoding that we shall refer to as rdb-variable-length encoding since this variant differs subtly from the standard variable-length encoding. Now, that said, the rdb-variable length encoding is mostly for the length of things to ensure that the length is stored smartly and efficiently, not using more space/bytes than necessary. However, Redis also uses this encoding/algorithm to sometimes encode integers hence we have the RDBLengthPrefix6, RDBLengthPrefix14, and RDBLengthPrefix32, types which encode integers as if they were a length of a string but without the accompany byte sequence you'd expect for a string.
@@ -391,6 +394,17 @@ fromRDBString (RDBMediumString byteStr) = unrefine byteStr
 fromRDBString (RDBLongString byteStr) = unrefine byteStr
 fromRDBString (RDBExtraLongString byteStr) = unrefine byteStr
 
+fromRDBInt :: Integral a => RDBInt -> a
+fromRDBInt (MkRDBInt8 num) = fromIntegral num.rdbInt8
+fromRDBInt (MkRDBInt16 num) = fromIntegral num.rdbInt16
+fromRDBInt (MkRDBInt32 num) = fromIntegral num.rdbInt32
+
+fromRDBStringOrIntVal :: RDBStringOrIntVal -> BS.ByteString
+fromRDBStringOrIntVal (MkRDBInt (MkRDBInt8 (RDBInt8 num))) = fromString (show num)
+fromRDBStringOrIntVal (MkRDBInt (MkRDBInt16 (RDBInt16 num))) = fromString (show num)
+fromRDBStringOrIntVal (MkRDBInt (MkRDBInt32 (RDBInt32 num))) = fromString (show num)
+fromRDBStringOrIntVal (MkRDBString rdbStr) = fromRDBString rdbStr
+
 fromRDBLengthPrefix :: (Num a) => RDBLengthPrefix -> a
 fromRDBLengthPrefix = \case
     RDBLengthPrefix6 num -> fromIntegral . unrefine $ num
@@ -430,18 +444,6 @@ fromPosixTimeToRDBUnixTimestampMS = RDBUnixTimestampMS . floor @_ @Word64 . seco
 
 toPosixTimeFromRDBUnixTimestampMS :: RDBUnixTimestampMS -> POSIXTime
 toPosixTimeFromRDBUnixTimestampMS = secondsToNominalDiffTime . millisecondsToSeconds . fromIntegral @_ @Pico . (.getRDBUnixTimestampMS)
-
-isValid6BitLength :: (Ord a, Num a) => a -> Bool
-isValid6BitLength len = len >= 0 && len < shortStringLenCutoff
-
-isValid14BitLength :: (Ord a, Num a) => a -> Bool
-isValid14BitLength len = len >= shortStringLenCutoff && len < mediumStringLenCutoff
-
-isValid32BitLength :: (Ord a, Num a) => a -> Bool
-isValid32BitLength len = len >= mediumStringLenCutoff && len < longStringLenCutoff
-
-isValid64BitLength :: (Ord a, Num a) => a -> Bool
-isValid64BitLength len = len >= longStringLenCutoff
 
 {- |
     Encode a short string using RDB's variable length encoding
