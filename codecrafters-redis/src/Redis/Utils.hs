@@ -9,11 +9,14 @@ module Redis.Utils (
     toUpperBs,
     showUsingBase,
     combineDecimalDigits,
-    genericShow
+    genericShow,
+    logInternalServerError
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
+import Blammo.Logging (Message (..), MonadLogger, logError, (.=))
+import Data.Aeson (ToJSON)
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
 import Data.String (IsString (..))
@@ -58,3 +61,7 @@ combineDecimalDigits digits = sum $ zipWith (\digit numOfZeros -> digit * (10 ^ 
 
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
+
+logInternalServerError :: (MonadLogger m, ToJSON a) => a -> m ()
+logInternalServerError errMsg =
+    logError $ "Internal server error: " :# ["error" .= errMsg]

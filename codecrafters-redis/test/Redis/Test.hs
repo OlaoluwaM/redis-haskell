@@ -20,6 +20,7 @@ import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
 import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
+import Control.Monad.Catch (MonadCatch, MonadThrow)
 import GHC.Generics (Generic)
 import Network.Socket (
     AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
@@ -55,11 +56,15 @@ instance HasLogger TestContext where
     loggerL f (TestContext clientSocket store settings logger) = TestContext clientSocket store settings <$> f logger
 
 newtype TestM a = TestM {unTestM :: ReaderT TestContext IO a}
-    deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader TestContext)
+    deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader TestContext, MonadThrow, MonadCatch)
     deriving (MonadLogger, MonadLoggerIO) via (WithLogger TestContext IO)
 
 instance MonadSocket TestM ByteString where
     sendThroughSocket _ = pure
+
+instance MonadSocket TestM () where
+    sendThroughSocket _ _ = pure ()
+
 
 runTestM :: TestM a -> Maybe StoreState -> IO a
 runTestM action storeM = do
