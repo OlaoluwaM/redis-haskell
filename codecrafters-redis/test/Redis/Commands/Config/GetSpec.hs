@@ -1,22 +1,22 @@
 module Redis.Commands.Config.GetSpec where
 
+import Redis.RESP
 import Test.Hspec
 
-import Control.Monad.IO.Class (MonadIO (..))
-import Data.Attoparsec.ByteString (parseOnly)
-import Data.ByteString (ByteString)
-import Data.Either (isLeft)
-import Data.Foldable (for_)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text qualified as T
+
+import Data.Attoparsec.ByteString (parseOnly)
+import Data.Either (isLeft)
+import Data.Foldable (for_)
 import Data.Text.Encoding (encodeUtf8)
 import Redis.Commands.Config.Get (ConfigGetCmdArg (..))
 import Redis.Commands.Parser (Command (..), ConfigSubCommand (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr)
-import Redis.RESP (BulkString (..), RESPDataType (..), arrayParser, mkNonNullBulkString, mkNonNullRESPArray, respArrayToList, serializeRESPDataType)
+import Redis.Server.Context (ServerContext)
 import Redis.Server.Settings (ServerSettings (..), Setting (..), SettingValue (..))
-import Redis.Test (PassableTestContext (..), runTestM')
+import Redis.Test (PassableTestContext (..), runTestServer)
 
 -- Helper function to check if a parsed command is a ConfigGet command
 isConfigGetCommand :: Command -> Bool
@@ -150,7 +150,9 @@ spec_config_get_cmd_tests = do
             it "should retrieve specific config parameter when it exists" $ do
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout"]
                 let testSettings = ServerSettings{settings = HashMap.fromList [(Setting "timeout", IntVal 300)]}
-                result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
+
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+
                 -- Expected format: ["timeout", "300"]
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "timeout", mkNonNullBulkString "300"]
                 result `shouldBe` expected
@@ -160,15 +162,16 @@ spec_config_get_cmd_tests = do
                 let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", IntVal 400), (Setting "search-on-timeout", BoolVal False)])
                 let testContext = PassableTestContext Nothing (Just testSettings)
 
-                result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
-                -- Expected format: ["timeout", "300", "databases", "16"]
-                let parsedResult = respArrayToList <$> parseOnly arrayParser result
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
                 let expected =
                         [ mkNonNullBulkString "timeout"
                         , mkNonNullBulkString "400"
                         , mkNonNullBulkString "search-on-timeout"
                         , mkNonNullBulkString "False"
                         ]
+
+                -- Expected format: ["timeout", "400", "search-on-timeout", "False"]
+                let parsedResult = respArrayToList <$> parseOnly arrayParser result
 
                 either
                     expectationFailure
@@ -189,7 +192,8 @@ spec_config_get_cmd_tests = do
                                 ]
                             )
 
-                result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+
                 -- Should return an array with all configuration key-value pairs
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected =
@@ -231,7 +235,8 @@ spec_config_get_cmd_tests = do
                                 ]
                             )
 
-                result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+
                 -- Should return an array with all configuration key-value pairs
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected =
@@ -264,100 +269,103 @@ spec_config_get_cmd_tests = do
                     (`shouldMatchList` expected)
                     parsedResult
 
-        it "should handle suffix wildcard patterns like '*file*'" $ do
-            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*file*"]
-            let testSettings =
-                    ServerSettings
-                        ( HashMap.fromList
-                            [ (Setting "dbfilename", TextVal "dump.rdb")
-                            , (Setting "logfile", TextVal "")
-                            , (Setting "should-use-rdb", BoolVal True)
-                            , (Setting "zset-max-listpack-entries", IntVal 128)
-                            , (Setting "zset-max-ziplist-entries", IntVal 128)
-                            , (Setting "use-file-persistence", BoolVal True)
-                            ]
-                        )
-            let testContext = PassableTestContext Nothing (Just testSettings)
+            it "should handle suffix wildcard patterns like '*file*'" $ do
+                let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*file*"]
+                let testSettings =
+                        ServerSettings
+                            ( HashMap.fromList
+                                [ (Setting "dbfilename", TextVal "dump.rdb")
+                                , (Setting "logfile", TextVal "")
+                                , (Setting "should-use-rdb", BoolVal True)
+                                , (Setting "zset-max-listpack-entries", IntVal 128)
+                                , (Setting "zset-max-ziplist-entries", IntVal 128)
+                                , (Setting "use-file-persistence", BoolVal True)
+                                ]
+                            )
+                let testContext = PassableTestContext Nothing (Just testSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
-            -- Expected to match: dbfilename, logfile
-            let parsedResult = respArrayToList <$> parseOnly arrayParser result
-            let expected =
-                    [ mkNonNullBulkString "dbfilename"
-                    , mkNonNullBulkString "dump.rdb"
-                    , mkNonNullBulkString "logfile"
-                    , mkNonNullBulkString ""
-                    , mkNonNullBulkString "use-file-persistence"
-                    , mkNonNullBulkString "True"
-                    ]
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
-            either
-                expectationFailure
-                (`shouldMatchList` expected)
-                parsedResult
+                -- Expected to match: dbfilename, logfile
+                let parsedResult = respArrayToList <$> parseOnly arrayParser result
+                let expected =
+                        [ mkNonNullBulkString "dbfilename"
+                        , mkNonNullBulkString "dump.rdb"
+                        , mkNonNullBulkString "logfile"
+                        , mkNonNullBulkString ""
+                        , mkNonNullBulkString "use-file-persistence"
+                        , mkNonNullBulkString "True"
+                        ]
 
-        it "should handle exact parameter names case-sensitively" $ do
-            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "port"]
-            let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "timeout", IntVal 300), (Setting "retry-on-error", BoolVal True)])
-            let testContext = PassableTestContext Nothing (Just testSettings)
+                either
+                    expectationFailure
+                    (`shouldMatchList` expected)
+                    parsedResult
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
-            let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "6379"]
-            result `shouldBe` expected
+            it "should handle exact parameter names case-sensitively" $ do
+                let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "port"]
+                let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "timeout", IntVal 300), (Setting "retry-on-error", BoolVal True)])
+                let testContext = PassableTestContext Nothing (Just testSettings)
 
-        it "should handle multiple wildcard patterns in one request" $ do
-            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "time*", mkBulkString "*log*"]
-            let testSettings =
-                    ServerSettings $
-                        HashMap.fromList
-                            [ (Setting "timeout", TextVal "300")
-                            , (Setting "tcp-keepalive", TextVal "300")
-                            , (Setting "databases", TextVal "16")
-                            , (Setting "maxmemory", TextVal "0")
-                            , (Setting "maxmemory-policy", TextVal "noeviction")
-                            , (Setting "save", TextVal "3600 1 300 100 60 10000")
-                            , (Setting "dir", TextVal "/var/lib/redis")
-                            , (Setting "dbfilename", TextVal "dump.rdb")
-                            , (Setting "rdbcompression", BoolVal True)
-                            , (Setting "rdbchecksum", BoolVal True)
-                            , (Setting "port", TextVal "6379")
-                            , (Setting "bind", TextVal "127.0.0.1")
-                            , (Setting "protected-mode", BoolVal True)
-                            , (Setting "tcp-backlog", TextVal "511")
-                            , (Setting "unixsocket", TextVal "")
-                            , (Setting "unixsocketperm", TextVal "0")
-                            , (Setting "loglevel", TextVal "notice")
-                            , (Setting "logfile", TextVal "")
-                            , (Setting "syslog-enabled", BoolVal False)
-                            , (Setting "syslog-ident", TextVal "redis")
-                            , (Setting "syslog-facility", TextVal "local0")
-                            ]
-            let testContext = PassableTestContext Nothing (Just testSettings)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
-            -- Should match: timeout, tcp-backlog, loglevel, logfile, syslog-enabled, syslog-ident, syslog-facility
-            let parsedResult = respArrayToList <$> parseOnly arrayParser result
-            let expected =
-                    [ mkNonNullBulkString "timeout"
-                    , mkNonNullBulkString "300"
-                    , mkNonNullBulkString "tcp-backlog"
-                    , mkNonNullBulkString "511"
-                    , mkNonNullBulkString "loglevel"
-                    , mkNonNullBulkString "notice"
-                    , mkNonNullBulkString "logfile"
-                    , mkNonNullBulkString ""
-                    , mkNonNullBulkString "syslog-enabled"
-                    , mkNonNullBulkString "False"
-                    , mkNonNullBulkString "syslog-ident"
-                    , mkNonNullBulkString "redis"
-                    , mkNonNullBulkString "syslog-facility"
-                    , mkNonNullBulkString "local0"
-                    ]
+                let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "6379"]
 
-            either
-                expectationFailure
-                (`shouldMatchList` expected)
-                parsedResult
+                result `shouldBe` expected
+
+            it "should handle multiple wildcard patterns in one request" $ do
+                let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "time*", mkBulkString "*log*"]
+                let testSettings =
+                        ServerSettings $
+                            HashMap.fromList
+                                [ (Setting "timeout", TextVal "300")
+                                , (Setting "tcp-keepalive", TextVal "300")
+                                , (Setting "databases", TextVal "16")
+                                , (Setting "maxmemory", TextVal "0")
+                                , (Setting "maxmemory-policy", TextVal "noeviction")
+                                , (Setting "save", TextVal "3600 1 300 100 60 10000")
+                                , (Setting "dir", TextVal "/var/lib/redis")
+                                , (Setting "dbfilename", TextVal "dump.rdb")
+                                , (Setting "rdbcompression", BoolVal True)
+                                , (Setting "rdbchecksum", BoolVal True)
+                                , (Setting "port", TextVal "6379")
+                                , (Setting "bind", TextVal "127.0.0.1")
+                                , (Setting "protected-mode", BoolVal True)
+                                , (Setting "tcp-backlog", TextVal "511")
+                                , (Setting "unixsocket", TextVal "")
+                                , (Setting "unixsocketperm", TextVal "0")
+                                , (Setting "loglevel", TextVal "notice")
+                                , (Setting "logfile", TextVal "")
+                                , (Setting "syslog-enabled", BoolVal False)
+                                , (Setting "syslog-ident", TextVal "redis")
+                                , (Setting "syslog-facility", TextVal "local0")
+                                ]
+                let testContext = PassableTestContext Nothing (Just testSettings)
+
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+                -- Should match: timeout, tcp-backlog, loglevel, logfile, syslog-enabled, syslog-ident, syslog-facility
+                let parsedResult = respArrayToList <$> parseOnly arrayParser result
+                let expected =
+                        [ mkNonNullBulkString "timeout"
+                        , mkNonNullBulkString "300"
+                        , mkNonNullBulkString "tcp-backlog"
+                        , mkNonNullBulkString "511"
+                        , mkNonNullBulkString "loglevel"
+                        , mkNonNullBulkString "notice"
+                        , mkNonNullBulkString "logfile"
+                        , mkNonNullBulkString ""
+                        , mkNonNullBulkString "syslog-enabled"
+                        , mkNonNullBulkString "False"
+                        , mkNonNullBulkString "syslog-ident"
+                        , mkNonNullBulkString "redis"
+                        , mkNonNullBulkString "syslog-facility"
+                        , mkNonNullBulkString "local0"
+                        ]
+
+                either
+                    expectationFailure
+                    (`shouldMatchList` expected)
+                    parsedResult
 
     describe "Failure Modes and Error Conditions" $ do
         it "should return empty array for non-existent parameter" $ do
@@ -388,7 +396,8 @@ spec_config_get_cmd_tests = do
                             , (Setting "syslog-facility", TextVal "local0")
                             ]
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just testSettings)))
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
         it "should return empty array for pattern that matches nothing" $ do
@@ -420,15 +429,16 @@ spec_config_get_cmd_tests = do
                             ]
             let testContext = PassableTestContext Nothing (Just testSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
             let expected = serializeRESPDataType $ mkNonNullRESPArray []
+
             result `shouldBe` expected
 
         it "should handle empty server settings gracefully" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*"]
             let emptySettings = ServerSettings HashMap.empty
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) (PassableTestContext Nothing (Just emptySettings)))
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just emptySettings))
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
         it "should handle case sensitivity correctly" $ do
@@ -436,7 +446,7 @@ spec_config_get_cmd_tests = do
             let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", TextVal "300")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
             -- Case insensitive matching - should match lowercase "timeout"
             let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "timeout", mkNonNullBulkString "300"]
             result `shouldBe` expected
@@ -453,7 +463,8 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*"]
             let testContext = PassableTestContext Nothing (Just specialSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
             let expected =
                     [ mkNonNullBulkString "param-with-dash"
@@ -474,7 +485,8 @@ spec_config_get_cmd_tests = do
             let testSettings = ServerSettings (HashMap.fromList [(Setting "logfile", TextVal "")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "logfile", mkNonNullBulkString ""]
             result `shouldBe` expected
 
@@ -483,7 +495,8 @@ spec_config_get_cmd_tests = do
             let testSettings = ServerSettings (HashMap.fromList [(Setting "port", TextVal "6379"), (Setting "post", TextVal "value"), (Setting "pont", TextVal "bridge")])
             let testContext = PassableTestContext Nothing (Just testSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             -- Should match "port", "post", and "pont" if glob supports ? pattern
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
             let expected =
@@ -505,7 +518,8 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param\\*name"]
             let testContext = PassableTestContext Nothing (Just specialSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             -- Pattern escaping not implemented - treats as literal search which won't match
             let expected = serializeRESPDataType $ mkNonNullRESPArray []
             result `shouldBe` expected
@@ -519,7 +533,8 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param5"]
             let testContext = PassableTestContext Nothing (Just largeSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "param5", mkNonNullBulkString "value5"]
             result `shouldBe` expected
 
@@ -529,11 +544,13 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString (encodeUtf8 longParamName)]
             let testContext = PassableTestContext Nothing (Just longSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             let expected =
                     serializeRESPDataType $
                         mkNonNullRESPArray
                             [mkNonNullBulkString (encodeUtf8 longParamName), mkNonNullBulkString "longvalue"]
+
             result `shouldBe` expected
 
         it "should handle very long parameter values" $ do
@@ -542,7 +559,8 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "longparam"]
             let testContext = PassableTestContext Nothing (Just longSettings)
 
-            result <- liftIO (runTestM' @ByteString (handleCommandReq cmdReq) testContext)
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
+
             let expected =
                     serializeRESPDataType $
                         mkNonNullRESPArray

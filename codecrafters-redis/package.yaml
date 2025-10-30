@@ -16,6 +16,10 @@ dependencies:
   - bytestring # useful to send bytes over the network
   - containers
   - data-default
+  - effectful
+  - effectful-th
+  - log-base
+  - log-effectful
   - mono-traversable
   - mtl
   - network
@@ -24,6 +28,7 @@ dependencies:
   - string-interpolate
   - text
   - time
+  - transformers
 
 default-extensions:
   - AllowAmbiguousTypes
@@ -51,6 +56,7 @@ default-extensions:
   - StrictData
   - TemplateHaskell
   - TypeApplications
+  - TypeFamilies
 
 ghc-options:
   - -Wall
@@ -140,6 +146,7 @@ tests:
       - Blammo
       - codecrafters-redis
       - directory
+      - exceptions
       - filepath
       - hspec
       - hspec-golden

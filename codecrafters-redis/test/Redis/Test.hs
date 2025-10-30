@@ -1,27 +1,32 @@
 {-# LANGUAGE FieldSelectors #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Redis.Test (
-    TestM,
-    runTestM,
-    runTestM',
     PassableTestContext (..),
+    runTestServer,
 ) where
 
 import Data.List.NonEmpty qualified as NE
+import Effect.Communication qualified as Eff
+import Effect.Time qualified as Eff
+import Effectful qualified as Eff
+import Effectful.Concurrent.STM qualified as Eff
+import Effectful.FileSystem qualified as Eff
+import Effectful.Log qualified as Eff
+import Effectful.Reader.Static qualified as ReaderEff
 
-import Blammo.Logging (LogLevel (LevelError), Logger, MonadLogger (..), MonadLoggerIO)
-import Blammo.Logging.LogSettings.LogLevels (newLogLevels)
-import Blammo.Logging.Simple (HasLogger (..), WithLogger (..), defaultLogSettings, setLogSettingsLevels, withLogger)
-import Control.Concurrent.STM (newTVarIO)
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, ReaderT (runReaderT))
+import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
-import Control.Monad.Catch (MonadCatch, MonadThrow)
+import Data.Monoid (Last (..))
+import Effectful (Eff)
+import Effectful.Log (
+    LoggerEnv (..),
+    defaultLogLevel,
+ )
 import GHC.Generics (Generic)
+import Log.Backend.Text (withSimpleTextLogger)
 import Network.Socket (
     AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
     AddrInfoFlag (..),
@@ -31,72 +36,47 @@ import Network.Socket (
     getAddrInfo,
     socket,
  )
-import Optics (makeFieldLabelsNoPrefix)
-import Redis.Server.ServerT (MonadSocket (..))
+import Redis.Effects (ServerEffects)
+import Redis.Server.Context (ServerContext (..))
 import Redis.Server.Settings (ServerSettings)
-import Redis.Store (StoreState, genInitialStore)
-
-data TestContext = TestContext
-    { clientSocket :: Socket
-    , store :: StoreState
-    , settings :: ServerSettings
-    , logger :: Logger
-    }
-    deriving stock (Generic)
-
-makeFieldLabelsNoPrefix ''TestContext
+import Redis.ServerState (ServerState (..), genInitialServerStateEff)
 
 data PassableTestContext = PassableTestContext
-    { storeState :: Maybe StoreState
+    { serverState :: Maybe ServerState
     , settings :: Maybe ServerSettings
     }
     deriving stock (Generic)
 
-instance HasLogger TestContext where
-    loggerL f (TestContext clientSocket store settings logger) = TestContext clientSocket store settings <$> f logger
+runTestServer :: Eff (ServerEffects ServerContext) a -> PassableTestContext -> IO ByteString
+runTestServer action testContext =
+    do
+        loopbackSocket <- mkLoopbackSocket
+        initialServerState <- atomically genInitialServerStateEff
+        serverSettings <- newTVarIO $ fromMaybe def testContext.settings
 
-newtype TestM a = TestM {unTestM :: ReaderT TestContext IO a}
-    deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader TestContext, MonadThrow, MonadCatch)
-    deriving (MonadLogger, MonadLoggerIO) via (WithLogger TestContext IO)
+        let serverState = fromMaybe initialServerState testContext.serverState
 
-instance MonadSocket TestM ByteString where
-    sendThroughSocket _ = pure
-
-instance MonadSocket TestM () where
-    sendThroughSocket _ _ = pure ()
-
-
-runTestM :: TestM a -> Maybe StoreState -> IO a
-runTestM action storeM = do
-    loopbackSocket <- mkLoopbackSocket
-    initialStoreState <- newTVarIO genInitialStore
-    let kvStoreState = fromMaybe initialStoreState storeM
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger ->
-        runReaderT
-            (unTestM action)
-            TestContext
-                { clientSocket = loopbackSocket
-                , store = kvStoreState
-                , logger = logger
-                , settings = def
-                }
-
--- TODO: This should the replace the above API
-runTestM' :: TestM a -> PassableTestContext -> IO a
-runTestM' action testContext = do
-    loopbackSocket <- mkLoopbackSocket
-    initialStoreState <- newTVarIO genInitialStore
-    let kvStoreState = fromMaybe initialStoreState testContext.storeState
-    let serverSettings = fromMaybe def testContext.settings
-    withLogger (setLogSettingsLevels (newLogLevels LevelError []) defaultLogSettings) $ \logger ->
-        runReaderT
-            (unTestM action)
-            TestContext
-                { clientSocket = loopbackSocket
-                , store = kvStoreState
-                , logger = logger
-                , settings = serverSettings
-                }
+        fmap (fromMaybe "We got nothing bro" . getLast . snd) $ withSimpleTextLogger $ \logger -> do
+            let loggerEnv =
+                    LoggerEnv
+                        { leMaxLogLevel = defaultLogLevel
+                        , leLogger = logger
+                        , leDomain = []
+                        , leData = []
+                        , leComponent = "redis-server-hs-test"
+                        }
+            let env = ServerContext loopbackSocket serverState serverSettings
+            runServer env loggerEnv action
+  where
+    runServer :: ServerContext -> LoggerEnv -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
+    runServer env loggerEnv =
+        Eff.runEff
+            . Eff.runCommunicationPure
+            . Eff.runLog loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel
+            . Eff.runGetTimeIO
+            . Eff.runConcurrent
+            . Eff.runFileSystem
+            . ReaderEff.runReader env
 
 mkLoopbackSocket :: IO Socket
 mkLoopbackSocket = do

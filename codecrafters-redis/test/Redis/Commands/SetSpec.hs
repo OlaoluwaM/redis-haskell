@@ -6,23 +6,25 @@ import Data.ByteString.Char8 qualified as BS
 import Data.HashMap.Strict qualified as HashMap
 import Data.Sequence qualified as Seq
 
-import Control.Concurrent.STM (atomically, newTVar, readTVar)
+import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
 import Data.Default (def)
+import Data.String (fromString)
 import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (..))
 import Data.Time (addUTCTime)
-import Data.Time.Clock.POSIX (getCurrentTime, posixSecondsToUTCTime)
+import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime, posixSecondsToUTCTime)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLPrecision (..), TTLTimestamp (..), getItemTTLValue, mkStoreValue)
+import Redis.Server (ServerContext)
+import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
-import Redis.Test (runTestM)
+import Redis.Test (PassableTestContext (..), runTestServer)
 
 spec_set_cmd_tests :: Spec
 spec_set_cmd_tests = do
@@ -182,17 +184,17 @@ spec_set_cmd_tests = do
         describe "SET Command Handler Tests" $ do
             it "handles basic SET command with only required arguments" $ \_ -> do
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString "bike:1", mkBulkString "orange"]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` defaultSetResponse
 
-            it "handles overwriting an existing key" $ \initialStoreState -> do
+            it "handles overwriting an existing key" $ \initialServerState -> do
                 let key = "bike:1"
                 let newVal = "black"
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString newVal, mkBulkString "XX"]
 
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to update the value for the key #{key} in store|])
@@ -200,14 +202,14 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            it "handles basic SET command with only required arguments with new key" $ \initialStoreState -> do
+            it "handles basic SET command with only required arguments with new key" $ \initialServerState -> do
                 let key = "bike:new"
                 let newVal = "turquoise"
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString newVal]
 
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to set new key #{key} in store|])
@@ -225,10 +227,10 @@ spec_set_cmd_tests = do
                             , mkBulkString "10"
                             , mkBulkString "NX"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with EX and NX options when key exists" $ \initialStoreState -> do
+            it "handles SET command with EX and NX options when key exists" $ \initialServerState -> do
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
@@ -238,9 +240,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "10"
                             , mkBulkString "NX"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure "Failed to update key bike:1 in store")
@@ -256,7 +258,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "red"
                             , mkBulkString "XX"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with PX option (milliseconds TTL)" $ \_ -> do
@@ -268,42 +270,47 @@ spec_set_cmd_tests = do
                             , mkBulkString "PX"
                             , mkBulkString "5000"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with EXAT option (Unix timestamp expiration)" $ \initialStoreState -> do
+            -- TODO: Review this
+            it "handles SET command with EXAT option (Unix timestamp expiration)" $ \serverState -> do
                 let key = "bike:3"
+                let time = 1746057600
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "green"
                             , mkBulkString "EXAT"
-                            , mkBulkString "1746057600"
+                            , mkBulkString . fromString . show $ time
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar serverState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime time))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \initialStoreState -> do
+            -- TODO: Review this
+            it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \serverState -> do
                 let key = "bike:4"
+                let msTime = 1746057600000 :: POSIXTime
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "yellow"
                             , mkBulkString "PXAT"
-                            , mkBulkString "1746057600000"
+                            , mkBulkString . fromString . show $ msTime
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar serverState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
@@ -311,9 +318,9 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with KEEPTTL option" $ \initialStoreState -> do
+            it "handles SET command with KEEPTTL option" $ \initialServerState -> do
                 let key = "bike:5"
-                let cmdReq =
+                let setCmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
@@ -321,17 +328,20 @@ spec_set_cmd_tests = do
                             , mkBulkString "EXAT"
                             , mkBulkString "1746057600"
                             ]
-                let cmdReq2 =
+                let setCmdReq2 =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "oreo"
                             , mkBulkString "KEEPTTL"
                             ]
-                liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq2) (Just initialStoreState))
+
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
@@ -347,28 +357,31 @@ spec_set_cmd_tests = do
                             , mkBulkString "purple"
                             , mkBulkString "GET"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` serializeRESPDataType Null
 
-            it "handles SET with GET option on existing key to retrieve the previous value" $ \initialStoreState -> do
-                let cmdReq =
+            it "handles SET with GET option on existing key to retrieve the previous value" $ \initialServerState -> do
+                let setCmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString "bike:other"
                             , mkBulkString "purple"
                             ]
-                let cmdReq2 =
+                let setCmdReq2 =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString "bike:other"
                             , mkBulkString "zalliray"
                             , mkBulkString "GET"
                             ]
-                liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq2) (Just initialStoreState))
+
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 result `shouldBe` serializeRESPDataType (mkBulkString "purple")
 
-            it "handles SET command with multiple options (EX, NX, GET)" $ \initialStoreState -> do
+            it "handles SET command with multiple options (EX, NX, GET)" $ \initialServerState -> do
                 let key = "bike:orion"
                 let newVal = "orange"
                 let cmdReq =
@@ -381,9 +394,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "NX"
                             , mkBulkString "GET"
                             ]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to set the key #{key} in store|])
@@ -391,9 +404,9 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` serializeRESPDataType Null
 
-            it "handles SET command with case-insensitive option names" $ \initialStoreState -> do
+            it "handles SET command with case-insensitive option names" $ \initialServerState -> do
                 let key = "bike:8"
-                let cmdReq =
+                let setCmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
@@ -402,16 +415,19 @@ spec_set_cmd_tests = do
                             , mkBulkString "120"
                             , mkBulkString "nx"
                             ]
-                let cmdReq2 =
+                let setCmdReq2 =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "fervor"
                             ]
-                liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq2) (Just initialStoreState))
+
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 atomically $ do
-                    storeItems <- readTVar initialStoreState
+                    storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to set the key #{key} in store|])
@@ -419,15 +435,15 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            it "handles overwriting a key with a different data type (should fail)" $ \initialStoreState -> do
+            it "handles overwriting a key with a different data type (should fail)" $ \initialServerState -> do
                 let key = "car:1"
                 let expectedNewVal = "string-value"
 
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString expectedNewVal]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 result `shouldSatisfy` BS.isPrefixOf "(error)"
 
-initializeStoreState :: IO StoreState
+initializeStoreState :: IO ServerState
 initializeStoreState = do
     now <- getCurrentTime
     atomically $ do
@@ -442,7 +458,10 @@ initializeStoreState = do
                 , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
                 , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
                 ]
-        newTVar $ HashMap.fromList storeItems
+        lastRDBSaveCurrent <- newTMVar Nothing
+        kvStore <- newTVar $ HashMap.fromList storeItems
+        lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
+        pure $ ServerState kvStore lastRDBSave
 
 defaultSetResponse :: ByteString
 defaultSetResponse = serializeRESPDataType . SimpleString $ "OK"

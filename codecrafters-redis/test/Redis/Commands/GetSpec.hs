@@ -1,27 +1,39 @@
 module Redis.Commands.GetSpec where
 
+import Data.Time
 import Test.Hspec
 
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.STM (atomically, newTVar)
-import Control.Monad.IO.Class (MonadIO (..))
-import Data.Attoparsec.ByteString (parseOnly)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Foldable (for_)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Sequence qualified as Seq
+
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.STM (atomically, newTMVar, newTVar)
+import Control.Monad.IO.Class (MonadIO (..))
+import Data.Attoparsec.ByteString (parseOnly)
+import Data.Foldable (for_)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
-import Data.Time
 import Redis.Commands.Get (GetCmdArg (..))
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (getCmd, mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), nullBulkString, serializeRESPDataType)
-import Redis.Store (StoreKey (..), StoreState, TTLPrecision (..), TTLTimestamp (..), mkStoreValue)
-import Redis.Store.Data
-import Redis.Test (runTestM)
+import Redis.Server (ServerContext)
+import Redis.ServerState (
+    LastRDBSave (..),
+    ServerState (..),
+    StoreKey (..),
+    TTLPrecision (..),
+    TTLTimestamp (..),
+    mkStoreValue,
+ )
+import Redis.Store.Data (
+    RedisDataType (..),
+    RedisList (..),
+    RedisStr (..),
+ )
+import Redis.Test (PassableTestContext (..), runTestServer)
 
 -- Helper function to check if a parsed command is a Get command
 isGetCommand :: Command -> Bool
@@ -85,17 +97,18 @@ spec_get_cmd_tests = do
                         let result = parseOnly commandParser input
                         either (const True) isInvalidCommand result `shouldBe` True
 
-    before initializeStoreState $ do
+    before initializeServerState $ do
         describe "GET Command Handler Tests" $ do
             it "should return NULL for non-existent key" $ \_ -> do
                 let key = "nonexistent"
                 let cmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType Null
 
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+
                 result `shouldBe` expected
 
-            it "should retrieve a previously stored string value" $ \initialStoreState -> do
+            it "should retrieve a previously stored string value" $ \initialServerState -> do
                 -- First SET a key
                 let key = "bike:1"
                 let value = "testvalue"
@@ -106,12 +119,13 @@ spec_get_cmd_tests = do
                 let expected = serializeRESPDataType (mkBulkString value)
 
                 -- Run the commands in sequence
-                liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
 
                 result `shouldBe` expected
 
-            it "should handle keys with special characters" $ \initialStoreState -> do
+            it "should handle keys with special characters" $ \initialServerState -> do
                 let key = "special:key!@#"
                 let value = "special-value"
 
@@ -119,75 +133,77 @@ spec_get_cmd_tests = do
                 let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType (mkBulkString value)
 
-                liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
 
                 result `shouldBe` expected
 
-            it "should handle unicode characters in key and value" $ \initialStoreState -> do
+            it "should handle unicode characters in key and value" $ \initialServerState -> do
                 let key = "你好"
                 let value = "世界！"
                 let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value]
                 let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType (mkBulkString value)
 
-                liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
-                result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
 
                 result `shouldBe` expected
 
-            it "should return an error for non-string value types" $ \initialStoreState -> do
+            it "should return an error for non-string value types" $ \initialServerState -> do
                 let key = "car:1"
                 let cmdReq = mkCmdReqStr [getCmd, mkBulkString key]
-                result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) (Just initialStoreState))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                 result `shouldSatisfy` BS.isPrefixOf "(error)"
 
             context "Supports key expiry" $ do
-                it "should return a null bulkstring for a key with an expired TTL" $ \initialStoreState -> do
+                it "should return a null bulkstring for a key with an expired TTL" $ \initialServerState -> do
                     let key = "expired:key"
                     let value = "this-will-expire"
                     -- Use a timestamp for May 10, 2025 (past date) - 1715385600000 milliseconds since epoch
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PXAT", mkBulkString "1715385600000"]
 
                     -- Set the key with an already expired TTL
-                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
 
                     -- Then try to GET the key - should return NULL since it's expired
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                     let expected = serializeRESPDataType nullBulkString
 
-                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                     result `shouldBe` expected
 
-                it "should return value for a key with a TTL that has not expired" $ \storeState -> do
+                it "should return value for a key with a TTL that has not expired" $ \serverState -> do
                     let key = "cam:4"
                     let value = "some value"
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "px", mkBulkString "100"]
 
-                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just storeState))
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
 
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
 
-                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just storeState))
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
                     result `shouldBe` serializeRESPDataType (mkBulkString value)
 
-                it "should return value for a key with non-expired TTL" $ \initialStoreState -> do
+                it "should return value for a key with non-expired TTL" $ \serverState -> do
                     -- Use car:2 which is set to expire in 1 hour from current time (not expired)
                     let key = "car:2"
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                     let expected = serializeRESPDataType (mkBulkString "black")
 
-                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
                     result `shouldBe` expected
 
-                it "should return an empty bulkstring when attempting to access a key with an expired TTL" $ \initialStoreState -> do
+                it "should return an empty bulkstring when attempting to access a key with an expired TTL" $ \initialServerState -> do
                     -- Set a key with a very short expiry (100ms)
                     let key = "very:short:ttl"
                     let value = "gone-quickly"
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PX", mkBulkString "100"]
 
                     -- Set the key with short TTL
-                    liftIO (runTestM @ByteString (handleCommandReq setCmdReq) (Just initialStoreState))
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
 
                     -- Wait for the TTL to expire
                     -- threaDelay takes time in microseconds so we must convert from milliseconds to microseconds for it to work as we want
@@ -197,11 +213,11 @@ spec_get_cmd_tests = do
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                     let expected = serializeRESPDataType nullBulkString
 
-                    result <- liftIO (runTestM @ByteString (handleCommandReq getCmdReq) (Just initialStoreState))
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
                     result `shouldBe` expected
 
-initializeStoreState :: IO StoreState
-initializeStoreState = do
+initializeServerState :: IO ServerState
+initializeServerState = do
     now <- getCurrentTime
     atomically $ do
         let storeItems =
@@ -215,4 +231,7 @@ initializeStoreState = do
                 , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
                 , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
                 ]
-        newTVar $ HashMap.fromList storeItems
+        lastRDBSaveCurrent <- newTMVar Nothing
+        kvStore <- newTVar $ HashMap.fromList storeItems
+        lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
+        pure $ ServerState kvStore lastRDBSave

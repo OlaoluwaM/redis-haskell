@@ -1,17 +1,30 @@
 {-# LANGUAGE FieldSelectors #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Redis.Server (
     module X,
     runServer,
 ) where
 
-import Blammo.Logging.Simple
-import Control.Monad.Reader (ReaderT (runReaderT))
-import Data.Text (Text)
+import Effect.Communication qualified as Eff
+import Effect.Time qualified as Eff
+import Effectful qualified as Eff
+import Effectful.Concurrent.STM qualified as Eff
+import Effectful.FileSystem qualified as Eff
+import Effectful.Log qualified as Eff
+import Effectful.Reader.Static qualified as ReaderEff
 import Redis.Server.Context as X (ServerContext)
-import Redis.Server.ServerT (ServerT (..))
 
-type ServerM a = ServerT ServerContext (LoggingT IO) a
+import Effectful (Eff)
+import Effectful.Log (LoggerEnv (..))
+import Redis.Effects (ServerEffects)
 
-runServer :: ServerM () -> ServerContext -> IO ()
-runServer action = runSimpleLoggingT . withThreadContext ["app" .= ("redis-server-hs" :: Text)] . runReaderT (unServerT action)
+runServer :: ServerContext -> LoggerEnv -> Eff (ServerEffects ServerContext) () -> IO ()
+runServer env loggerEnv =
+    Eff.runEff
+        . Eff.runCommunicationIO
+        . Eff.runLog loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel
+        . Eff.runGetTimeIO
+        . Eff.runConcurrent
+        . Eff.runFileSystem
+        . ReaderEff.runReader env

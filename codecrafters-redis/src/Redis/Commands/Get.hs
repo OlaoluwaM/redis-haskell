@@ -4,11 +4,15 @@ module Redis.Commands.Get (
     handleGet,
 ) where
 
-import Data.HashMap.Strict qualified as HashMap
+import Control.Concurrent.STM
+import Redis.RESP
+import Redis.ServerState
 
-import Control.Concurrent.STM (atomically, readTVar)
-import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (MonadReader (ask))
+import Data.HashMap.Strict qualified as HashMap
+import Effect.Time qualified as Time
+import Effectful.Concurrent.STM qualified as Eff
+import Effectful.Reader.Static qualified as ReaderEff
+
 import Data.Aeson (ToJSON (..))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
@@ -16,13 +20,11 @@ import Data.Either (fromRight)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8')
-import Data.Time (getCurrentTime)
+import Effect.Communication (sendMessage)
+import Effectful (Eff)
 import GHC.Generics (Generic)
-import Network.Socket (Socket)
-import Optics (A_Lens, LabelOptic, view)
-import Redis.RESP (BulkString (BulkString), RESPDataType (Null), mkNonNullBulkString, nullBulkString, serializeRESPDataType)
-import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLTimestamp (..))
+import Optics (view)
+import Redis.Effects (RedisClientCommunication, RedisServerState)
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -43,22 +45,20 @@ mkGetCmdArg [BulkString targetKey] = pure $ GetCmdArg (StoreKey targetKey)
 mkGetCmdArg _ = fail "GET command requires only 1 argument"
 
 handleGet ::
-    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
-    , LabelOptic "store" A_Lens r r StoreState StoreState
-    , MonadIO m
-    , MonadReader r m
-    , MonadSocket m b
+    forall r es.
+    ( RedisClientCommunication r es
+    , RedisServerState r es
     ) =>
-    GetCmdArg -> m b
+    GetCmdArg -> Eff es ()
 handleGet (GetCmdArg targetKey) = do
-    env <- ask
-    currentTime <- liftIO getCurrentTime
+    env <- ReaderEff.ask @r
+    currentTime <- Time.getCurrentTime
 
     let socket = view #clientSocket env
-    let kvStoreState = view #store env
+    let serverState = view #serverState env
 
-    output <- liftIO $ atomically $ do
-        kvStore <- readTVar kvStoreState
+    output <- Eff.atomically $ do
+        kvStore <- readTVar serverState.keyValueStoreRef
         let targetItemM = HashMap.lookup targetKey kvStore
         case targetItemM of
             Nothing -> pure . Right $ Null
@@ -74,4 +74,4 @@ handleGet (GetCmdArg targetKey) = do
                         let actualValType = showRedisDataType @ByteString x
                         pure . Left $ [i|(error) GET command only supports string values, but value at key #{targetKey} was of type #{actualValType}|]
 
-    sendThroughSocket socket . either id serializeRESPDataType $ output
+    sendMessage socket . either id serializeRESPDataType $ output

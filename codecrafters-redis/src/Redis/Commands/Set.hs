@@ -10,8 +10,15 @@ module Redis.Commands.Set (
     SetCondition (..),
 ) where
 
+import Control.Concurrent.STM
+import Redis.RESP
+import Redis.ServerState
+
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.HashMap.Strict qualified as HashMap
+import Effect.Time qualified as Time
+import Effectful.Concurrent.STM qualified as STMEff
+import Effectful.Reader.Static qualified as ReaderEff
 
 import Control.Applicative (Alternative (some, (<|>)), asum)
 import Control.Applicative.Combinators (skipSomeTill)
@@ -19,9 +26,6 @@ import Control.Applicative.Permutations (
     intercalateEffect,
     toPermutationWithDefault,
  )
-import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
-import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (MonadReader (..))
 import Data.Aeson (ToJSON (..), object, (.=))
 import Data.Attoparsec.ByteString (Parser)
 import Data.Attoparsec.Combinator ((<?>))
@@ -36,13 +40,12 @@ import Data.Tagged (Tagged (Tagged), untag)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8')
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
-import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime, posixSecondsToUTCTime)
+import Data.Time.Clock.POSIX (POSIXTime, posixSecondsToUTCTime)
+import Effect.Communication (sendMessage)
+import Effectful (Eff)
 import GHC.Generics (Generic)
-import Network.Socket (Socket)
-import Optics (A_Lens, LabelOptic, view)
-import Redis.RESP (BulkString (..), RESPDataType (Null, SimpleString), mkNonNullBulkString, serializeRESPDataType, toOptionString)
-import Redis.Server.ServerT (MonadSocket (..))
-import Redis.Store (StoreKey (..), StoreState, StoreValue (..), TTLPrecision (..), TTLTimestamp (TTLTimestamp), mkStoreValue)
+import Optics (view)
+import Redis.Effects (RedisClientCommunication, RedisServerState)
 import Redis.Store.Data (
     RedisDataType (..),
     RedisStr (..),
@@ -136,28 +139,28 @@ mkSetCmdArg (BulkString key : BulkString val : cmdOpts) = do
 mkSetCmdArg _ = fail "SET command requires at least 2 arguments. None were provided"
 
 handleSet ::
-    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
-    , LabelOptic "store" A_Lens r r StoreState StoreState
-    , MonadReader r m
-    , MonadSocket m b
-    , MonadIO m
+    forall r es.
+    ( RedisClientCommunication r es
+    , RedisServerState r es
     ) =>
-    SetCmdArg -> m b
+    SetCmdArg -> Eff es ()
 handleSet (SetCmdArg key newVal opts) = do
-    env <- ask
+    env <- ReaderEff.ask @r
 
     let socket = view #clientSocket env
-    let kvStoreState = view #store env
+    let serverState = view #serverState env
+
     let shouldReturnOldKeyValue = opts.returnOldVal
     let setCondition = opts.setCondition
 
-    currentTime <- liftIO getCurrentTime
-    kvStore <- liftIO $ readTVarIO kvStoreState
+    currentTime <- Time.getCurrentTime
 
     let calculateTTL = setupTTLCalculation currentTime
     let defaultResponse = SimpleString "OK"
 
-    output <- liftIO $ atomically $ do
+    output <- STMEff.atomically $ do
+        let kvStoreStateRef = serverState.keyValueStoreRef
+        kvStore <- readTVar kvStoreStateRef
         let currentStoreValAtKeyM = HashMap.lookup key kvStore
 
         case (currentStoreValAtKeyM, setCondition) of
@@ -166,7 +169,7 @@ handleSet (SetCmdArg key newVal opts) = do
             (Nothing, _) -> do
                 let newTTLForItemAtKey = calculateTTL Nothing opts.ttlOption
                 let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
-                writeTVar kvStoreState (HashMap.insert key newStoreValAtKey kvStore)
+                writeTVar kvStoreStateRef (HashMap.insert key newStoreValAtKey kvStore)
                 pure . Right . bool defaultResponse Null $ shouldReturnOldKeyValue
             (Just currentStoreValAtKey, _) -> do
                 let (StoreValue currentValAtKey _ currentTTLForItem) = currentStoreValAtKey
@@ -174,13 +177,13 @@ handleSet (SetCmdArg key newVal opts) = do
                 case currentValAtKey of
                     (MkRedisStr (RedisStr prevValAtKey)) -> do
                         let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
-                        writeTVar kvStoreState (HashMap.insert key newStoreValAtKey kvStore)
+                        writeTVar kvStoreStateRef (HashMap.insert key newStoreValAtKey kvStore)
                         pure . Right . bool defaultResponse (mkNonNullBulkString prevValAtKey) $ shouldReturnOldKeyValue
                     x -> pure $ do
                         let valTypeAsStr = showRedisDataType @ByteString x
                         Left @ByteString [i|(error) SET can only used on keys holding string values, but the value at key #{key} is of type #{valTypeAsStr}|]
 
-    sendThroughSocket socket . fromEither . fmap serializeRESPDataType $ output
+    sendMessage socket . fromEither . fmap serializeRESPDataType $ output
 
 setupTTLCalculation :: UTCTime -> Maybe TTLTimestamp -> TTLOption -> Maybe TTLTimestamp
 setupTTLCalculation currentTime currentTTLForItem = \case

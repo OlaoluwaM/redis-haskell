@@ -1,14 +1,20 @@
-module Redis.Commands.Echo (EchoCmdArg (..), handleEcho, mkEchoCmdArg) where
+module Redis.Commands.Echo (
+    EchoCmdArg (..),
+    handleEcho,
+    mkEchoCmdArg,
+) where
 
-import Control.Monad.Reader (MonadReader (ask))
+import Effectful.Reader.Static qualified as ReaderEff
+
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
+import Effect.Communication (sendMessage)
+import Effectful (Eff)
 import GHC.Generics (Generic)
-import Network.Socket (Socket)
-import Optics (A_Lens, LabelOptic, view)
+import Optics (view)
+import Redis.Effects (RedisClientCommunication)
 import Redis.RESP (BulkString (BulkString), mkNonNullBulkString, serializeRESPDataType)
-import Redis.Server.ServerT (MonadSocket (..))
 
 -- https://redis.io/docs/latest/commands/echo/
 -- We assume the option `message` argument of the echo command should only ever be considered as text
@@ -17,20 +23,15 @@ newtype EchoCmdArg = EchoCmdArg Text
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON)
 
-handleEcho ::
-    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
-    , MonadReader r m
-    , MonadSocket m b
-    ) =>
-    EchoCmdArg -> m b
-handleEcho (EchoCmdArg msg) = do
-    env <- ask
-    let socket = view #clientSocket env
-    sendThroughSocket socket . serializeRESPDataType . mkNonNullBulkString . encodeUtf8 $ msg
-
 mkEchoCmdArg :: (MonadFail m) => [BulkString] -> m EchoCmdArg
 mkEchoCmdArg [] = fail "ECHO command requires at least 1 argument. None were provided"
 mkEchoCmdArg [BulkString txt] = case decodeUtf8' txt of
     (Right msg) -> pure . EchoCmdArg $ msg
     Left _ -> fail "Message received as argument for ECHO command is not valid text"
 mkEchoCmdArg _ = fail "ECHO command requires only 1 argument"
+
+handleEcho :: forall r es. (RedisClientCommunication r es) => EchoCmdArg -> Eff es ()
+handleEcho (EchoCmdArg msg) = do
+    env <- ReaderEff.ask @r
+    let socket = view #clientSocket env
+    sendMessage socket . serializeRESPDataType . mkNonNullBulkString . encodeUtf8 $ msg

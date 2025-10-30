@@ -1,34 +1,47 @@
-module Redis.Commands.BGSave where
+module Redis.Commands.BGSave (
+    handleBGSave,
+    handleSave,
+    mkBGSaveCmdArg,
+    mkSaveCmdArg,
+    ShouldSchedule (..),
+    BGSaveCmdArg (..),
+) where
 
 import Path
 import Redis.Server.Settings
-import Redis.Store
+import Redis.ServerState
 
 import Data.HashMap.Strict qualified as HashMap
+import Effectful.Concurrent qualified as Eff
+import Effectful.Concurrent.STM qualified as STMEff
+import Effectful.Error.Static qualified as Eff
+import Effectful.Exception qualified as Eff
+import Effectful.FileSystem qualified as Eff
+import Effectful.Reader.Static qualified as ReaderEff
 import Redis.RDB.Binary qualified as RDB
 
-import Blammo.Logging.Simple (MonadLogger, runSimpleLoggingT)
-import Control.Concurrent (forkFinally, forkIOWithUnmask)
-import Control.Concurrent.STM (atomically, modifyTVar, putTMVar, readTVar, readTVarIO, tryTakeTMVar)
-import Control.Exception (Exception (..), SomeException (SomeException), try)
-import Control.Exception.Safe (StringException, throwIO, throwString)
+import Control.Concurrent.STM (
+    modifyTVar,
+    putTMVar,
+    tryTakeTMVar,
+ )
+import Control.Exception (Exception (..))
 import Control.Monad (void)
-import Control.Monad.Catch (MonadCatch (catch), MonadMask, MonadThrow (..), bracketOnError, finally, handle)
-import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (MonadReader (ask))
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
-import Data.Time.Clock.POSIX (getCurrentTime, getPOSIXTime)
+import Effect.Communication (Communication, sendMessage)
+import Effect.Time (Time, getCurrentTime, getPosixTime)
+import Effectful (Eff, (:>))
+import Effectful.Log (Log)
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import Network.Socket (Socket)
-import Optics (A_Lens, LabelOptic, set, view)
-import Redis.RDB.Config (RDBConfig (RDBConfig, generateChecksum, skipChecksumValidation, useLzfCompression))
+import Optics (set, view)
+import Redis.Effects (RDBWrite)
+import Redis.RDB.Config (RDBConfig (..))
 import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
-import Redis.Server.ServerT (MonadSocket (..))
 import Redis.Utils (logInternalServerError)
-import Control.Concurrent.Classy (MonadConc (readTVarConc))
 
 -- https://redis.io/docs/latest/commands/bgsave/
 
@@ -60,117 +73,125 @@ mkBGSaveCmdArg [BulkString "SCHEDULE"] = pure $ BGSaveCmdArg (Just $ ShouldSched
 mkBGSaveCmdArg [BulkString invalidArg] = fail $ "Invalid argument to BGSAVE command: " <> show invalidArg <> ". Only SCHEDULE is supported."
 mkBGSaveCmdArg _ = fail "BGSAVE command accepts only 1 argument"
 
+mkSaveCmdArg :: (MonadFail m) => [BulkString] -> m ()
+mkSaveCmdArg [] = pure ()
+mkSaveCmdArg _ = fail "SAVE command does not accept any arguments"
+
 handleSave ::
-    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
-    , LabelOptic "store" A_Lens r r ServerStateRef ServerStateRef
-    , LabelOptic "settings" A_Lens r r ServerSettings ServerSettings
-    , MonadIO m
-    , MonadReader r m
-    , MonadSocket m ()
-    , MonadMask m -- Implies MonadCatch
-    ) =>
-    m ()
+    forall r es.
+    (RDBWrite r es) =>
+    Eff es ()
 handleSave = do
-    env <- ask
+    env <- ReaderEff.ask @r
 
-    let settings = view #settings env
     let socket = view #clientSocket env
-    let serverStateRef = view #store env
+    let serverState = view #serverState env
+    let serverSettingsRef = view #serverSettingsRef env
 
-    catch @_ @SaveFailure (performRDBSave serverStateRef settings socket) $ \e -> do
-        let errMsg = displayException e
-        handleBGSaveError socket e
+    Eff.runErrorNoCallStackWith @SaveFailure
+        (\e -> notifyOfSaveError socket e "Saving failed")
+        (performRDBSave serverState serverSettingsRef socket)
 
 handleBGSave ::
-    ( LabelOptic "clientSocket" A_Lens r r Socket Socket
-    , LabelOptic "store" A_Lens r r ServerStateRef ServerStateRef
-    , LabelOptic "settings" A_Lens r r ServerSettings ServerSettings
-    , MonadIO m
-    , MonadReader r m
-    , MonadSocket m ()
-    ) =>
-    m ()
-handleBGSave = do
-    env <- ask
+    forall r es.
+    (RDBWrite r es) =>
+    BGSaveCmdArg -> Eff es ()
+handleBGSave _ = do
+    env <- ReaderEff.ask @r
 
-    let settings = view #settings env
     let socket = view #clientSocket env
-    let serverStateRef = view #store env
+    let serverState = view #serverState env
+    let serverSettingsRef = view #serverSettingsRef env
 
-    sendThroughSocket @_ @() socket . serializeRESPDataType $ SimpleString "Starting"
+    sendMessage socket . serializeRESPDataType $ SimpleString "Starting"
 
     void $
-        liftIO $
-            forkFinally
-                (performRDBSave serverStateRef settings socket)
-                ( \case
-                    Left err -> handleBGSaveError socket err
-                    Right _ -> sendThroughSocket @_ @() socket . serializeRESPDataType $ SimpleString "Background saving finished"
-                )
+        Eff.forkFinally
+            (performRDBBackgroundSave socket serverState serverSettingsRef)
+            ( \case
+                Left err -> notifyOfSaveError socket err "Background saving failed"
+                Right _ -> sendMessage socket . serializeRESPDataType $ SimpleString "Background saving finished"
+            )
+  where
+    performRDBBackgroundSave socket serverState serverSettingsRef =
+        Eff.runErrorNoCallStackWith @SaveFailure
+            Eff.throwIO -- If an error is thrown by performRDBSave, we handle it by rethrowing so we can satisfy/pop off the Error effect constraint and have the outer forkFinally handle it correctly
+            ( performRDBSave serverState serverSettingsRef socket
+                >> (sendMessage socket . serializeRESPDataType $ SimpleString "Background saving completed")
+            )
 
 performRDBSave ::
-    ( MonadIO m
-    , MonadMask m
-    , MonadSocket m ()
-    , HasCallStack
-    , MonadConc m
+    ( HasCallStack
+    , Log :> es
+    , Eff.FileSystem :> es
+    , Eff.Concurrent :> es
+    , Communication :> es
+    , Eff.Error SaveFailure :> es
+    , Time :> es
     ) =>
-    ServerStateRef -> ServerSettings -> Socket -> m ()
-performRDBSave serverStateRef settings socket = do
-    serverState <- readTVarConc serverStateRef
+    ServerState -> ServerSettingsRef -> Socket -> Eff es ()
+performRDBSave serverState serverSettingsRef socket = do
+    settings <- STMEff.readTVarIO serverSettingsRef
     rdbDirPath <- getRDBFilePathFromSettings settings
     rdbConfig <- mkRDBConfigFromSettings settings
 
-    kvStore <- liftIO $ readTVarIO serverState.keyValueStore
-    lastRDBSave <- liftIO $ readTVarIO serverState.lastRDBSave
+    kvStore <- STMEff.readTVarIO serverState.keyValueStoreRef
+    lastRDBSave <- STMEff.readTVarIO serverState.lastRDBSaveRef
 
-    let notifyUserOfExistingBackgroundSave = sendThroughSocket @_ @() socket . serializeRESPDataType $ SimpleString "A background save is already in progress"
+    let notifyUserOfExistingBackgroundSave = sendMessage socket . serializeRESPDataType $ SimpleString "A background save is already in progress"
 
     -- We need to do all this to protect against an asynchronous exception occurring after we've potentially taken a lock on our TMVar but before we've put it back as such an interruption could lead us to a deadlock
-    bracketOnError
-        (liftIO $ atomically $ tryTakeTMVar lastRDBSave.current)
+    Eff.bracketOnError
+        (STMEff.atomically $ tryTakeTMVar lastRDBSave.current)
         ( \case
             Nothing -> notifyUserOfExistingBackgroundSave
             Just _ -> do
-                currentTime <- liftIO getPOSIXTime
+                currentTime <- getPosixTime
                 let rdbFile = saveRedisStoreToRDB currentTime kvStore
 
-                liftIO $ RDB.encodeFile rdbConfig (fromSomeFile rdbDirPath) rdbFile
+                RDB.encodeFile rdbConfig (fromSomeFile rdbDirPath) rdbFile
 
-                saveTime <- liftIO getCurrentTime
-                liftIO $ atomically $ do
+                saveTime <- getCurrentTime
+                STMEff.atomically $ do
                     putTMVar lastRDBSave.current (Just saveTime)
-                    modifyTVar serverState.lastRDBSave (set #previous (Just saveTime))
-                sendThroughSocket @_ @() socket . serializeRESPDataType $ SimpleString "Background saving completed"
+                    modifyTVar serverState.lastRDBSaveRef (set #previous (Just saveTime))
         )
         ( \case
             Nothing -> do
                 -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing
                 -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
-                liftIO $ runSimpleLoggingT $ logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
+                logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
                 notifyUserOfExistingBackgroundSave
-            Just mLastRDBSaveTimeM -> liftIO $ atomically $ putTMVar lastRDBSave.current mLastRDBSaveTimeM
+            Just mLastRDBSaveTimeM -> STMEff.atomically $ putTMVar lastRDBSave.current mLastRDBSaveTimeM
         )
 
-handleBGSaveError :: (MonadIO m, MonadSocket m (), Exception e) => Socket -> e -> m ()
-handleBGSaveError socket e = do
-    liftIO $ runSimpleLoggingT $ logInternalServerError (displayException e)
-    sendThroughSocket @_ @() socket . serializeRESPDataType $ SimpleString "Background saving failed"
+notifyOfSaveError :: (Log :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()
+notifyOfSaveError socket e returnMsg = do
+    logInternalServerError $ "Error occured while attempting to save RDB file: " <> displayException e
+    sendMessage socket . serializeRESPDataType $ SimpleString returnMsg
 
-getRDBFilePathFromSettings :: (MonadThrow m, HasCallStack, Exception SaveFailure) => ServerSettings -> m (SomeBase File)
+getRDBFilePathFromSettings ::
+    ( Eff.Error SaveFailure :> es
+    , HasCallStack
+    ) =>
+    ServerSettings -> Eff es (SomeBase File)
 getRDBFilePathFromSettings (ServerSettings settings) = do
-    dirPath <- maybe (throwM MissingDirSetting) pure $ HashMap.lookup (Setting "dir") settings
-    fileName <- maybe (throwM MissingDBFilenameSetting) pure $ HashMap.lookup (Setting "dbfilename") settings
+    dirPath <- maybe (Eff.throwError MissingDirSetting) pure $ HashMap.lookup (Setting "dir") settings
+    fileName <- maybe (Eff.throwError MissingDBFilenameSetting) pure $ HashMap.lookup (Setting "dbfilename") settings
 
     case (dirPath, fileName) of
         (DirPathVal (Abs dir), FilePathVal (Rel file)) -> pure $ Abs $ dir </> file
         (DirPathVal (Rel dir), FilePathVal (Rel file)) -> pure $ Rel $ dir </> file
-        _ -> throwM IncompatibleDirAndFilePathTypes
+        _ -> Eff.throwError IncompatibleDirAndFilePathTypes
 
-mkRDBConfigFromSettings :: (MonadThrow m, HasCallStack, Exception SaveFailure) => ServerSettings -> m RDBConfig
+mkRDBConfigFromSettings ::
+    ( Eff.Error SaveFailure :> es
+    , HasCallStack
+    ) =>
+    ServerSettings -> Eff es RDBConfig
 mkRDBConfigFromSettings (ServerSettings settings) = do
-    rawRDBCompressionSetting <- maybe (throwM MissingRDBCompressionSetting) pure $ HashMap.lookup (Setting "rdbcompression") settings
-    rawRDBChecksumSetting <- maybe (throwM MissingRDBChecksumSetting) pure $ HashMap.lookup (Setting "rdbchecksum") settings
+    rawRDBCompressionSetting <- maybe (Eff.throwError MissingRDBCompressionSetting) pure $ HashMap.lookup (Setting "rdbcompression") settings
+    rawRDBChecksumSetting <- maybe (Eff.throwError MissingRDBChecksumSetting) pure $ HashMap.lookup (Setting "rdbchecksum") settings
 
     case (rawRDBCompressionSetting, rawRDBChecksumSetting) of
         (BoolVal rdbCompressionSettingVal, BoolVal rdbChecksumSettingVal) ->
@@ -180,4 +201,4 @@ mkRDBConfigFromSettings (ServerSettings settings) = do
                     , generateChecksum = rdbChecksumSettingVal
                     , skipChecksumValidation = not rdbChecksumSettingVal
                     }
-        _ -> throwM IncompatibleRDBCompressionOrChecksumSetting
+        _ -> Eff.throwError IncompatibleRDBCompressionOrChecksumSetting

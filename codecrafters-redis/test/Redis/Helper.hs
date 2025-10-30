@@ -8,12 +8,14 @@ module Redis.Helper (
     echoCmd,
     setCmd,
     getCmd,
+    seqHead,
 ) where
 
 import Redis.RDB.Binary
 
-
 import Data.ByteString (ByteString)
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Vector (fromList)
 import Redis.RDB.TestConfig (RDBConfig)
 import Redis.RESP (Array (..), BulkString (..), RESPDataType (MkArrayResponse, MkBulkStringResponse), serializeRESPDataType, toOptionString)
@@ -44,3 +46,6 @@ encodeThenDecodeUsingRDBBinary rdbConfig = decode rdbConfig . encode rdbConfig
 
 encodeThenDecodeOrFailUsingRDBBinary :: (RDBBinary a) => RDBConfig -> a -> Either String a
 encodeThenDecodeOrFailUsingRDBBinary rdbConfig = decodeOrFail rdbConfig . encode rdbConfig
+
+seqHead :: Seq a -> Maybe a
+seqHead = Seq.lookup 0

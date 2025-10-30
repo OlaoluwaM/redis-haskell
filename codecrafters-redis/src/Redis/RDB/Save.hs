@@ -10,7 +10,7 @@ import Data.Default (Default (..))
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds)
 import Redis.Server.Version (redisVersion)
-import Redis.Store (Store, StoreKey (..), StoreValue (..), TTLTimestamp (..))
+import Redis.ServerState (Store, StoreKey (..), StoreValue (..), TTLTimestamp (..))
 import Rerefined (unsafeRefine)
 
 data RDBStateInfo = RDBStateInfo

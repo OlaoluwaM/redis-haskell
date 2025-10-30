@@ -12,7 +12,7 @@ packages:
   - codecrafters-redis-ffi
 
 extra-deps:
-  - text-ascii-1.2.1
+  - log-effectful-1.0.1.0
   - git: https://github.com/OlaoluwaM/bits-show.git
     commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
     subdirs:

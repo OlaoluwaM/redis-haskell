@@ -27,6 +27,10 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy.Internal qualified as BSL
 import Data.Sequence qualified as Seq
+import Effectful.FileSystem qualified as Eff
+import Effectful.FileSystem.IO qualified as Eff
+import Effectful.FileSystem.IO.ByteString qualified as FSEffBS
+import Effectful.FileSystem.IO.ByteString.Lazy qualified as FSEffBSL
 
 import Control.Applicative (Alternative (..), (<|>))
 import Control.Monad (when)
@@ -53,10 +57,11 @@ import Data.Binary.Put (PutM, putLazyByteString, runPut, runPutM)
 import Data.Foldable (Foldable (toList))
 import Data.Sequence (Seq)
 import Data.Text (Text)
-import GHC.IO.Handle.FD (withBinaryFile)
+import Effectful (Eff, (:>))
 import GHC.IO.IOMode (IOMode (..))
 import Redis.RDB.CRC64 (CheckSum, crc64, initialChecksum)
 import Redis.RDB.Config (RDBConfig (..))
+import Prelude hiding (writeFile)
 
 -- ReaderT so we may be able to perform serialization based on some configuration
 -- StateT to maintain the checksum state during serialization/deserialization
@@ -221,25 +226,25 @@ decodeOrFailWithValueAndMetadata ::
     (RDBBinary a) => RDBConfig -> BSL.ByteString -> Either (BSL.ByteString, ByteOffset, String) (BSL.ByteString, ByteOffset, a)
 decodeOrFailWithValueAndMetadata config = runGetOrFail (fst <$> execRDBGet config rdbGet)
 
-encodeFile :: (RDBBinary a) => RDBConfig -> FilePath -> a -> IO ()
-encodeFile config filePath v = BSL.writeFile filePath (encode config v)
+encodeFile :: (Eff.FileSystem :> es, RDBBinary a) => RDBConfig -> FilePath -> a -> Eff es ()
+encodeFile config filePath v = FSEffBSL.writeFile filePath (encode config v)
 
-decodeFile :: (RDBBinary a) => RDBConfig -> FilePath -> IO a
+decodeFile :: (Eff.FileSystem :> es, RDBBinary a) => RDBConfig -> FilePath -> Eff es a
 decodeFile config filePath = do
     result <- decodeFileOrFail config filePath
     case result of
         Right x -> return x
         Left (_, str) -> error str
 
-decodeFileOrFail :: (RDBBinary a) => RDBConfig -> FilePath -> IO (Either (ByteOffset, String) a)
+decodeFileOrFail :: (Eff.FileSystem :> es, RDBBinary a) => RDBConfig -> FilePath -> Eff es (Either (ByteOffset, String) a)
 decodeFileOrFail config filePath =
-    withBinaryFile filePath ReadMode $ \h -> do
+    Eff.withBinaryFile filePath ReadMode $ \h -> do
         feed (runGetIncremental (fst <$> execRDBGet config rdbGet)) h
   where
-    feed (Done _ _ x) _ = return (Right x)
-    feed (Fail _ pos str) _ = return (Left (pos, str))
+    feed (Done _ _ x) _ = pure (Right x)
+    feed (Fail _ pos str) _ = pure (Left (pos, str))
     feed (Partial k) h = do
-        chunk <- BS.hGet h BSL.defaultChunkSize
+        chunk <- FSEffBS.hGet h BSL.defaultChunkSize
         case BS.length chunk of
             0 -> feed (k Nothing) h
             _ -> feed (k (Just chunk)) h

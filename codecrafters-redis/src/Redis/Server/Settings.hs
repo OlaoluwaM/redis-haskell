@@ -2,6 +2,7 @@ module Redis.Server.Settings (
     ServerSettings (..),
     Setting (..),
     Settings (..),
+    ServerSettingsRef,
     serializeSettingsValue,
     serverSettings,
 
@@ -11,6 +12,7 @@ module Redis.Server.Settings (
 
 import Control.Applicative (Alternative (..))
 import Control.Arrow ((&&&))
+import Control.Concurrent.STM qualified as STM
 import Data.ByteString (ByteString)
 import Data.Default (Default (..))
 import Data.HashMap.Strict (HashMap)
@@ -61,6 +63,8 @@ data Settings = Settings
     { settingsFromConfigFile :: Maybe RedisConfFile -- Path to a redis.conf file. Ideally we would parse this file and use it to set server settings in addition to what we get from the command line (with a preference of the latter), but for now we just accept it as an argument and do nothing with it
     , settingsFromCommandLine :: ServerSettings -- Settings provided via command line arguments
     }
+
+type ServerSettingsRef = STM.TVar ServerSettings
 
 newtype ServerSettings = ServerSettings {settings :: HashMap Setting SettingValue}
     deriving stock (Eq, Show, Generic)

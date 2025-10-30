@@ -2,9 +2,7 @@ module Redis.Commands.EchoSpec where
 
 import Test.Hspec
 
-import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
-import Data.ByteString (ByteString)
 import Data.Foldable (for_)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -13,7 +11,8 @@ import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (echoCmd, mkBulkString, mkCmdReqStr)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
-import Redis.Test (runTestM)
+import Redis.Server.Context (ServerContext)
+import Redis.Test (PassableTestContext (..), runTestServer)
 
 -- Helper function to check if a parsed command is an Echo command
 isEchoCommand :: Command -> Bool
@@ -84,26 +83,58 @@ spec_echo_cmd_tests = do
             let message = "Hello, Redis!"
             let cmdReq = mkCmdReqStr [echoCmd, mkBulkString message]
             let expected = serializeRESPDataType (mkBulkString message)
-            result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { settings = Nothing
+                        , serverState = Nothing
+                        }
+                    )
+
             result `shouldBe` expected
 
         it "should handle special characters in the message" $ do
             let message = "!@#$%^&*()_+"
             let cmdReq = mkCmdReqStr [echoCmd, mkBulkString message]
             let expected = serializeRESPDataType (mkBulkString message)
-            result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { settings = Nothing
+                        , serverState = Nothing
+                        }
+                    )
+
             result `shouldBe` expected
 
         it "should handle unicode characters in the message" $ do
             let message = "你好，世界！"
             let cmdReq = mkCmdReqStr [echoCmd, mkBulkString message]
             let expected = serializeRESPDataType (mkBulkString message)
-            result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { settings = Nothing
+                        , serverState = Nothing
+                        }
+                    )
+
             result `shouldBe` expected
 
         it "should handle empty string" $ do
             let message = ""
             let cmdReq = mkCmdReqStr [echoCmd, mkBulkString message]
             let expected = serializeRESPDataType (mkBulkString message)
-            result <- liftIO (runTestM @ByteString (handleCommandReq cmdReq) Nothing)
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { settings = Nothing
+                        , serverState = Nothing
+                        }
+                    )
+
             result `shouldBe` expected

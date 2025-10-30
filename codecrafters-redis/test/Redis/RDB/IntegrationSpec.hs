@@ -7,12 +7,16 @@ import Redis.RDB.Format
 import Test.Hspec
 import Test.Hspec.Hedgehog hiding (assert)
 
+import Effectful qualified as Eff
+import Effectful.FileSystem qualified as Eff
 import Hedgehog qualified as H
 import Redis.RDB.Binary qualified as Binary
 
 import Control.Exception (SomeException, try)
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import Data.Traversable (for)
+import Effectful (Eff, IOE)
+import Effectful.FileSystem (FileSystem)
 import Path (addExtension, parseRelFile, reldir, toFilePath, (</>))
 import Redis.Helper (encodeThenDecodeUsingRDBBinary)
 import Redis.RDB.Config (RDBConfig (..))
@@ -211,14 +215,17 @@ test_Decoding_sample_rdb_file = do
                 -}
                 goldenPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/golden|] </> testFilename
                 outputPath <- addExtension ".rdb" $ [reldir|test/Redis/RDB/output|] </> testFilename
-                result <- try (Binary.decodeFile rdbConfig (toFilePath filepath)) :: IO (Either SomeException RDBFile)
+                result <- try (runRDBSerialization $ Binary.decodeFile rdbConfig (toFilePath filepath)) :: IO (Either SomeException RDBFile)
                 case result of
                     Left err -> assertFailure ("Failed to decode " <> show filepath <> ": " <> show err)
                     Right decodedRDB ->
                         -- We could also use the `delta` program for diffing, but that would necessitate the complexity of checking whether it is installed
                         pure $
-                            goldenVsFileDiff ("Golden test for " <> rawTestFilename) (\ref new -> ["diff", "-u", ref, new]) (toFilePath goldenPath) (toFilePath outputPath) (Binary.encodeFile rdbConfig (toFilePath outputPath) decodedRDB)
+                            goldenVsFileDiff ("Golden test for " <> rawTestFilename) (\ref new -> ["diff", "-u", ref, new]) (toFilePath goldenPath) (toFilePath outputPath) (runRDBSerialization $ Binary.encodeFile rdbConfig (toFilePath outputPath) decodedRDB)
             else assertFailure ("File not found: " <> show filepath)
+
+runRDBSerialization :: Eff '[FileSystem, IOE] a -> IO a
+runRDBSerialization = Eff.runEff . Eff.runFileSystem
 
 -- | Create a large RDB for performance testing
 createLargeRDB :: POSIXTime -> RDBFile

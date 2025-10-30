@@ -10,7 +10,7 @@ import Data.Foldable (foldl')
 import Data.List.NonEmpty qualified as NE
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Redis.Store (Store, StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..))
+import Redis.ServerState (Store, StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..))
 
 data RDBStateInfo = RDBStateInfo
     { redisVer :: Maybe RedisVersion

@@ -5,12 +5,12 @@
 
 packages:
 - completed:
-    hackage: text-ascii-1.2.1@sha256:98ef7737e7679e6511484225a5146d84e1c62a0b1b425d1839b04c24a847aaad,1473
+    hackage: log-effectful-1.0.1.0@sha256:79d1c821db1c1d95cf109f813f13a2588e45dbacb5f797eefc200ff7a5984923,2466
     pantry-tree:
-      sha256: 562cc7911420e6ba09d3c32a1faad1f74850daa5d3a187ed553c7af9b7b9b25b
-      size: 577
+      sha256: 5ab7c6b553ea50ce7b6218e86db9ff3632b0482dd00aaf749ebece93b968e0ca
+      size: 326
   original:
-    hackage: text-ascii-1.2.1
+    hackage: log-effectful-1.0.1.0
 - completed:
     commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
     git: https://github.com/OlaoluwaM/bits-show.git

@@ -10,17 +10,18 @@ module Redis.Utils (
     showUsingBase,
     combineDecimalDigits,
     genericShow,
-    logInternalServerError
+    logInternalServerError,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
-import Blammo.Logging (Message (..), MonadLogger, logError, (.=))
 import Data.Aeson (ToJSON)
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
 import Data.String (IsString (..))
-import Debug.Pretty.Simple
+import Debug.Pretty.Simple (pTrace, pTraceM)
+import Effectful (Eff, (:>))
+import Effectful.Log (Log, logAttention)
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -62,6 +63,5 @@ combineDecimalDigits digits = sum $ zipWith (\digit numOfZeros -> digit * (10 ^ 
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
 
-logInternalServerError :: (MonadLogger m, ToJSON a) => a -> m ()
-logInternalServerError errMsg =
-    logError $ "Internal server error: " :# ["error" .= errMsg]
+logInternalServerError :: (Log :> es, ToJSON a) => a -> Eff es ()
+logInternalServerError = logAttention "Internal server error: "
