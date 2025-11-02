@@ -49,6 +49,7 @@ newtype BGSaveCmdArg = BGSaveCmdArg (Maybe ShouldSchedule)
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON)
 
+-- Modeled but not used
 newtype ShouldSchedule = ShouldSchedule Bool
     deriving stock (Eq, Show)
     deriving newtype (ToJSON)

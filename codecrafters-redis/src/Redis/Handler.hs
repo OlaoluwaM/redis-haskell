@@ -21,6 +21,7 @@ import Effectful (Eff, (:>))
 import Effectful.FileSystem qualified as Eff
 import Effectful.Log (Log)
 import Optics (view)
+import Redis.Commands.LastSave
 import Redis.Commands.Parser (
     Command (..),
     ConfigSubCommand (ConfigGet),
@@ -60,6 +61,7 @@ dispatchCmd (Get getCmdArgs) = handleGet @r getCmdArgs
 dispatchCmd (Config (ConfigGet configGetCmdArgs)) = handleConfigGet @r configGetCmdArgs
 dispatchCmd Save = handleSave @r
 dispatchCmd (BGSave bgSaveCmdArgs) = handleBGSave @r bgSaveCmdArgs
+dispatchCmd LastSave = handleLastSave @r
 dispatchCmd (InvalidCommand msg) = do
     env <- ReaderEff.ask @r
     let socket = view #clientSocket env

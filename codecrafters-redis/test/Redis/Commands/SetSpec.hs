@@ -25,6 +25,7 @@ import Redis.Server (ServerContext)
 import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
+import Redis.Utils (millisecondsToSeconds)
 
 spec_set_cmd_tests :: Spec
 spec_set_cmd_tests = do
@@ -273,8 +274,7 @@ spec_set_cmd_tests = do
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` defaultSetResponse
 
-            -- TODO: Review this
-            it "handles SET command with EXAT option (Unix timestamp expiration)" $ \serverState -> do
+            it "handles SET command with EXAT option (Unix timestamp expiration in seconds)" $ \serverState -> do
                 let key = "bike:3"
                 let time = 1746057600
                 let cmdReq =
@@ -285,6 +285,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "EXAT"
                             , mkBulkString . fromString . show $ time
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
 
                 atomically $ do
@@ -296,7 +297,6 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            -- TODO: Review this
             it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \serverState -> do
                 let key = "bike:4"
                 let msTime = 1746057600000 :: POSIXTime
@@ -308,14 +308,17 @@ spec_set_cmd_tests = do
                             , mkBulkString "PXAT"
                             , mkBulkString . fromString . show $ msTime
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+
                 atomically $ do
                     storeItems <- readTVar serverState.keyValueStoreRef
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime . millisecondsToSeconds $ msTime))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with KEEPTTL option" $ \initialServerState -> do
