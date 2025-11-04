@@ -143,7 +143,7 @@ performRDBSave serverState serverSettingsRef socket = do
 
     -- We need to do all this to protect against an asynchronous exception occurring after we've potentially taken a lock on our TMVar but before we've put it back as such an interruption could lead us to a deadlock
     Eff.bracketOnError
-        (STMEff.atomically $ tryTakeTMVar lastRDBSave.current)
+        (STMEff.atomically $ tryTakeTMVar lastRDBSave.inProgress)
         ( \case
             Nothing -> notifyUserOfExistingBackgroundSave
             Just _ -> do
@@ -154,8 +154,8 @@ performRDBSave serverState serverSettingsRef socket = do
 
                 saveTime <- getCurrentTime
                 STMEff.atomically $ do
-                    putTMVar lastRDBSave.current (Just saveTime)
-                    modifyTVar serverState.lastRDBSaveRef (set #previous (Just saveTime))
+                    putTMVar lastRDBSave.inProgress (Just saveTime)
+                    modifyTVar serverState.lastRDBSaveRef (set #lastCompleted (Just saveTime))
         )
         ( \case
             Nothing -> do
@@ -163,7 +163,7 @@ performRDBSave serverState serverSettingsRef socket = do
                 -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
                 logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
                 notifyUserOfExistingBackgroundSave
-            Just mLastRDBSaveTimeM -> STMEff.atomically $ putTMVar lastRDBSave.current mLastRDBSaveTimeM
+            Just mLastRDBSaveTimeM -> STMEff.atomically $ putTMVar lastRDBSave.inProgress mLastRDBSaveTimeM
         )
 
 notifyOfSaveError :: (Log :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()

@@ -48,14 +48,14 @@ data TTLPrecision = Milliseconds | Seconds
     deriving stock (Eq, Show, Generic)
 
 data LastRDBSave = LastRDBSave
-    { current :: STM.TMVar (Maybe UTCTime)
-    {- ^ Timestamp of last RDB save operation
+    { inProgress :: STM.TMVar (Maybe UTCTime)
+    {- ^ Timestamp of the current in-progress RDB save, if any. There can be only one active RDB save at a time.
         We use a TMVar, 1 for compatibility with STM, and 2 to allow only one thread to perform the save operation at a time per https://redis.io/docs/latest/commands/bgsave/#:~:text=An%20error%20is%20returned%20if%20there%20is%20already%20a%20background%20save%20running%20or%20if%20there%20is%20another%20non%2Dbackground%2Dsave%20process%20running%2C%20specifically%20an%20in%2Dprogress%20AOF%20rewrite
 
         Also, we want this to be a `Maybe` to distinguish between when an RDB save has been performed before and when it hasn't been performed yet. If we ever end up with a `Maybe (Maybe UTCTime)` in this context, we do not want to `join`
     -}
-    , previous :: Maybe UTCTime
-    -- ^ Previous timestamp of last RDB save operation
+    , lastCompleted :: Maybe UTCTime
+    -- ^ Timestamp of last RDB save operation that completed successfully, if any
     }
     deriving stock (Generic)
 
@@ -78,6 +78,6 @@ genInitialServerStateEff :: STM.STM ServerState
 genInitialServerStateEff = do
     let initialLastRDBSave = Nothing
     kvStore <- STM.newTVar genInitialStore
-    current <- STM.newTMVar initialLastRDBSave
-    lastRDBSave <- STM.newTVar $ LastRDBSave current initialLastRDBSave
+    inProgress <- STM.newTMVar initialLastRDBSave
+    lastRDBSave <- STM.newTVar $ LastRDBSave inProgress initialLastRDBSave
     pure $ ServerState kvStore lastRDBSave

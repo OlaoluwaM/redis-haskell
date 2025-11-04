@@ -32,7 +32,7 @@ handleLastSave = do
 
     mLastSaveTime <- STMEff.atomically $ do
         lastRDBSaveState <- STMEff.readTVar serverState.lastRDBSaveRef
-        fmap join (STMEff.tryReadTMVar lastRDBSaveState.current) <|> pure lastRDBSaveState.previous
+        fmap join (STMEff.tryReadTMVar lastRDBSaveState.inProgress) <|> pure lastRDBSaveState.lastCompleted
 
     case mLastSaveTime of
         Just lastSaveTime -> sendMessage socket . serializeRESPDataType $ RESPInteger (utcToPOSIXSecondsInt lastSaveTime)
