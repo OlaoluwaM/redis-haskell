@@ -43,6 +43,7 @@ import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
 import Redis.Utils (logInternalServerError)
 
+-- https://redis.io/docs/latest/commands/save/
 -- https://redis.io/docs/latest/commands/bgsave/
 
 newtype BGSaveCmdArg = BGSaveCmdArg (Maybe ShouldSchedule)
@@ -89,9 +90,11 @@ handleSave = do
     let serverState = view #serverState env
     let serverSettingsRef = view #serverSettingsRef env
 
+    let onSuccess = sendMessage socket . serializeRESPDataType $ SimpleString "OK"
+
     Eff.runErrorNoCallStackWith @SaveFailure
         (\e -> notifyOfSaveError socket e "Saving failed")
-        (performRDBSave serverState serverSettingsRef socket)
+        (performRDBSave serverState serverSettingsRef socket onSuccess)
 
 handleBGSave ::
     forall r es.
@@ -117,9 +120,9 @@ handleBGSave _ = do
     performRDBBackgroundSave socket serverState serverSettingsRef =
         Eff.runErrorNoCallStackWith @SaveFailure
             Eff.throwIO -- If an error is thrown by performRDBSave, we handle it by rethrowing so we can satisfy/pop off the Error effect constraint and have the outer forkFinally handle it correctly
-            ( performRDBSave serverState serverSettingsRef socket
-                >> (sendMessage socket . serializeRESPDataType $ SimpleString "Background saving completed")
-            )
+            (performRDBSave serverState serverSettingsRef socket (onSuccess socket))
+
+    onSuccess socket = sendMessage socket . serializeRESPDataType $ SimpleString "Background saving completed"
 
 performRDBSave ::
     ( HasCallStack
@@ -130,8 +133,8 @@ performRDBSave ::
     , Eff.Error SaveFailure :> es
     , Time :> es
     ) =>
-    ServerState -> ServerSettingsRef -> Socket -> Eff es ()
-performRDBSave serverState serverSettingsRef socket = do
+    ServerState -> ServerSettingsRef -> Socket -> Eff es () -> Eff es ()
+performRDBSave serverState serverSettingsRef socket onSuccess = do
     settings <- STMEff.readTVarIO serverSettingsRef
     rdbDirPath <- getRDBFilePathFromSettings settings
     rdbConfig <- mkRDBConfigFromSettings settings
@@ -145,7 +148,18 @@ performRDBSave serverState serverSettingsRef socket = do
     Eff.bracketOnError
         (STMEff.atomically $ tryTakeTMVar lastRDBSave.inProgress)
         ( \case
-            Nothing -> notifyUserOfExistingBackgroundSave
+            Nothing -> do
+                -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing
+                -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
+                logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
+                notifyUserOfExistingBackgroundSave
+            Just mLastRDBSaveTimeM -> do
+                logInternalServerError @_ @Text "RDB save failed due to an exception"
+                STMEff.atomically $ putTMVar lastRDBSave.inProgress mLastRDBSaveTimeM
+        )
+        ( \case
+            Nothing -> do
+                notifyUserOfExistingBackgroundSave
             Just _ -> do
                 currentTime <- getPosixTime
                 let rdbFile = saveRedisStoreToRDB currentTime kvStore
@@ -156,14 +170,8 @@ performRDBSave serverState serverSettingsRef socket = do
                 STMEff.atomically $ do
                     putTMVar lastRDBSave.inProgress (Just saveTime)
                     modifyTVar serverState.lastRDBSaveRef (set #lastCompleted (Just saveTime))
-        )
-        ( \case
-            Nothing -> do
-                -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing
-                -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
-                logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
-                notifyUserOfExistingBackgroundSave
-            Just mLastRDBSaveTimeM -> STMEff.atomically $ putTMVar lastRDBSave.inProgress mLastRDBSaveTimeM
+
+                onSuccess
         )
 
 notifyOfSaveError :: (Log :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()

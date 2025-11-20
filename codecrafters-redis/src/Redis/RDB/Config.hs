@@ -2,6 +2,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
+-- TODO: Export only the smart constructor for RDBConfig
+
 module Redis.RDB.Config where
 
 import GHC.Generics (Generic)
@@ -14,6 +16,8 @@ data RDBConfig = RDBConfig
     }
     deriving stock (Eq, Show, Generic)
 
+makeFieldLabelsNoPrefix ''RDBConfig
+
 defaultRDBConfig :: RDBConfig
 defaultRDBConfig =
     RDBConfig
@@ -22,4 +26,16 @@ defaultRDBConfig =
         , skipChecksumValidation = False
         }
 
-makeFieldLabelsNoPrefix ''RDBConfig
+data MkRDBConfigArg = MkRDBConfigArg
+    { useCompression :: Bool
+    , generateChecksum :: Bool
+    }
+    deriving stock (Eq, Show, Generic)
+
+mkRDBConfig :: MkRDBConfigArg -> RDBConfig
+mkRDBConfig MkRDBConfigArg{..} =
+    RDBConfig
+        { useLzfCompression = useCompression
+        , generateChecksum = generateChecksum
+        , skipChecksumValidation = not generateChecksum
+        }

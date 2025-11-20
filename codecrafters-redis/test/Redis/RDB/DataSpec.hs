@@ -8,8 +8,8 @@ import Test.Tasty
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-
 import Data.ByteString qualified as BSC
+
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Word (Word32, Word64)
 import Redis.RDB.Binary (decodeOrFail, encode)

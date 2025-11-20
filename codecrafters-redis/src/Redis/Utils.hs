@@ -11,6 +11,7 @@ module Redis.Utils (
     combineDecimalDigits,
     genericShow,
     logInternalServerError,
+    logDebug,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
@@ -21,7 +22,7 @@ import Data.Char (intToDigit, toUpper)
 import Data.String (IsString (..))
 import Debug.Pretty.Simple (pTrace, pTraceM)
 import Effectful (Eff, (:>))
-import Effectful.Log (Log, logAttention)
+import Effectful.Log (Log, logAttention, logTrace)
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -65,3 +66,6 @@ genericShow = fromString . show
 
 logInternalServerError :: (Log :> es, ToJSON a) => a -> Eff es ()
 logInternalServerError = logAttention "Internal server error: "
+
+logDebug :: (Log :> es, ToJSON a) => a -> Eff es ()
+logDebug = logTrace "Debug: "

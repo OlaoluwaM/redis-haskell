@@ -22,11 +22,12 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
 import Effectful (Eff)
 import Effectful.Log (
+    LogLevel (..),
     LoggerEnv (..),
-    defaultLogLevel,
  )
 import GHC.Generics (Generic)
-import Log.Backend.Text (withSimpleTextLogger)
+import Log.Backend.StandardOutput (withStdOutLogger)
+
 import Network.Socket (
     AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
     AddrInfoFlag (..),
@@ -56,10 +57,10 @@ runTestServer action testContext =
 
         let serverState = fromMaybe initialServerState testContext.serverState
 
-        fmap (fromMaybe "We got nothing bro" . getLast . snd) $ withSimpleTextLogger $ \logger -> do
+        mRes <- withStdOutLogger $ \logger -> do
             let loggerEnv =
                     LoggerEnv
-                        { leMaxLogLevel = defaultLogLevel
+                        { leMaxLogLevel = LogAttention
                         , leLogger = logger
                         , leDomain = []
                         , leData = []
@@ -67,6 +68,8 @@ runTestServer action testContext =
                         }
             let env = ServerContext loopbackSocket serverState serverSettings
             runServer env loggerEnv action
+
+        pure $ fromMaybe "We got nothing bro. This probably shouldn't have happened" $ getLast mRes
   where
     runServer :: ServerContext -> LoggerEnv -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
     runServer env loggerEnv =
