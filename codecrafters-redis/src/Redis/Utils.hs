@@ -38,6 +38,7 @@ mapLeft f = either (Left . f) Right
 
 -- Using fractional division to avoid losing precision.
 -- Integer division would round 0.1 to 0 which we do not want, we want to have division results as is with little to no rounding
+-- For example, converting 100 milliseconds to seconds should give us 0.1 seconds but with integer division, because of the rounding, we'd get 0 seconds
 millisecondsToSeconds :: (Fractional a) => a -> a
 millisecondsToSeconds = (/ 1000)
 
