@@ -5,15 +5,16 @@ import Test.Hspec
 import Test.Hspec.Hedgehog
 import Test.Tasty
 
+import Data.ByteString qualified as BSC
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Data.ByteString qualified as BSC
 
 import Data.Int (Int16, Int32, Int64, Int8)
-import Data.Word (Word32, Word64)
+import Data.Word (Word32)
 import Redis.RDB.Binary (decodeOrFail, encode)
-import Redis.RDB.TestConfig (genRDBConfig,)
+import Redis.RDB.TestConfig (genRDBConfig)
+import Redis.Store.Timestamp (UnixTimestampMS (..))
 import Test.Tasty.Hedgehog (testProperty)
 
 test_rdb_data_binary_serialization_prop_tests :: [TestTree]
@@ -68,7 +69,7 @@ roundTripRDBUnixTimestampSEncoding = H.property $ do
 
 roundTripRDBUnixTimestampMSEncoding :: H.Property
 roundTripRDBUnixTimestampMSEncoding = H.property $ do
-    timestampMS <- RDBUnixTimestampMS <$> H.forAll (Gen.word64 (Range.linearBounded @Word64))
+    timestampMS <- RDBUnixTimestampMS . UnixTimestampMS <$> H.forAll (Gen.word (Range.linearBounded @Word))
     rdbConfig <- H.forAll genRDBConfig
     H.tripping timestampMS (encode rdbConfig) (decodeOrFail rdbConfig)
 

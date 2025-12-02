@@ -1,25 +1,20 @@
-module Redis.RDB.Save where
+module Redis.RDB.Save (
+    saveRedisStoreToRDB,
+) where
 
 import Redis.RDB.Data
 import Redis.RDB.Format
 import Redis.Store.Data
+import Redis.Store.Timestamp
 
 import Data.HashMap.Strict qualified as HashMap
 
 import Data.Default (Default (..))
 import Data.Maybe (isJust)
-import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds)
+import Data.Time.Clock.POSIX (POSIXTime)
 import Redis.Server.Version (redisVersion)
-import Redis.ServerState (Store, StoreKey (..), StoreValue (..), TTLTimestamp (..))
+import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
 import Rerefined (unsafeRefine)
-
-data RDBStateInfo = RDBStateInfo
-    { redisVer :: Maybe RedisVersion
-    , redisBits :: Maybe RedisBits
-    , creationTime :: Maybe CTime
-    , usedMem :: Maybe UsedMem
-    }
-    deriving stock (Eq, Show)
 
 saveRedisStoreToRDB :: POSIXTime -> Store -> RDBFile
 saveRedisStoreToRDB creationTime store =
@@ -44,7 +39,7 @@ saveAuxFields :: POSIXTime -> [AuxField]
 saveAuxFields creationTime =
     [ AuxFieldRedisVer (RedisVersion $ unsafeRefine redisVersion)
     , AuxFieldRedisBits RedisBits64 -- TODO: Is there any way to determine whether a program is being run on a 32 bit system vs on a 64 bit system?
-    , AuxFieldCTime . CTime . fromPosixTimeToRDBUnixTimestampS $ creationTime
+    , AuxFieldCTime . CTime . fromUnixTimestampMSToRDBUnixTimestampS . mkUnixTimestampMSFromPOSIXTime $ creationTime
     ]
 
 calcNumOfKeysInStore :: Store -> Word
@@ -66,8 +61,8 @@ saveKeyValueEntries store = map (uncurry mkRDBKeyValEntry) (HashMap.toList store
             (MkRedisStr strVal, Nothing) -> saveKeyValEntryWithoutExpiry key strVal
             x -> error $ "Only string values are supported right now in the Redis store. So this error really shouldn't have happened " <> show x
 
-    saveKeyValEntryWithExpiry :: StoreKey -> RedisStr -> TTLTimestamp -> KeyValueOpCode
-    saveKeyValEntryWithExpiry (StoreKey key) (RedisStr val) (TTLTimestamp ttl _) =
+    saveKeyValEntryWithExpiry :: StoreKey -> RedisStr -> UnixTimestampMS -> KeyValueOpCode
+    saveKeyValEntryWithExpiry (StoreKey key) (RedisStr val) ttl =
         let rdbStringKey = toRDBStringOrIntVal key
             rdbStringVal = toRDBStringOrIntVal val
          in FCOpCode $
@@ -76,7 +71,7 @@ saveKeyValueEntries store = map (uncurry mkRDBKeyValEntry) (HashMap.toList store
                     { valueType = Str
                     , encodedKey = rdbStringKey
                     , encodedValue = rdbStringVal
-                    , expiryTimeMs = fromPosixTimeToRDBUnixTimestampMS . utcTimeToPOSIXSeconds $ ttl
+                    , expiryTimeMs = fromUnixTimestampMSToRDBUnixTimestampMS ttl
                     }
 
     saveKeyValEntryWithoutExpiry :: StoreKey -> RedisStr -> KeyValueOpCode

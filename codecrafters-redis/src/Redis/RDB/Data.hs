@@ -26,10 +26,12 @@ module Redis.RDB.Data (
     toRDBStringOrIntVal,
     fromRDBStringOrIntVal,
     fromRDBInt,
-    fromPosixTimeToRDBUnixTimestampMS,
-    toPosixTimeFromRDBUnixTimestampMS,
+    toUnixTimestampMSFromRDBUnixTimestampS,
+    fromUnixTimestampMSToRDBUnixTimestampS,
+    toUnixTimestampMSFromRDBUnixTimestampMS,
+    fromUnixTimestampMSToRDBUnixTimestampMS,
     fromPosixTimeToRDBUnixTimestampS,
-    toPosixTimeFromRDBUnixTimestampS,
+    fromPosixTimeToRDBUnixTimestampMS,
 
     -- ** For testing
     toRDBLengthPrefix,
@@ -39,6 +41,7 @@ module Redis.RDB.Data (
 ) where
 
 import Redis.RDB.Binary
+import Redis.Store.Timestamp
 
 import Data.Bits qualified as Bits
 import Data.ByteString qualified as BS
@@ -72,11 +75,9 @@ import Data.Binary.Put (
  )
 import Data.Data (Proxy (..))
 import Data.Either (isRight)
-import Data.Fixed (Pico)
 import Data.Int (Int16, Int32, Int8)
 import Data.Maybe (isNothing)
 import Data.String (fromString)
-import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.Generics (Generic)
@@ -84,7 +85,7 @@ import GHC.TypeLits (natVal)
 import Redis.RDB.Config (RDBConfig (..))
 import Redis.RDB.LZF (LzfCompressedByteString (..), lzfCompress, lzfDecompress)
 import Redis.RDB.Rerefined (refineErrorWithContext)
-import Redis.Utils (genericShow, millisecondsToSeconds, secondsToMilliseconds)
+import Redis.Utils (genericShow, millisecondsToSeconds)
 import Rerefined (Refined, refine, unrefine, unsafeRefine)
 import Rerefined.Orphans ()
 import Rerefined.Predicate (Predicate (..), Refine (..))
@@ -196,7 +197,7 @@ type RDBLengthPrefix64 = Refined SixtyFourBitLengthPrefixBounds Word64
 newtype RDBUnixTimestampS = RDBUnixTimestampS {getRDBUnixTimestampS :: Word32}
     deriving stock (Show, Eq, Ord)
 
-newtype RDBUnixTimestampMS = RDBUnixTimestampMS {getRDBUnixTimestampMS :: Word64}
+newtype RDBUnixTimestampMS = RDBUnixTimestampMS {getRDBUnixTimestampMS :: UnixTimestampMS}
     deriving stock (Show, Eq, Ord)
 
 data RDBStringOrIntVal
@@ -339,9 +340,9 @@ instance RDBBinary RDBUnixTimestampS where
     rdbGet = RDBUnixTimestampS <$> genericRDBGetUsing getWord32le
 
 instance RDBBinary RDBUnixTimestampMS where
-    rdbPut (RDBUnixTimestampMS t) = genericRDBPutUsing (putWord64le t) -- Redis uses little-endian for timestamps
+    rdbPut (RDBUnixTimestampMS t) = genericRDBPutUsing (putWord64le . fromIntegral $ t.timestamp) -- Redis uses little-endian for timestamps
 
-    rdbGet = RDBUnixTimestampMS <$> genericRDBGetUsing getWord64le
+    rdbGet = RDBUnixTimestampMS . UnixTimestampMS . fromIntegral <$> genericRDBGetUsing getWord64le
 
 -- This logic of this function, particularly the bounds/limits in each case, is based off the `rdbSaveLen` redis function: https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L157
 toRDBLengthPrefix :: Word -> RDBLengthPrefix
@@ -394,7 +395,7 @@ fromRDBString (RDBMediumString byteStr) = unrefine byteStr
 fromRDBString (RDBLongString byteStr) = unrefine byteStr
 fromRDBString (RDBExtraLongString byteStr) = unrefine byteStr
 
-fromRDBInt :: Integral a => RDBInt -> a
+fromRDBInt :: (Integral a) => RDBInt -> a
 fromRDBInt (MkRDBInt8 num) = fromIntegral num.rdbInt8
 fromRDBInt (MkRDBInt16 num) = fromIntegral num.rdbInt16
 fromRDBInt (MkRDBInt32 num) = fromIntegral num.rdbInt32
@@ -433,17 +434,23 @@ tryParseAsInt32 byteStr = do
         then Just num
         else Nothing
 
-toPosixTimeFromRDBUnixTimestampS :: RDBUnixTimestampS -> POSIXTime
-toPosixTimeFromRDBUnixTimestampS = fromIntegral . (.getRDBUnixTimestampS)
+toUnixTimestampMSFromRDBUnixTimestampS :: RDBUnixTimestampS -> UnixTimestampMS
+toUnixTimestampMSFromRDBUnixTimestampS = fromIntegral . (.getRDBUnixTimestampS)
+
+fromUnixTimestampMSToRDBUnixTimestampS :: UnixTimestampMS -> RDBUnixTimestampS
+fromUnixTimestampMSToRDBUnixTimestampS = RDBUnixTimestampS . floor @_ @Word32 . millisecondsToSeconds . realToFrac . (.timestamp)
+
+toUnixTimestampMSFromRDBUnixTimestampMS :: RDBUnixTimestampMS -> UnixTimestampMS
+toUnixTimestampMSFromRDBUnixTimestampMS = (.getRDBUnixTimestampMS)
+
+fromUnixTimestampMSToRDBUnixTimestampMS :: UnixTimestampMS -> RDBUnixTimestampMS
+fromUnixTimestampMSToRDBUnixTimestampMS = RDBUnixTimestampMS
 
 fromPosixTimeToRDBUnixTimestampS :: POSIXTime -> RDBUnixTimestampS
 fromPosixTimeToRDBUnixTimestampS = RDBUnixTimestampS . floor @_ @Word32
 
 fromPosixTimeToRDBUnixTimestampMS :: POSIXTime -> RDBUnixTimestampMS
-fromPosixTimeToRDBUnixTimestampMS = RDBUnixTimestampMS . floor @_ @Word64 . secondsToMilliseconds
-
-toPosixTimeFromRDBUnixTimestampMS :: RDBUnixTimestampMS -> POSIXTime
-toPosixTimeFromRDBUnixTimestampMS = secondsToNominalDiffTime . millisecondsToSeconds . fromIntegral @_ @Pico . (.getRDBUnixTimestampMS)
+fromPosixTimeToRDBUnixTimestampMS = RDBUnixTimestampMS . mkUnixTimestampMSFromPOSIXTime
 
 {- |
     Encode a short string using RDB's variable length encoding

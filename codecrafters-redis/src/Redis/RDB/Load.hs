@@ -1,4 +1,7 @@
-module Redis.RDB.Load where
+module Redis.RDB.Load (
+    RDBStateInfo (..),
+    loadRDBFile,
+) where
 
 import Redis.RDB.Data
 import Redis.RDB.Format
@@ -8,9 +11,7 @@ import Data.HashMap.Strict qualified as HashMap
 
 import Data.Foldable (foldl')
 import Data.List.NonEmpty qualified as NE
-import Data.Time (UTCTime)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Redis.ServerState (Store, StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..))
+import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
 
 data RDBStateInfo = RDBStateInfo
     { redisVer :: Maybe RedisVersion
@@ -20,43 +21,41 @@ data RDBStateInfo = RDBStateInfo
     }
     deriving stock (Eq, Show)
 
-loadRDBFile :: UTCTime -> RDBFile -> (Store, RDBStateInfo)
-loadRDBFile currentTime rdbFile = (store, stateInfo)
+loadRDBFile :: RDBFile -> (Store, RDBStateInfo)
+loadRDBFile rdbFile = (store, stateInfo)
   where
     -- We only support loading the first RDB entry from the RDB file since our server doesn't support multiple databases
-    store = maybe HashMap.empty (HashMap.fromList . loadKeyValueEntries currentTime . NE.head) (NE.nonEmpty rdbFile.dbEntries)
+    store = maybe HashMap.empty (HashMap.fromList . loadKeyValueEntries . NE.head) (NE.nonEmpty rdbFile.dbEntries)
     stateInfo = foldl' loadRDBStateInfoFromAuxFields (RDBStateInfo{redisVer = Nothing, redisBits = Nothing, creationTime = Nothing, usedMem = Nothing}) rdbFile.auxFieldEntries
 
-loadKeyValueEntries :: UTCTime -> RDbEntry -> [(StoreKey, StoreValue)]
-loadKeyValueEntries insertTime RDbEntry{keyValEntries} = map (loadKeyValueEntry insertTime) keyValEntries
+loadKeyValueEntries :: RDbEntry -> [(StoreKey, StoreValue)]
+loadKeyValueEntries RDbEntry{keyValEntries} = map loadKeyValueEntry keyValEntries
 
-loadKeyValueEntry :: UTCTime -> KeyValueOpCode -> (StoreKey, StoreValue)
-loadKeyValueEntry insertTime (FCOpCode KeyValWithExpiryInMS{..}) =
+loadKeyValueEntry :: KeyValueOpCode -> (StoreKey, StoreValue)
+loadKeyValueEntry (FCOpCode KeyValWithExpiryInMS{..}) =
     let key = StoreKey $ fromRDBStringOrIntVal encodedKey
         val = fromRDBStringOrIntVal encodedValue
-        ttl = toPosixTimeFromRDBUnixTimestampMS expiryTimeMs
+        ttl = toUnixTimestampMSFromRDBUnixTimestampMS expiryTimeMs
      in ( key
         , StoreValue
             { value = MkRedisStr (RedisStr val)
-            , insertTime
-            , ttlTimestamp = Just TTLTimestamp{timestamp = posixSecondsToUTCTime ttl, precision = Milliseconds}
+            , ttlTimestamp = Just ttl
             }
         )
-loadKeyValueEntry insertTime (FDOpcode KeyValWithExpiryInS{..}) =
+loadKeyValueEntry (FDOpcode KeyValWithExpiryInS{..}) =
     let key = StoreKey $ fromRDBStringOrIntVal encodedKey
         val = fromRDBStringOrIntVal encodedValue
-        ttl = toPosixTimeFromRDBUnixTimestampS expiryTimeS
+        ttl = toUnixTimestampMSFromRDBUnixTimestampS expiryTimeS
      in ( key
         , StoreValue
             { value = MkRedisStr (RedisStr val)
-            , insertTime
-            , ttlTimestamp = Just TTLTimestamp{timestamp = posixSecondsToUTCTime ttl, precision = Seconds}
+            , ttlTimestamp = Just ttl
             }
         )
-loadKeyValueEntry insertTime (KeyValOpCode KeyValWithNoExpiryInfo{..}) =
+loadKeyValueEntry (KeyValOpCode KeyValWithNoExpiryInfo{..}) =
     let key = StoreKey $ fromRDBStringOrIntVal encodedKey
         val = fromRDBStringOrIntVal encodedValue
-     in (key, StoreValue{value = MkRedisStr (RedisStr val), insertTime, ttlTimestamp = Nothing})
+     in (key, StoreValue{value = MkRedisStr (RedisStr val), ttlTimestamp = Nothing})
 
 loadRDBStateInfoFromAuxFields :: RDBStateInfo -> AuxField -> RDBStateInfo
 loadRDBStateInfoFromAuxFields currentStateInfo (AuxFieldRedisVer redisVer) =

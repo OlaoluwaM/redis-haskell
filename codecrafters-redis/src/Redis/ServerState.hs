@@ -1,8 +1,6 @@
 module Redis.ServerState (
     StoreValue (..),
     StoreKey (..),
-    TTLTimestamp (..),
-    TTLPrecision (..),
     Store,
     ServerState (..),
     LastRDBSave (..),
@@ -13,6 +11,8 @@ module Redis.ServerState (
     mkStoreValue,
     getItemTTLValue,
 ) where
+
+import Redis.Store.Timestamp
 
 import Control.Concurrent.STM qualified as STM
 import Data.HashMap.Strict qualified as HashMap
@@ -31,20 +31,13 @@ data ServerState = ServerState
 
 type Store = HashMap StoreKey StoreValue
 
+-- Redis keys are binary safe strings https://redis.io/docs/latest/develop/using-commands/keyspace/#:~:text=Although,Redis,-%2E
 newtype StoreKey = StoreKey {key :: ByteString}
     deriving stock (Eq, Show, Generic)
     deriving newtype (Hashable)
 
-data StoreValue = StoreValue {value :: RedisDataType, insertTime :: UTCTime, ttlTimestamp :: Maybe TTLTimestamp}
-    deriving stock (Eq, Show, Generic)
-
-data TTLTimestamp = TTLTimestamp
-    { timestamp :: UTCTime
-    , precision :: TTLPrecision
-    }
-    deriving stock (Eq, Show, Generic)
-
-data TTLPrecision = Milliseconds | Seconds
+-- Redis does not store insert time/time of creation
+data StoreValue = StoreValue {value :: RedisDataType, ttlTimestamp :: Maybe UnixTimestampMS}
     deriving stock (Eq, Show, Generic)
 
 data LastRDBSave = LastRDBSave
@@ -68,11 +61,11 @@ getItemFromStore = HashMap.lookup
 addItemToStore :: StoreKey -> StoreValue -> Store -> Store
 addItemToStore = HashMap.insert
 
-mkStoreValue :: RedisDataType -> UTCTime -> Maybe TTLTimestamp -> StoreValue
-mkStoreValue value insertTime ttl = StoreValue{value, insertTime, ttlTimestamp = ttl}
+mkStoreValue :: RedisDataType -> Maybe UnixTimestampMS -> StoreValue
+mkStoreValue value ttl = StoreValue{value, ttlTimestamp = ttl}
 
-getItemTTLValue :: StoreValue -> Maybe UTCTime
-getItemTTLValue = fmap (.timestamp) . (.ttlTimestamp)
+getItemTTLValue :: StoreValue -> Maybe UnixTimestampMS
+getItemTTLValue = (.ttlTimestamp)
 
 genInitialServerStateEff :: STM.STM ServerState
 genInitialServerStateEff = do

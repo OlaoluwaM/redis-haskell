@@ -13,6 +13,7 @@ module Redis.Commands.Set (
 import Control.Concurrent.STM
 import Redis.RESP
 import Redis.ServerState
+import Redis.Store.Timestamp
 
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.HashMap.Strict qualified as HashMap
@@ -39,8 +40,6 @@ import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (Tagged), untag)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8')
-import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
-import Data.Time.Clock.POSIX (POSIXTime, posixSecondsToUTCTime)
 import Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
@@ -51,7 +50,7 @@ import Redis.Store.Data (
     RedisStr (..),
     showRedisDataType,
  )
-import Redis.Utils (millisecondsToSeconds)
+import Redis.Utils (secondsToMilliseconds)
 
 data SetCmdArg = SetCmdArg {key :: StoreKey, val :: ByteString, opts :: SetCmdOpts}
     deriving stock (Eq, Show, Generic)
@@ -75,7 +74,7 @@ data SetCmdOpts = SetCmdOpts {setCondition :: SetCondition, returnOldVal :: Bool
 -- We are making the PX and PXAT types Doubles because they're in milliseconds and we don't want to lose precision when converting to seconds (we lose precision if we convert to seconds using integer division).
 -- We *could* make EX a Double too, if only to allow users to ability to express more precise TTL offsets with the option, but then what would be the point of the PX option? Following this line of reasoning, I think it would be best to just keep EX as an integer
 -- TODO: Explore using POSIXTime for the PXAT option here, you'll need to convert it to milliseconds before storing/using it
-data TTLOption = EX (Tagged Seconds Integer) | PX (Tagged MilliSeconds Double) | EXAT (Tagged UnixEpochTimeSeconds POSIXTime) | PXAT (Tagged UnixEpochTimeMilliSeconds Double) | KeepTTL | DiscardTTL
+data TTLOption = EX (Tagged Seconds Word) | PX (Tagged MilliSeconds Word) | EXAT (Tagged UnixEpochTimeSeconds Word) | PXAT (Tagged UnixEpochTimeMilliSeconds Word) | KeepTTL | DiscardTTL
     deriving stock (Eq, Show, Ord, Generic)
     deriving anyclass (ToJSON)
 
@@ -115,16 +114,16 @@ parseSetCmdOptions =
     ttlOptionParser =
         -- We can probably keep asum here since we're okay with returning empty should all the parsers fail
         asum
-            [ numberedTTLOptionParser "EX" <&> EX . Tagged . floor -- rounding down to avoid creating time out of thin air
+            [ numberedTTLOptionParser "EX" <&> EX . Tagged -- rounding down to avoid creating time out of thin air
             , numberedTTLOptionParser "PX" <&> PX . Tagged
-            , numberedTTLOptionParser "EXAT" <&> EXAT . Tagged . fromInteger . floor
+            , numberedTTLOptionParser "EXAT" <&> EXAT . Tagged
             , numberedTTLOptionParser "PXAT" <&> PXAT . Tagged
             , KeepTTL <$ AC.stringCI "KEEPTTL"
             ]
             <?> "TTL option parser"
 
-    numberedTTLOptionParser :: ByteString -> Parser Double
-    numberedTTLOptionParser numberedTTLOptionStr = AC.stringCI numberedTTLOptionStr *> skipSomeTill AC.space AC.double
+    numberedTTLOptionParser :: ByteString -> Parser Word
+    numberedTTLOptionParser numberedTTLOptionStr = AC.stringCI numberedTTLOptionStr *> skipSomeTill AC.space AC.decimal
 
 mkSetCmdOpts :: SetCondition -> Bool -> TTLOption -> SetCmdOpts
 mkSetCmdOpts = SetCmdOpts
@@ -153,7 +152,7 @@ handleSet (SetCmdArg key newVal opts) = do
     let shouldReturnOldKeyValue = opts.returnOldVal
     let setCondition = opts.setCondition
 
-    currentTime <- Time.getCurrentTime
+    currentTime <- fmap mkUnixTimestampMSFromUTCTime Time.getCurrentTime
 
     let calculateTTL = setupTTLCalculation currentTime
     let defaultResponse = SimpleString "OK"
@@ -168,15 +167,15 @@ handleSet (SetCmdArg key newVal opts) = do
             (Just _, OnlyIfKeyDoesNotExist) -> pure (Right Null)
             (Nothing, _) -> do
                 let newTTLForItemAtKey = calculateTTL Nothing opts.ttlOption
-                let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
+                let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) newTTLForItemAtKey
                 writeTVar kvStoreStateRef (HashMap.insert key newStoreValAtKey kvStore)
                 pure . Right . bool defaultResponse Null $ shouldReturnOldKeyValue
             (Just currentStoreValAtKey, _) -> do
-                let (StoreValue currentValAtKey _ currentTTLForItem) = currentStoreValAtKey
+                let (StoreValue currentValAtKey currentTTLForItem) = currentStoreValAtKey
                 let newTTLForItemAtKey = calculateTTL currentTTLForItem opts.ttlOption
                 case currentValAtKey of
                     (MkRedisStr (RedisStr prevValAtKey)) -> do
-                        let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) currentTime newTTLForItemAtKey
+                        let newStoreValAtKey = mkStoreValue (MkRedisStr . RedisStr $ newVal) newTTLForItemAtKey
                         writeTVar kvStoreStateRef (HashMap.insert key newStoreValAtKey kvStore)
                         pure . Right . bool defaultResponse (mkNonNullBulkString prevValAtKey) $ shouldReturnOldKeyValue
                     x -> pure $ do
@@ -185,11 +184,11 @@ handleSet (SetCmdArg key newVal opts) = do
 
     sendMessage socket . fromEither . fmap serializeRESPDataType $ output
 
-setupTTLCalculation :: UTCTime -> Maybe TTLTimestamp -> TTLOption -> Maybe TTLTimestamp
-setupTTLCalculation currentTime currentTTLForItem = \case
-    (EX t) -> Just $ TTLTimestamp (addUTCTime (fromInteger @NominalDiffTime (untag t)) currentTime) Seconds
-    (PX t) -> Just $ TTLTimestamp (addUTCTime (realToFrac @_ @NominalDiffTime $ millisecondsToSeconds (untag t)) currentTime) Milliseconds
-    (EXAT t) -> Just $ TTLTimestamp (posixSecondsToUTCTime (untag t)) Seconds
-    (PXAT t) -> Just $ TTLTimestamp (posixSecondsToUTCTime . realToFrac . millisecondsToSeconds $ untag t) Milliseconds
-    KeepTTL -> currentTTLForItem
+setupTTLCalculation :: UnixTimestampMS -> Maybe UnixTimestampMS -> TTLOption -> Maybe UnixTimestampMS
+setupTTLCalculation currentTimestampMS existingItemTTL = \case
+    (EX ttlOffsetInSeconds) -> Just (UnixTimestampMS (secondsToMilliseconds (untag ttlOffsetInSeconds)) + currentTimestampMS)
+    (PX ttlOffsetInMilliseconds) -> Just (UnixTimestampMS (untag ttlOffsetInMilliseconds) + currentTimestampMS)
+    (EXAT ttlTimestampInSeconds) -> Just $ UnixTimestampMS (secondsToMilliseconds (untag ttlTimestampInSeconds))
+    (PXAT ttlTimestampInMilliseconds) -> Just $ UnixTimestampMS (untag ttlTimestampInMilliseconds)
+    KeepTTL -> existingItemTTL
     DiscardTTL -> Nothing

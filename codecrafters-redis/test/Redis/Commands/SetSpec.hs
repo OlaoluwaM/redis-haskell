@@ -1,5 +1,6 @@
 module Redis.Commands.SetSpec where
 
+import Redis.Store.Timestamp
 import Test.Hspec
 
 import Data.ByteString.Char8 qualified as BS
@@ -14,15 +15,15 @@ import Data.Default (def)
 import Data.String (fromString)
 import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (..))
-import Data.Time (addUTCTime)
-import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime, posixSecondsToUTCTime)
+import Data.Time (addUTCTime, secondsToNominalDiffTime)
+import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
 import Redis.Server (ServerContext)
-import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), TTLPrecision (..), TTLTimestamp (..), getItemTTLValue, mkStoreValue)
+import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
 import Redis.Utils (millisecondsToSeconds)
@@ -145,40 +146,49 @@ spec_set_cmd_tests = do
     describe "TTL Calculation Logic" do
         it "should correctly set up TTL with EX option" do
             now <- liftIO getCurrentTime
+            let timeOffsetInSeconds = 60
             let ttlOption = EX (Tagged 60)
-            let result = setupTTLCalculation now Nothing ttlOption
-            result `shouldBe` Just (TTLTimestamp (addUTCTime 60 now) Seconds)
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) Nothing ttlOption
+            let expectedExpiryTime = mkUnixTimestampMSFromUTCTime (addUTCTime timeOffsetInSeconds now)
+            result `shouldBe` Just expectedExpiryTime
 
         it "should correctly set up TTL with PX option" do
             now <- liftIO getCurrentTime
-            let ttlOption = PX (Tagged 60000)
-            let result = setupTTLCalculation now Nothing ttlOption
-            result `shouldBe` Just (TTLTimestamp (addUTCTime 60 now) Milliseconds)
+            let timeOffsetInMilliseconds = 60000
+            let ttlOption = PX (Tagged timeOffsetInMilliseconds)
+            let timeOffsetInSeconds = secondsToNominalDiffTime . millisecondsToSeconds . realToFrac $ timeOffsetInMilliseconds
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) Nothing ttlOption
+            let expectedExpiryTime = mkUnixTimestampMSFromUTCTime (addUTCTime timeOffsetInSeconds now)
+            result `shouldBe` Just expectedExpiryTime
 
         it "should correctly set up TTL with EXAT option" do
             now <- liftIO getCurrentTime
-            let ttlOption = EXAT (Tagged 1746057600)
-            let result = setupTTLCalculation now Nothing ttlOption
-            result `shouldBe` Just (TTLTimestamp (posixSecondsToUTCTime 1746057600) Seconds)
+            let timestampInSeconds = 1746057600
+            let ttlOption = EXAT (Tagged timestampInSeconds)
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) Nothing ttlOption
+            let expectedExpiryTime = mkUnixTimestampMSFromPOSIXTime . fromIntegral $ timestampInSeconds
+            result `shouldBe` Just expectedExpiryTime
 
         it "should correctly set up TTL with PXAT option" do
             now <- liftIO getCurrentTime
-            let ttlOption = PXAT (Tagged 17460576000)
-            let result = setupTTLCalculation now Nothing ttlOption
-            result `shouldBe` Just (TTLTimestamp (posixSecondsToUTCTime 17460576) Milliseconds)
+            let timestampInMilliseconds = 17460576000
+            let ttlOption = PXAT (Tagged timestampInMilliseconds)
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) Nothing ttlOption
+            let expectedExpiryTime = mkUnixTimestampMSFromPOSIXTime . secondsToNominalDiffTime . millisecondsToSeconds . realToFrac $ timestampInMilliseconds
+            result `shouldBe` Just expectedExpiryTime
 
         it "should keep existing TTL with KEEPTTL option" do
             now <- liftIO getCurrentTime
-            let existingTTL = Just $ TTLTimestamp (addUTCTime 120 now) Seconds
+            let existingTTL = Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 120 now)
             let ttlOption = KeepTTL
-            let result = setupTTLCalculation now existingTTL ttlOption
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) existingTTL ttlOption
             result `shouldBe` existingTTL
 
         it "should discard TTL with DiscardTTL option" do
             now <- liftIO getCurrentTime
-            let existingTTL = Just $ TTLTimestamp now Milliseconds
+            let existingTTL = Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 400 now)
             let ttlOption = DiscardTTL
-            let result = setupTTLCalculation now existingTTL ttlOption
+            let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) existingTTL ttlOption
             result `shouldBe` Nothing
 
     before initializeStoreState $ do
@@ -276,14 +286,14 @@ spec_set_cmd_tests = do
 
             it "handles SET command with EXAT option (Unix timestamp expiration in seconds)" $ \serverState -> do
                 let key = "bike:3"
-                let time = 1746057600
+                let ttlTimestampS = 1746057600
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "green"
                             , mkBulkString "EXAT"
-                            , mkBulkString . fromString . show $ time
+                            , mkBulkString . fromString . show $ ttlTimestampS
                             ]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
@@ -293,20 +303,20 @@ spec_set_cmd_tests = do
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime time))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . fromInteger @POSIXTime $ ttlTimestampS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \serverState -> do
                 let key = "bike:4"
-                let msTime = 1746057600000 :: POSIXTime
+                let ttlTimestampMS = 1746057600000
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "yellow"
                             , mkBulkString "PXAT"
-                            , mkBulkString . fromString . show $ msTime
+                            , mkBulkString . fromString . show $ ttlTimestampMS
                             ]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
@@ -316,20 +326,21 @@ spec_set_cmd_tests = do
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime . millisecondsToSeconds $ msTime))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . secondsToNominalDiffTime . millisecondsToSeconds . realToFrac $ ttlTimestampMS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
 
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with KEEPTTL option" $ \initialServerState -> do
                 let key = "bike:5"
+                let ttlTimestampS = 1746427600
                 let setCmdReq =
                         mkCmdReqStr
                             [ setCmd
                             , mkBulkString key
                             , mkBulkString "zero"
                             , mkBulkString "EXAT"
-                            , mkBulkString "1746057600"
+                            , mkBulkString . fromString . show $ ttlTimestampS
                             ]
                 let setCmdReq2 =
                         mkCmdReqStr
@@ -348,7 +359,7 @@ spec_set_cmd_tests = do
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ posixSecondsToUTCTime 1746057600))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . fromInteger @POSIXTime $ ttlTimestampS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
@@ -451,15 +462,15 @@ initializeStoreState = do
     now <- getCurrentTime
     atomically $ do
         let storeItems =
-                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
-                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
-                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
-                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
-                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just $ TTLTimestamp (addUTCTime 3600 now) Milliseconds))
-                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
-                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just $ TTLTimestamp (addUTCTime 60 now) Seconds))
-                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
-                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
+                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") Nothing)
+                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") Nothing)
+                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) Nothing)
+                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") Nothing)
+                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") (Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 3600 now)))
+                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") Nothing)
+                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") (Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 60 now)))
+                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") Nothing)
+                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) Nothing)
                 ]
         lastRDBSaveCurrent <- newTMVar Nothing
         kvStore <- newTVar $ HashMap.fromList storeItems

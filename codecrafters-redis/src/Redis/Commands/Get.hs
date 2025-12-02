@@ -7,6 +7,7 @@ module Redis.Commands.Get (
 import Control.Concurrent.STM
 import Redis.RESP
 import Redis.ServerState
+import Redis.Store.Timestamp
 
 import Data.HashMap.Strict qualified as HashMap
 import Effect.Time qualified as Time
@@ -62,13 +63,13 @@ handleGet (GetCmdArg targetKey) = do
         let targetItemM = HashMap.lookup targetKey kvStore
         case targetItemM of
             Nothing -> pure . Right $ Null
-            Just (StoreValue valForTargetKey _ ttlM) -> do
+            Just (StoreValue valForTargetKey ttlM) -> do
                 case valForTargetKey of
                     (MkRedisStr (RedisStr val)) -> do
                         case ttlM of
                             Nothing -> pure . Right $ mkNonNullBulkString val
                             Just ttl -> do
-                                let keyValTTLHasExpired = currentTime > ttl.timestamp
+                                let keyValTTLHasExpired = mkUnixTimestampMSFromUTCTime currentTime > ttl
                                 pure . bool (Right $ mkNonNullBulkString val) (Right nullBulkString) $ keyValTTLHasExpired
                     x -> do
                         let actualValType = showRedisDataType @ByteString x

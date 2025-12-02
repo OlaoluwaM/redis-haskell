@@ -2,6 +2,7 @@ module Redis.Commands.GetSpec where
 
 import Data.Time
 import Test.Hspec
+import Redis.Store.Timestamp
 
 import Data.ByteString qualified as BS
 import Data.HashMap.Strict qualified as HashMap
@@ -24,8 +25,6 @@ import Redis.ServerState (
     LastRDBSave (..),
     ServerState (..),
     StoreKey (..),
-    TTLPrecision (..),
-    TTLTimestamp (..),
     mkStoreValue,
  )
 import Redis.Store.Data (
@@ -221,15 +220,15 @@ initializeServerState = do
     now <- getCurrentTime
     atomically $ do
         let storeItems =
-                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") now Nothing)
-                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") now Nothing)
-                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) now Nothing)
-                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") now Nothing)
-                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") now (Just $ TTLTimestamp (addUTCTime 3600 now) Milliseconds))
-                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") now Nothing)
-                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") now (Just $ TTLTimestamp (addUTCTime 60 now) Seconds))
-                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") now Nothing)
-                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) now Nothing)
+                [ (StoreKey "bike:1", mkStoreValue (MkRedisStr . RedisStr $ "red") Nothing)
+                , (StoreKey "bike:2", mkStoreValue (MkRedisStr . RedisStr $ "blue") Nothing)
+                , (StoreKey "car:1", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["some", "random", "text"]) Nothing)
+                , (StoreKey "bike:3", mkStoreValue (MkRedisStr . RedisStr $ "green") Nothing)
+                , (StoreKey "car:2", mkStoreValue (MkRedisStr . RedisStr $ "black") (Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 3600 now)))
+                , (StoreKey "user:1", mkStoreValue (MkRedisStr . RedisStr $ "john") Nothing)
+                , (StoreKey "temp:key", mkStoreValue (MkRedisStr . RedisStr $ "ephemeral") (Just $ mkUnixTimestampMSFromUTCTime (addUTCTime 60 now)))
+                , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") Nothing)
+                , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) Nothing)
                 ]
         lastRDBSaveCurrent <- newTMVar Nothing
         kvStore <- newTVar $ HashMap.fromList storeItems
