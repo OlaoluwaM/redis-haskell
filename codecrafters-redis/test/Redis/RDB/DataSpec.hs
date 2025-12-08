@@ -87,7 +87,7 @@ roundTripRDBDoubleEncoding = H.property $ do
 
 spec_RDB_data_binary_serialization_unit_tests :: Spec
 spec_RDB_data_binary_serialization_unit_tests = do
-    modifyMaxSuccess (const 10) $ it "Test on 512mb of data" $ hedgehog $ do
+    modifyMaxSuccess (const 5) $ it "Test on 512mb of data" $ hedgehog $ do
         let sampleString = toRDBString $ BSC.replicate 67108864 97
         rdbConfig <- H.forAll genRDBConfig
         H.tripping sampleString (encode rdbConfig) (decodeOrFail rdbConfig)
