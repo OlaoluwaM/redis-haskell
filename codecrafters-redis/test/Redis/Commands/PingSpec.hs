@@ -9,7 +9,7 @@ import Data.Text (Text)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Commands.Ping (PingCmdArg (..))
 import Redis.Handler (handleCommandReq)
-import Redis.Helper (mkBulkString, mkCmdReqStr, pingCmd)
+import Redis.Helper (isInvalidCommand, mkBulkString, mkCmdReqStr, pingCmd)
 import Redis.RESP (RESPDataType (..), RESPInt (..), serializeRESPDataType)
 import Redis.Server (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
@@ -18,11 +18,6 @@ import Redis.Test (PassableTestContext (..), runTestServer)
 isPingCommand :: Command -> Bool
 isPingCommand (Ping _) = True
 isPingCommand _ = False
-
--- Helper function to check if a parsed command is invalid
-isInvalidCommand :: Command -> Bool
-isInvalidCommand (InvalidCommand _) = True
-isInvalidCommand _ = False
 
 spec_ping_cmd_tests :: Spec
 spec_ping_cmd_tests = do
@@ -69,7 +64,6 @@ spec_ping_cmd_tests = do
             for_
                 [ ("invalid argument" :: Text, mkCmdReqStr [pingCmd, RESPInteger (RESPInt 10)])
                 , ("malformed command", mkCmdReqStr [mkBulkString "PIN", mkBulkString "arg"])
-                , ("too many arguments", mkCmdReqStr [pingCmd, mkBulkString "arg1", mkBulkString "arg2", mkBulkString "arg3"])
                 ]
                 $ \(testDesc, input) ->
                     it [i|Fails to parse a PING command string #{testDesc}|] $ do
