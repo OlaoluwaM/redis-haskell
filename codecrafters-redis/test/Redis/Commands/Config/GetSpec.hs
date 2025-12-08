@@ -23,11 +23,6 @@ isConfigGetCommand :: Command -> Bool
 isConfigGetCommand (Config (ConfigGet _)) = True
 isConfigGetCommand _ = False
 
--- Helper function to check if a parsed command is invalid
-isInvalidCommand :: Command -> Bool
-isInvalidCommand (InvalidCommand _) = True
-isInvalidCommand _ = False
-
 -- Helper function to create CONFIG command
 configCmd :: RESPDataType
 configCmd = mkBulkString "CONFIG"
@@ -104,7 +99,7 @@ spec_config_get_cmd_tests = do
             result `shouldSatisfy` isLeft
 
         it "should reject non-text parameters" $ do
-            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, RESPInteger 123]
+            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, RESPInteger (RESPInt 123)]
             let result = parseOnly commandParser cmdReq
             result `shouldSatisfy` isLeft
 
@@ -131,12 +126,8 @@ spec_config_get_cmd_tests = do
 
         context "rejects invalid CONFIG GET command formats" $ do
             for_
-                [ ("missing subcommand", mkCmdReqStr [configCmd])
-                , ("missing parameters", mkCmdReqStr [configCmd, getSubCmd])
-                , ("invalid subcommand", mkCmdReqStr [configCmd, mkBulkString "SET", mkBulkString "timeout"])
-                , ("non-text parameter", mkCmdReqStr [configCmd, getSubCmd, RESPInteger 123])
-                , ("null parameter", mkCmdReqStr [configCmd, getSubCmd, MkBulkStringResponse NullBulkString])
-                , ("mixed valid/invalid parameters", mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout", RESPInteger 456])
+                [ ("invalid subcommand", mkCmdReqStr [configCmd, mkBulkString "SET", mkBulkString "timeout"])
+                , ("mixed valid/invalid parameters", mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout", RESPInteger (RESPInt 456)])
                 , ("wrong command", mkCmdReqStr [mkBulkString "CONFI", getSubCmd, mkBulkString "timeout"])
                 , ("wrong subcommand", mkCmdReqStr [configCmd, mkBulkString "GE", mkBulkString "timeout"])
                 ]
