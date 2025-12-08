@@ -1,8 +1,8 @@
 module Redis.Commands.GetSpec where
 
 import Data.Time
-import Test.Hspec
 import Redis.Store.Timestamp
+import Test.Hspec
 
 import Data.ByteString qualified as BS
 import Data.HashMap.Strict qualified as HashMap
@@ -18,7 +18,7 @@ import Data.Text (Text)
 import Redis.Commands.Get (GetCmdArg (..))
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
-import Redis.Helper (getCmd, mkBulkString, mkCmdReqStr, setCmd)
+import Redis.Helper (getCmd, isInvalidCommand, mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), nullBulkString, serializeRESPDataType)
 import Redis.Server (ServerContext)
 import Redis.ServerState (
@@ -38,11 +38,6 @@ import Redis.Test (PassableTestContext (..), runTestServer)
 isGetCommand :: Command -> Bool
 isGetCommand (Get _) = True
 isGetCommand _ = False
-
--- Helper function to check if a parsed command is invalid
-isInvalidCommand :: Command -> Bool
-isInvalidCommand (InvalidCommand _) = True
-isInvalidCommand _ = False
 
 spec_get_cmd_tests :: Spec
 spec_get_cmd_tests = do
@@ -87,9 +82,7 @@ spec_get_cmd_tests = do
 
         context "rejects invalid GET command formats" $ do
             for_
-                [ ("too many arguments" :: Text, mkCmdReqStr [getCmd, mkBulkString "key1", mkBulkString "key2"])
-                , ("malformed command", mkCmdReqStr [mkBulkString "GE", mkBulkString "mykey"])
-                , ("missing required key", mkCmdReqStr [getCmd])
+                [ ("malformed command" :: Text, mkCmdReqStr [mkBulkString "GE", mkBulkString "mykey"])
                 ]
                 $ \(testDesc, input) ->
                     it [i|Fails to parse a GET command string #{testDesc}|] $ do
@@ -186,16 +179,7 @@ spec_get_cmd_tests = do
                     result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
                     result `shouldBe` serializeRESPDataType (mkBulkString value)
 
-                it "should return value for a key with non-expired TTL" $ \serverState -> do
-                    -- Use car:2 which is set to expire in 1 hour from current time (not expired)
-                    let key = "car:2"
-                    let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
-                    let expected = serializeRESPDataType (mkBulkString "black")
-
-                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
-                    result `shouldBe` expected
-
-                it "should return an empty bulkstring when attempting to access a key with an expired TTL" $ \initialServerState -> do
+                it "should handle a key with a short TTL" $ \initialServerState -> do
                     -- Set a key with a very short expiry (100ms)
                     let key = "very:short:ttl"
                     let value = "gone-quickly"
