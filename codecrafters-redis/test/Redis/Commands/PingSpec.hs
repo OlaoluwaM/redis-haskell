@@ -10,7 +10,7 @@ import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Commands.Ping (PingCmdArg (..))
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, pingCmd)
-import Redis.RESP (RESPDataType (..), serializeRESPDataType)
+import Redis.RESP (RESPDataType (..), RESPInt (..), serializeRESPDataType)
 import Redis.Server (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
 
@@ -48,7 +48,7 @@ spec_ping_cmd_tests = do
             either (const True) isInvalidCommand result `shouldBe` True
 
         it "should handle non-text argument properly" $ do
-            let cmdReq = mkCmdReqStr [pingCmd, RESPInteger 123]
+            let cmdReq = mkCmdReqStr [pingCmd, RESPInteger (RESPInt 123)]
             let result = parseOnly commandParser cmdReq
             either (const True) isInvalidCommand result `shouldBe` True
 
@@ -67,7 +67,7 @@ spec_ping_cmd_tests = do
 
         context "rejects invalid PING command formats" $ do
             for_
-                [ ("invalid argument" :: Text, mkCmdReqStr [pingCmd, RESPInteger 10])
+                [ ("invalid argument" :: Text, mkCmdReqStr [pingCmd, RESPInteger (RESPInt 10)])
                 , ("malformed command", mkCmdReqStr [mkBulkString "PIN", mkBulkString "arg"])
                 , ("too many arguments", mkCmdReqStr [pingCmd, mkBulkString "arg1", mkBulkString "arg2", mkBulkString "arg3"])
                 ]

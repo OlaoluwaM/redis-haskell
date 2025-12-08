@@ -6,6 +6,8 @@ module Redis.RESP (
     nullBulkString,
     Array (..),
     arrayParser,
+    RESPInt (..),
+    respIntegerParser,
 
     -- * Re-exports from Redis.RESP.BulkString
     BulkString (..),
@@ -48,7 +50,7 @@ import Redis.RESP.BulkString (
 -- Spec: https://redis.io/docs/latest/develop/reference/protocol-spec/
 
 -- All supported RESP data types
-data RESPDataType = SimpleString Text | MkBulkStringResponse BulkString | MkArrayResponse Array | RESPInteger Int | Null
+data RESPDataType = SimpleString Text | MkBulkStringResponse BulkString | MkArrayResponse Array | RESPInteger RESPInt | Null
     deriving stock (Eq, Show)
 
 -- https://redis.io/docs/latest/develop/reference/protocol-spec/#arrays
@@ -56,6 +58,10 @@ data RESPDataType = SimpleString Text | MkBulkStringResponse BulkString | MkArra
 -- This type represents an RESP data type array as a response value, NOT as a carrier for a command/request.
 data Array = Array (Vector RESPDataType) | NullArray
     deriving stock (Eq, Show)
+
+newtype RESPInt = RESPInt Int
+    deriving stock (Eq, Show, Ord)
+    deriving newtype (Num)
 
 arrayParser :: Parser Array
 arrayParser = nullArrayParser <|> nonNullArrayParser
@@ -83,12 +89,19 @@ nonNullArrayParser = do
 respParser :: Parser RESPDataType
 respParser = (MkBulkStringResponse <$> bulkStringParser) <|> (MkArrayResponse <$> arrayParser)
 
+respIntegerParser :: Parser RESPInt
+respIntegerParser = do
+    AC.char ':'
+    f <- (AC.char '+' $> (* 1)) <|> (AC.char '-' $> (* negate 1)) <|> pure (* 1)
+    num <- AC.decimal <* terminatorSeqParser
+    pure $ RESPInt $ f num
+
 serializeRESPDataType :: RESPDataType -> ByteString
 serializeRESPDataType = \case
     SimpleString txt -> [i|+#{txt}#{seqTerminator}|]
     MkBulkStringResponse (BulkString bytes) -> let len = BS.length bytes in [i|$#{len}#{seqTerminator}#{bytes}#{seqTerminator}|]
     MkBulkStringResponse NullBulkString -> [i|$-1#{seqTerminator}|]
-    RESPInteger int -> [i|:#{int}#{seqTerminator}|]
+    RESPInteger (RESPInt int) -> [i|:#{int}#{seqTerminator}|]
     Null -> [i|_#{seqTerminator}|]
     MkArrayResponse NullArray -> [i|*-1#{seqTerminator}|]
     MkArrayResponse (Array otherResTypes) ->

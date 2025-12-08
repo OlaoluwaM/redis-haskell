@@ -24,7 +24,7 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
-import Redis.Helper (mkBulkString, mkCmdReqStr)
+import Redis.Helper (isInvalidCommand, mkBulkString, mkCmdReqStr, saveCmd)
 import Redis.RDB.Format (RDBFile (..))
 import Redis.RDB.Load (loadRDBFile)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
@@ -38,14 +38,6 @@ import Test.Tasty.Hedgehog (testProperty)
 isSaveCommand :: Command -> Bool
 isSaveCommand Save = True
 isSaveCommand _ = False
-
--- Helper function to check if a parsed command is invalid
-isInvalidCommand :: Command -> Bool
-isInvalidCommand (InvalidCommand _) = True
-isInvalidCommand _ = False
-
-saveCmd :: RESPDataType
-saveCmd = mkBulkString "SAVE"
 
 test_save_cmd_prop_tests :: [TestTree]
 test_save_cmd_prop_tests =
@@ -218,6 +210,7 @@ spec_save_cmd_tests = do
             storeFromSnapshot `shouldBe` storeFromNonSnapshotServerState
             snapshotExists `shouldBe` True
             result `shouldBe` expectedSaveCmdResponse
+            removeFile . toFilePath $ (testRdbOutputDir </> rdbFilename)
 
 data MkTestSettingsArg = MkTestSettingsArg
     { useCompression :: Bool

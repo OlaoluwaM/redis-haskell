@@ -15,7 +15,7 @@ import Data.Foldable (for_)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Hedgehog (MonadGen)
-import Redis.RESP (Array (..), BulkString (..), RESPDataType (..), arrayParser, bulkStringParser, notTerminatorSeq, seqTerminator, serializeRESPDataType)
+import Redis.RESP (Array (..), BulkString (..), RESPDataType (..), RESPInt (RESPInt), arrayParser, bulkStringParser, notTerminatorSeq, seqTerminator, serializeRESPDataType)
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog (testProperty)
 
@@ -214,19 +214,19 @@ spec_RESP_serializer_unit_test = describe "RESP data type serializer" do
             , ("a bulk string", MkBulkStringResponse (BulkString "helloworld"), [i|$10#{seqTerminator}helloworld#{seqTerminator}|])
             , ("an empty bulk string", MkBulkStringResponse (BulkString ""), [i|$0#{seqTerminator}#{seqTerminator}|])
             , ("an null bulk string", MkBulkStringResponse NullBulkString, [i|$-1#{seqTerminator}|])
-            , ("a positive RESP Integer", RESPInteger 99, [i|:99#{seqTerminator}|])
-            , ("a negative RESP Integer", RESPInteger (-34), [i|:-34#{seqTerminator}|])
+            , ("a positive RESP Integer", RESPInteger (RESPInt 99), [i|:99#{seqTerminator}|])
+            , ("a negative RESP Integer", RESPInteger (RESPInt (-34)), [i|:-34#{seqTerminator}|])
             , ("a null array", MkArrayResponse NullArray, [i|*-1#{seqTerminator}|])
             , ("a null value", Null, [i|_#{seqTerminator}|])
             ,
                 ( "a flat array"
-                , MkArrayResponse . Array . V.fromList $ [MkBulkStringResponse . BulkString $ "hello", RESPInteger 4, MkBulkStringResponse NullBulkString]
+                , MkArrayResponse . Array . V.fromList $ [MkBulkStringResponse . BulkString $ "hello", RESPInteger (RESPInt 4), MkBulkStringResponse NullBulkString]
                 , [i|*3#{seqTerminator}$5#{seqTerminator}hello#{seqTerminator}:4#{seqTerminator}$-1#{seqTerminator}|]
                 )
             ,
                 ( "a nested array"
                 , MkArrayResponse . Array . V.fromList $
-                    [ MkArrayResponse . Array . V.fromList $ [RESPInteger 1, RESPInteger 2, RESPInteger 3]
+                    [ MkArrayResponse . Array . V.fromList $ [RESPInteger (RESPInt 1), RESPInteger (RESPInt 2), RESPInteger (RESPInt 3)]
                     , MkArrayResponse . Array . V.fromList $ [SimpleString "Hello", SimpleString "World"]
                     ]
                 , "*2\r\n*3\r\n:1\r\n:2\r\n:3\r\n*2\r\n+Hello\r\n+World\r\n"

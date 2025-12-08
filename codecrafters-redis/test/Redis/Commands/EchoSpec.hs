@@ -10,7 +10,7 @@ import Redis.Commands.Echo (EchoCmdArg (..))
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (echoCmd, mkBulkString, mkCmdReqStr)
-import Redis.RESP (RESPDataType (..), serializeRESPDataType)
+import Redis.RESP (RESPDataType (..), RESPInt (..), serializeRESPDataType)
 import Redis.Server.Context (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
 
@@ -43,7 +43,7 @@ spec_echo_cmd_tests = do
             either (const True) isInvalidCommand result `shouldBe` True
 
         it "should reject non-text argument" $ do
-            let cmdReq = mkCmdReqStr [echoCmd, RESPInteger 123]
+            let cmdReq = mkCmdReqStr [echoCmd, RESPInteger (RESPInt 123)]
             let result = parseOnly commandParser cmdReq
             either (const True) isInvalidCommand result `shouldBe` True
 
@@ -63,7 +63,7 @@ spec_echo_cmd_tests = do
         context "rejects invalid ECHO command formats" $ do
             for_
                 [ ("too many arguments" :: Text, mkCmdReqStr [echoCmd, mkBulkString "Hello, Redis!", mkBulkString "Hello", mkBulkString "Hello, World!"])
-                , ("invalid argument", mkCmdReqStr [echoCmd, RESPInteger 10])
+                , ("invalid argument", mkCmdReqStr [echoCmd, RESPInteger (RESPInt 10)])
                 , ("malformed command", mkCmdReqStr [mkBulkString "ech", mkBulkString "arg"])
                 , ("malformed command (2)", mkCmdReqStr [mkBulkString "eco", mkBulkString "arg"])
                 , ("missing required argument", mkCmdReqStr [echoCmd])

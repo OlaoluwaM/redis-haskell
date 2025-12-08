@@ -8,6 +8,9 @@ module Redis.Helper (
     echoCmd,
     setCmd,
     getCmd,
+    saveCmd,
+    bgSaveCmd,
+    isInvalidCommand,
     seqHead,
 ) where
 
@@ -17,6 +20,7 @@ import Data.ByteString (ByteString)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Vector (fromList)
+import Redis.Commands.Parser (Command (..))
 import Redis.RDB.TestConfig (RDBConfig)
 import Redis.RESP (Array (..), BulkString (..), RESPDataType (MkArrayResponse, MkBulkStringResponse), serializeRESPDataType, toOptionString)
 
@@ -40,6 +44,16 @@ setCmd = mkBulkString "SET"
 
 getCmd :: RESPDataType
 getCmd = mkBulkString "GET"
+
+saveCmd :: RESPDataType
+saveCmd = mkBulkString "SAVE"
+
+bgSaveCmd :: RESPDataType
+bgSaveCmd = mkBulkString "BGSAVE"
+
+isInvalidCommand :: Command -> Bool
+isInvalidCommand (InvalidCommand _) = True
+isInvalidCommand _ = False
 
 encodeThenDecodeUsingRDBBinary :: (RDBBinary a) => RDBConfig -> a -> a
 encodeThenDecodeUsingRDBBinary rdbConfig = decode rdbConfig . encode rdbConfig
