@@ -213,12 +213,13 @@ spec_set_cmd_tests = do
                         $ HashMap.lookup (StoreKey key) storeItems
                 result `shouldBe` defaultSetResponse
 
-            it "handles basic SET command with only required arguments with new key" $ \initialServerState -> do
+            it "handles basic SET command with no options for a new key" $ \initialServerState -> do
                 let key = "bike:new"
                 let newVal = "turquoise"
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString newVal]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
@@ -226,9 +227,10 @@ spec_set_cmd_tests = do
                             (expectationFailure [i|Failed to set new key #{key} in store|])
                             ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value))
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with EX and NX options when key doesn't exit" $ \_ -> do
+            it "handles SET command with EX and NX options when target key doesn't exit" $ \_ -> do
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
@@ -241,7 +243,7 @@ spec_set_cmd_tests = do
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` defaultSetResponse
 
-            it "handles SET command with EX and NX options when key exists" $ \initialServerState -> do
+            it "handles SET command with EX and NX options when target key already exists" $ \initialServerState -> do
                 let cmdReq =
                         mkCmdReqStr
                             [ setCmd
@@ -251,7 +253,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "10"
                             , mkBulkString "NX"
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
@@ -259,6 +263,7 @@ spec_set_cmd_tests = do
                             (expectationFailure "Failed to update key bike:1 in store")
                             ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ "red"))) . (.value))
                         $ HashMap.lookup (StoreKey "bike:1") storeItems
+
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with XX option (returns NULL when key doesn't exist)" $ \_ -> do
@@ -269,7 +274,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "red"
                             , mkBulkString "XX"
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with PX option (milliseconds TTL)" $ \_ -> do
@@ -281,7 +288,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "PX"
                             , mkBulkString "5000"
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with EXAT option (Unix timestamp expiration in seconds)" $ \serverState -> do
@@ -305,6 +314,7 @@ spec_set_cmd_tests = do
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
                             ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . fromInteger @POSIXTime $ ttlTimestampS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with PXAT option (Unix timestamp in milliseconds)" $ \serverState -> do
@@ -326,7 +336,7 @@ spec_set_cmd_tests = do
                     pure
                         $ maybe
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
-                            ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . secondsToNominalDiffTime . millisecondsToSeconds . realToFrac $ ttlTimestampMS))) . getItemTTLValue)
+                            ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . secondsToNominalDiffTime . millisecondsToSeconds . realToFrac @Integer $ ttlTimestampMS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
 
                 result `shouldBe` defaultSetResponse
@@ -361,6 +371,7 @@ spec_set_cmd_tests = do
                             (expectationFailure [i|Failed to accurately update the ttl of key #{key} in store|])
                             ((`shouldSatisfy` (== (Just $ mkUnixTimestampMSFromPOSIXTime . fromInteger @POSIXTime $ ttlTimestampS))) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with GET option (returns NULL for new key)" $ \_ -> do
@@ -371,6 +382,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "purple"
                             , mkBulkString "GET"
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
                 result `shouldBe` serializeRESPDataType Null
 
@@ -381,6 +393,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "bike:other"
                             , mkBulkString "purple"
                             ]
+
                 let setCmdReq2 =
                         mkCmdReqStr
                             [ setCmd
@@ -408,7 +421,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "NX"
                             , mkBulkString "GET"
                             ]
+
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
@@ -416,6 +431,7 @@ spec_set_cmd_tests = do
                             (expectationFailure [i|Failed to set the key #{key} in store|])
                             ((`shouldSatisfy` (== (MkRedisStr . RedisStr $ newVal))) . (.value))
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET command with case-insensitive option names" $ \initialServerState -> do
@@ -429,6 +445,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "120"
                             , mkBulkString "nx"
                             ]
+
                 let setCmdReq2 =
                         mkCmdReqStr
                             [ setCmd
@@ -447,6 +464,7 @@ spec_set_cmd_tests = do
                             (expectationFailure [i|Failed to set the key #{key} in store|])
                             ((`shouldBe` Nothing) . getItemTTLValue)
                         $ HashMap.lookup (StoreKey key) storeItems
+
                 result `shouldBe` defaultSetResponse
 
             it "handles overwriting a key with a different data type (should fail)" $ \initialServerState -> do
