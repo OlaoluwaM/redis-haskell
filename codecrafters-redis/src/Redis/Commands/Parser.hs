@@ -35,6 +35,7 @@ import Redis.Commands.BGSave (BGSaveCmdArg, mkBGSaveCmdArg, mkSaveCmdArg)
 import Redis.Commands.Config.Get (ConfigGetCmdArg, mkConfigGetCmdArg)
 import Redis.Commands.Echo (EchoCmdArg, mkEchoCmdArg)
 import Redis.Commands.Get (GetCmdArg, mkGetCmdArg)
+import Redis.Commands.Keys (KeysCmdArg, mkKeysCmdArg)
 import Redis.Commands.LastSave (mkLastSaveCmdArg)
 import Redis.Commands.Ping (PingCmdArg, mkPingCmdArg)
 import Redis.Commands.Set (SetCmdArg, mkSetCmdArg)
@@ -52,7 +53,7 @@ data ParsedCommand = ParsedCommand {command :: BulkString, args :: [BulkString]}
     deriving stock (Eq, Show)
 
 -- NOTE: Remember to update the `mkCommand` function if you add new commands
-data Command = Ping PingCmdArg | Echo EchoCmdArg | Set SetCmdArg | Get GetCmdArg | Config ConfigSubCommand | Save | InvalidCommand Text | BGSave BGSaveCmdArg | LastSave
+data Command = Ping PingCmdArg | Echo EchoCmdArg | Set SetCmdArg | Get GetCmdArg | Config ConfigSubCommand | Save | InvalidCommand Text | BGSave BGSaveCmdArg | LastSave | Keys KeysCmdArg
     deriving stock (Eq, Show, Generic)
 
 data ConfigSubCommand = ConfigGet ConfigGetCmdArg
@@ -106,6 +107,7 @@ mkCommand (ParsedCommand (BulkString cmdStr) parsedArgs) = case (cmdStr, parsedA
     ("SAVE", xs) -> mkSaveCmdArg xs $> Save
     ("BGSAVE", xs) -> BGSave <$> mkBGSaveCmdArg xs
     ("LASTSAVE", xs) -> mkLastSaveCmdArg xs $> LastSave
+    ("KEYS", xs) -> Keys <$> mkKeysCmdArg xs
     (unimplementedCommandStr, _) -> handleUnimplementedCmd unimplementedCommandStr
 
 parseSubCommandFor :: String -> [BulkString] -> Either String ParsedCommand

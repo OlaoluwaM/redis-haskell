@@ -30,6 +30,7 @@ import Redis.Commands.Parser (
  )
 import Redis.Commands.Ping (handlePing)
 import Redis.Utils (fromEither, mapLeft)
+import Redis.Commands.Keys (handleKeys)
 
 handleCommandReq ::
     forall r es.
@@ -62,6 +63,7 @@ dispatchCmd (Config (ConfigGet configGetCmdArgs)) = handleConfigGet @r configGet
 dispatchCmd Save = handleSave @r
 dispatchCmd (BGSave bgSaveCmdArgs) = handleBGSave @r bgSaveCmdArgs
 dispatchCmd LastSave = handleLastSave @r
+dispatchCmd (Keys keyCmdArgs) = handleKeys @r keyCmdArgs
 dispatchCmd (InvalidCommand msg) = do
     env <- ReaderEff.ask @r
     let socket = view #clientSocket env
