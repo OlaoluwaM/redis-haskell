@@ -22,6 +22,7 @@ import Data.Foldable (for_)
 import Data.String (IsString (..))
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Hedgehog (withTests)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (isInvalidCommand, mkBulkString, mkCmdReqStr, saveCmd)
@@ -75,7 +76,7 @@ genStoreEntry = do
     pure (key, storeValue)
 
 saveCmdPropTest :: H.Property
-saveCmdPropTest = H.property $ do
+saveCmdPropTest = withTests 75 $ H.property $ do
     mkTestSettingArgs@MkTestSettingsArg{rdbFilename} <- H.forAll genTestSettingArgs
 
     initialStore <- HashMap.fromList <$> H.forAll (Gen.list (Range.linear 1 10) genStoreEntry)
@@ -139,7 +140,7 @@ spec_save_cmd_tests = do
                         let result = parseOnly commandParser input
                         either (const False) isSaveCommand result `shouldBe` True
 
-    fdescribe "SAVE Command Handler Tests" $ do
+    describe "SAVE Command Handler Tests" $ do
         it "can create a snapshot of the key value store" $ do
             let rdbFilename = [relfile|save_command_test_dump_non_prop.rdb|]
 

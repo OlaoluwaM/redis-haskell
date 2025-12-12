@@ -191,7 +191,7 @@ spec_set_cmd_tests = do
             let result = setupTTLCalculation (mkUnixTimestampMSFromUTCTime now) existingTTL ttlOption
             result `shouldBe` Nothing
 
-    before initializeStoreState $ do
+    beforeAll initializeStoreState $ do
         describe "SET Command Handler Tests" $ do
             it "handles basic SET command with only required arguments" $ \_ -> do
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString "bike:1", mkBulkString "orange"]
