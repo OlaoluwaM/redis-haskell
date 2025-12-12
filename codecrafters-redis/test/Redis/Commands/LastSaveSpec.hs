@@ -10,7 +10,6 @@ import Test.Hspec
 
 import Data.HashMap.Strict qualified as HashMap
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVarIO)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Attoparsec.ByteString (parseOnly)
