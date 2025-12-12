@@ -131,7 +131,7 @@ spec_bg_save_cmd_tests = do
                 )
 
             -- TODO: Is there a better way to await the async process?
-            threadDelay 80000 -- Hack to give the async snapshot process time to complete
+            threadDelay 100000 -- Hack to give the async snapshot process time to complete
             snapshotExists <- doesFileExist . toFilePath $ (testRdbOutputDir </> rdbFilename)
             snapshot <- Eff.runEff . Eff.runFileSystem $ Binary.decodeFile @_ @RDBFile testRdbConfigForSnapshot (toFilePath $ testRdbOutputDir </> rdbFilename)
 
