@@ -293,14 +293,16 @@ spec_config_get_cmd_tests = do
                     (`shouldMatchList` expected)
                     parsedResult
 
-            it "should handle exact parameter names case-sensitively" $ do
+            it "should perform case-sensitive matching (Redis semantics)" $ do
+                -- Pattern matching is case-sensitive per Redis semantics
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "port"]
-                let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "timeout", IntVal 300), (Setting "retry-on-error", BoolVal True)])
+                let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "port", TextVal "6380"), (Setting "timeout", IntVal 300)])
                 let testContext = PassableTestContext Nothing (Just testSettings)
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
-                let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "6379"]
+                -- Only exact case match "port" is returned, not "PORT"
+                let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "6380"]
 
                 result `shouldBe` expected
 
@@ -432,14 +434,15 @@ spec_config_get_cmd_tests = do
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just emptySettings))
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
-        it "should handle case sensitivity correctly" $ do
-            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "TIMEOUT"] -- uppercase
-            let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", TextVal "300")])
+        it "should not match when case differs (Redis semantics)" $ do
+            -- Pattern matching is case-sensitive per Redis semantics
+            let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "TIMEOUT"] -- uppercase pattern
+            let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", TextVal "300")]) -- lowercase setting
             let testContext = PassableTestContext Nothing (Just testSettings)
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
-            -- Case insensitive matching - should match lowercase "timeout"
-            let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "timeout", mkNonNullBulkString "300"]
+            -- Case sensitive - uppercase pattern "TIMEOUT" doesn't match lowercase "timeout"
+            let expected = serializeRESPDataType $ mkNonNullRESPArray []
             result `shouldBe` expected
 
     describe "Edge Cases and Corner Cases" $ do

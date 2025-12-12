@@ -13,9 +13,9 @@ import Effectful.Reader.Static qualified as ReaderEff
 import Control.Exception (Exception (displayException))
 import Data.Aeson (ToJSON (..))
 import Data.Bifunctor (bimap)
-import Data.String (IsString (fromString))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding (encodeUtf8)
 import Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
@@ -45,12 +45,11 @@ handleConfigGet (ConfigGetCmdArg configOptionPatternsToGet) = do
     let serverSettingsStateRef = view #serverSettingsRef env
 
     serverSettings <- (.settings) <$> STMEff.readTVarIO serverSettingsStateRef
-    let normalizedConfigGetOptionPatternsToGet = map (compile . T.unpack . T.toLower) configOptionPatternsToGet
+    let normalizedConfigGetOptionPatternsToGet = map (compile . T.unpack) configOptionPatternsToGet
 
-    let serverSettingOptions = HashMap.mapKeys (T.unpack . T.toLower . (.setting)) serverSettings
+    let filteredMap = HashMap.filterWithKey (\(Setting settingKey) _ -> let settingKeyStr = T.unpack settingKey in any (`match` settingKeyStr) normalizedConfigGetOptionPatternsToGet) serverSettings
 
-    let filteredMap = HashMap.filterWithKey (\settingKey _ -> any (`match` settingKey) normalizedConfigGetOptionPatternsToGet) serverSettingOptions
-    let result = concatMap (fromTuple . bimap fromString serializeSettingsValue) . HashMap.toList $ filteredMap
+    let result = concatMap (fromTuple . bimap (encodeUtf8 . (.setting)) serializeSettingsValue) . HashMap.toList $ filteredMap
 
     sendMessage socket . serializeRESPDataType . mkNonNullRESPArray . map mkNonNullBulkString $ result
 

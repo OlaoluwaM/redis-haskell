@@ -11,7 +11,6 @@ import Data.HashMap.Strict qualified as HashMap
 import Effectful.Reader.Static qualified as ReaderEff
 
 import Data.Aeson (ToJSON (..))
-import Data.String (IsString (fromString))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
@@ -50,7 +49,7 @@ handleKeys (KeysCmdArg rawKeyGlobPattern) = do
 
     let keyGlobPattern = compile . T.unpack $ rawKeyGlobPattern
 
-    let storeWithKeysMatchingPattern = HashMap.filterWithKey (\(StoreKey key) _ -> let normalizedStoreKey = T.unpack . T.toLower . decodeUtf8 $ key in keyGlobPattern `match` normalizedStoreKey) store
+    let storeWithKeysMatchingPattern = HashMap.filterWithKey (\(StoreKey key) _ -> let storeKeyStr = T.unpack . decodeUtf8 $ key in keyGlobPattern `match` storeKeyStr) store
 
     let result = HashMap.keys storeWithKeysMatchingPattern
 

@@ -8,6 +8,7 @@ import Test.Hspec
 
 import Control.Concurrent.STM (atomically, newTMVar, newTVar)
 import Data.Attoparsec.ByteString (parseOnly)
+import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)
 import Data.Either (isLeft)
 import Data.Foldable (for_)
@@ -44,7 +45,7 @@ mkSimpleStoreValue val = mkStoreValue (MkRedisStr (RedisStr val)) Nothing
 
 -- | Create a store from a list of key-value pairs
 mkTestStore :: [(ByteString, ByteString)] -> Store
-mkTestStore = HashMap.fromList . map (\(k, v) -> (StoreKey k, mkSimpleStoreValue v))
+mkTestStore = HashMap.fromList . map (bimap StoreKey mkSimpleStoreValue)
 
 spec_keys_cmd_tests :: Spec
 spec_keys_cmd_tests = do
@@ -324,9 +325,8 @@ spec_keys_cmd_tests = do
                     parsedResult
 
         context "Case Sensitivity" $ do
-            it "should perform case-insensitive key matching and return original keys" $ do
-                -- Note: The implementation lowercases keys for matching but returns
-                -- the original keys with their original casing preserved
+            it "should perform case-sensitive matching (Redis semantics)" $ do
+                -- Pattern matching is case-sensitive per Redis semantics
                 let testStore =
                         mkTestStore
                             [ ("Hello", "world")
@@ -339,35 +339,30 @@ spec_keys_cmd_tests = do
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
 
-                let parsedResult = respArrayToList <$> parseOnly arrayParser result
-                -- All variations match (case-insensitive) and original keys are returned
-                let expected = map mkNonNullBulkString ["Hello", "HELLO", "hello", "HeLLo"]
-                either
-                    expectationFailure
-                    (`shouldMatchList` expected)
-                    parsedResult
+                -- Only exact case match "hello" is returned
+                let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "hello"]
+                result `shouldBe` expected
 
-            it "should require lowercase pattern to match (pattern is case-sensitive)" $ do
-                -- The pattern is NOT lowercased, so uppercase patterns won't match
-                -- lowercased keys
+            it "should match uppercase pattern against uppercase keys only" $ do
                 let testStore =
                         mkTestStore
                             [ ("hello", "world")
-                            , ("hallo", "welt")
-                            , ("foo", "bar")
+                            , ("HELLO", "WORLD")
+                            , ("Hello", "mixed")
                             ]
                 initialServerState <- initializeServerState testStore
-                let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "H*LLO"]
+                let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "HELLO"]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
 
-                -- Uppercase pattern "H*LLO" won't match lowercase keys "hello", "hallo"
-                result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
+                -- Only exact case match "HELLO" is returned
+                let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "HELLO"]
+                result `shouldBe` expected
 
-            it "should match with lowercase pattern against mixed-case keys" $ do
+            it "should not match lowercase pattern against uppercase keys" $ do
                 let testStore =
                         mkTestStore
-                            [ ("Hello", "world")
+                            [ ("HELLO", "world")
                             , ("HALLO", "welt")
                             , ("foo", "bar")
                             ]
@@ -376,9 +371,25 @@ spec_keys_cmd_tests = do
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
 
+                -- Lowercase pattern doesn't match uppercase keys
+                result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
+
+            it "should match wildcard pattern with correct case" $ do
+                let testStore =
+                        mkTestStore
+                            [ ("Hello", "world")
+                            , ("Hallo", "welt")
+                            , ("hello", "lower")
+                            , ("HELLO", "upper")
+                            ]
+                initialServerState <- initializeServerState testStore
+                let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "H*llo"]
+
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
-                -- Lowercase pattern matches, original keys are returned
-                let expected = map mkNonNullBulkString ["Hello", "HALLO"]
+                -- Only keys matching "H*llo" pattern (capital H, lowercase llo)
+                let expected = map mkNonNullBulkString ["Hello", "Hallo"]
 
                 either
                     expectationFailure
