@@ -65,7 +65,7 @@ spec_last_save_cmd_tests = do
                         let result = parseOnly commandParser input
                         either (const False) isLastSaveCommand result `shouldBe` True
 
-    fdescribe "LASTSAVE Command Handler Tests" $ do
+    describe "LASTSAVE Command Handler Tests" $ do
         it "can retrieve the last time a snapshot was created (synchronously or asynchronously)" $ do
             let rdbFilename = [relfile|save_command_test_dump.rdb|]
 

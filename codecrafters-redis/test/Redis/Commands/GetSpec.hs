@@ -89,7 +89,7 @@ spec_get_cmd_tests = do
                         let result = parseOnly commandParser input
                         either (const True) isInvalidCommand result `shouldBe` True
 
-    before initializeServerState $ do
+    beforeAll initializeServerState $ do
         describe "GET Command Handler Tests" $ do
             it "should return NULL for non-existent key" $ \_ -> do
                 let key = "nonexistent"

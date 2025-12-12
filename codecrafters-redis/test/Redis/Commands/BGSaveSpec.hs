@@ -71,7 +71,7 @@ spec_bg_save_cmd_tests = do
                         let result = parseOnly commandParser input
                         either (const False) isBgSaveCommand result `shouldBe` True
 
-    fdescribe "BGSAVE Command Handler Tests" $ do
+    describe "BGSAVE Command Handler Tests" $ do
         it "can create a snapshot of the key value store asynchronously" $ do
             let rdbFilename = [relfile|save_command_test_dump_bgsave.rdb|]
 
