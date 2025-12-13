@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-x-unsafe-internals #-}
+
 module Redis.RDB.BinarySpec where
 
 import Redis.RDB.Binary

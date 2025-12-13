@@ -28,14 +28,12 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy.Internal qualified as BSL
 import Data.Sequence qualified as Seq
-import Effectful.Exception qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Effectful.FileSystem.IO qualified as Eff
 import Effectful.FileSystem.IO.ByteString qualified as FSEffBS
 import Effectful.FileSystem.IO.ByteString.Lazy qualified as FSEffBSL
 
 import Control.Applicative (Alternative (..), (<|>))
-import Control.Exception (Exception)
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT (..), MonadError, runExceptT, throwError)
 import Control.Monad.Reader (MonadReader, ReaderT (..), ask)
