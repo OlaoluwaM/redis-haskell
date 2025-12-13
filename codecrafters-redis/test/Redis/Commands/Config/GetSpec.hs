@@ -1,6 +1,7 @@
 module Redis.Commands.Config.GetSpec where
 
 import Redis.RESP
+import Redis.Server.Settings
 import Test.Hspec
 
 import Data.HashMap.Strict qualified as HashMap
@@ -15,7 +16,6 @@ import Redis.Commands.Parser (Command (..), ConfigSubCommand (..), commandParser
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr)
 import Redis.Server.Context (ServerContext)
-import Redis.Server.Settings (ServerSettings (..), Setting (..), SettingValue (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
 
 -- Helper function to check if a parsed command is a ConfigGet command
@@ -41,11 +41,10 @@ globalTestServerSettings =
             , (Setting "databases", TextVal "16")
             , (Setting "maxmemory", TextVal "0")
             , (Setting "maxmemory-policy", TextVal "noeviction")
-            , (Setting "save", TextVal "3600 1 300 100 60 10000")
-            , (Setting "dir", TextVal "/var/lib/redis")
-            , (Setting "dbfilename", TextVal "dump.rdb")
-            , (Setting "rdbcompression", BoolVal True)
-            , (Setting "rdbchecksum", BoolVal True)
+            , (rdbFileDirectorySettingKey, TextVal "/var/lib/redis")
+            , (rdbFilenameSettingKey, TextVal "dump.rdb")
+            , (rdbCompressionSettingKey, BoolVal True)
+            , (rdbChecksumSettingKey, BoolVal True)
             , (Setting "port", TextVal "6379")
             , (Setting "bind", TextVal "127.0.0.1")
             , (Setting "protected-mode", BoolVal True)
@@ -221,8 +220,8 @@ spec_config_get_cmd_tests = do
                                 , (Setting "zset-max-ziplist-entries", IntVal 128)
                                 , (Setting "timeout", IntVal 500)
                                 , (Setting "search-threads", IntVal 20)
-                                , (Setting "dir", TextVal "/tmp")
-                                , (Setting "dbfilename", TextVal "file.dbd")
+                                , (rdbFileDirectorySettingKey, TextVal "/tmp")
+                                , (rdbFilenameSettingKey, TextVal "file.dbd")
                                 ]
                             )
 
@@ -265,7 +264,7 @@ spec_config_get_cmd_tests = do
                 let testSettings =
                         ServerSettings
                             ( HashMap.fromList
-                                [ (Setting "dbfilename", TextVal "dump.rdb")
+                                [ (rdbFilenameSettingKey, TextVal "dump.rdb")
                                 , (Setting "logfile", TextVal "")
                                 , (Setting "should-use-rdb", BoolVal True)
                                 , (Setting "zset-max-listpack-entries", IntVal 128)
@@ -317,10 +316,10 @@ spec_config_get_cmd_tests = do
                                 , (Setting "maxmemory", TextVal "0")
                                 , (Setting "maxmemory-policy", TextVal "noeviction")
                                 , (Setting "save", TextVal "3600 1 300 100 60 10000")
-                                , (Setting "dir", TextVal "/var/lib/redis")
-                                , (Setting "dbfilename", TextVal "dump.rdb")
-                                , (Setting "rdbcompression", BoolVal True)
-                                , (Setting "rdbchecksum", BoolVal True)
+                                , (rdbFileDirectorySettingKey, TextVal "/var/lib/redis")
+                                , (rdbFilenameSettingKey, TextVal "dump.rdb")
+                                , (rdbCompressionSettingKey, BoolVal True)
+                                , (rdbChecksumSettingKey, BoolVal True)
                                 , (Setting "port", TextVal "6379")
                                 , (Setting "bind", TextVal "127.0.0.1")
                                 , (Setting "protected-mode", BoolVal True)
@@ -372,10 +371,10 @@ spec_config_get_cmd_tests = do
                             , (Setting "maxmemory", TextVal "0")
                             , (Setting "maxmemory-policy", TextVal "noeviction")
                             , (Setting "save", TextVal "3600 1 300 100 60 10000")
-                            , (Setting "dir", TextVal "/var/lib/redis")
-                            , (Setting "dbfilename", TextVal "dump.rdb")
-                            , (Setting "rdbcompression", BoolVal True)
-                            , (Setting "rdbchecksum", BoolVal True)
+                            , (rdbFileDirectorySettingKey, TextVal "/var/lib/redis")
+                            , (rdbFilenameSettingKey, TextVal "dump.rdb")
+                            , (rdbCompressionSettingKey, BoolVal True)
+                            , (rdbChecksumSettingKey, BoolVal True)
                             , (Setting "port", TextVal "6379")
                             , (Setting "bind", TextVal "127.0.0.1")
                             , (Setting "protected-mode", BoolVal True)
@@ -404,10 +403,10 @@ spec_config_get_cmd_tests = do
                             , (Setting "maxmemory", TextVal "0")
                             , (Setting "maxmemory-policy", TextVal "noeviction")
                             , (Setting "save", TextVal "3600 1 300 100 60 10000")
-                            , (Setting "dir", TextVal "/var/lib/redis")
-                            , (Setting "dbfilename", TextVal "dump.rdb")
-                            , (Setting "rdbcompression", BoolVal True)
-                            , (Setting "rdbchecksum", BoolVal True)
+                            , (rdbFileDirectorySettingKey, TextVal "/var/lib/redis")
+                            , (rdbFilenameSettingKey, TextVal "dump.rdb")
+                            , (rdbCompressionSettingKey, BoolVal True)
+                            , (rdbChecksumSettingKey, BoolVal True)
                             , (Setting "port", TextVal "6379")
                             , (Setting "bind", TextVal "127.0.0.1")
                             , (Setting "protected-mode", BoolVal True)

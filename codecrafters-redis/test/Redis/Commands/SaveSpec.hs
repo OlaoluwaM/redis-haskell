@@ -224,10 +224,10 @@ mkTestSettings :: MkTestSettingsArg -> ServerSettings
 mkTestSettings MkTestSettingsArg{..} =
     ServerSettings $
         HashMap.fromList
-            [ (Setting "dir", DirPathVal . Rel $ testRdbOutputDir)
-            , (Setting "dbfilename", FilePathVal . Rel $ rdbFilename)
-            , (Setting "rdbcompression", BoolVal useCompression)
-            , (Setting "rdbchecksum", BoolVal generateChecksum)
+            [ (rdbFileDirectorySettingKey, DirPathVal . Rel $ testRdbOutputDir)
+            , (rdbFilenameSettingKey, FilePathVal . Rel $ rdbFilename)
+            , (rdbCompressionSettingKey, BoolVal useCompression)
+            , (rdbChecksumSettingKey, BoolVal generateChecksum)
             ]
 
 mkRDBConfigFromTestSettingsArgs :: MkTestSettingsArg -> RDBConfig

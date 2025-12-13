@@ -1,13 +1,14 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
--- TODO: Export only the smart constructor for RDBConfig
-
-module Redis.RDB.Config where
+module Redis.RDB.Config (
+    RDBConfig (useLzfCompression, generateChecksum, skipChecksumValidation),
+    defaultRDBConfig,
+    MkRDBConfigArg (..),
+    mkRDBConfig,
+) where
 
 import GHC.Generics (Generic)
-import Optics (makeFieldLabelsNoPrefix)
+import Redis.Server.Settings (defaultGenerateChecksumWithRDB, defaultUseCompressionWithRDB)
 
 data RDBConfig = RDBConfig
     { useLzfCompression :: Bool
@@ -16,15 +17,8 @@ data RDBConfig = RDBConfig
     }
     deriving stock (Eq, Show, Generic)
 
-makeFieldLabelsNoPrefix ''RDBConfig
-
 defaultRDBConfig :: RDBConfig
-defaultRDBConfig =
-    RDBConfig
-        { useLzfCompression = False
-        , generateChecksum = True
-        , skipChecksumValidation = False
-        }
+defaultRDBConfig = mkRDBConfig $ MkRDBConfigArg{useCompression = defaultUseCompressionWithRDB, generateChecksum = defaultGenerateChecksumWithRDB}
 
 data MkRDBConfigArg = MkRDBConfigArg
     { useCompression :: Bool

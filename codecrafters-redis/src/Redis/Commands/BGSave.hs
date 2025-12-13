@@ -38,7 +38,7 @@ import GHC.Stack (HasCallStack)
 import Network.Socket (Socket)
 import Optics (set, view)
 import Redis.Effects (RDBWrite)
-import Redis.RDB.Config (RDBConfig (..))
+import Redis.RDB.Config (MkRDBConfigArg (..), RDBConfig, mkRDBConfig)
 import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
 import Redis.Utils (logInternalServerError)
@@ -185,8 +185,8 @@ getRDBFilePathFromSettings ::
     ) =>
     ServerSettings -> Eff es (SomeBase File)
 getRDBFilePathFromSettings (ServerSettings settings) = do
-    dirPath <- maybe (Eff.throwError MissingDirSetting) pure $ HashMap.lookup (Setting "dir") settings
-    fileName <- maybe (Eff.throwError MissingDBFilenameSetting) pure $ HashMap.lookup (Setting "dbfilename") settings
+    dirPath <- maybe (Eff.throwError MissingDirSetting) pure $ HashMap.lookup rdbFileDirectorySettingKey settings
+    fileName <- maybe (Eff.throwError MissingDBFilenameSetting) pure $ HashMap.lookup rdbFilenameSettingKey settings
 
     case (dirPath, fileName) of
         (DirPathVal (Abs dir), FilePathVal (Rel file)) -> pure $ Abs $ dir </> file
@@ -199,15 +199,12 @@ mkRDBConfigFromSettings ::
     ) =>
     ServerSettings -> Eff es RDBConfig
 mkRDBConfigFromSettings (ServerSettings settings) = do
-    rawRDBCompressionSetting <- maybe (Eff.throwError MissingRDBCompressionSetting) pure $ HashMap.lookup (Setting "rdbcompression") settings
-    rawRDBChecksumSetting <- maybe (Eff.throwError MissingRDBChecksumSetting) pure $ HashMap.lookup (Setting "rdbchecksum") settings
+    rawRDBCompressionSetting <- maybe (Eff.throwError MissingRDBCompressionSetting) pure $ HashMap.lookup rdbCompressionSettingKey settings
+    rawRDBChecksumSetting <- maybe (Eff.throwError MissingRDBChecksumSetting) pure $ HashMap.lookup rdbChecksumSettingKey settings
 
     case (rawRDBCompressionSetting, rawRDBChecksumSetting) of
         (BoolVal rdbCompressionSettingVal, BoolVal rdbChecksumSettingVal) ->
             pure $
-                RDBConfig
-                    { useLzfCompression = rdbCompressionSettingVal
-                    , generateChecksum = rdbChecksumSettingVal
-                    , skipChecksumValidation = not rdbChecksumSettingVal
-                    }
+                mkRDBConfig $
+                    MkRDBConfigArg{useCompression = rdbCompressionSettingVal, generateChecksum = rdbChecksumSettingVal}
         _ -> Eff.throwError IncompatibleRDBCompressionOrChecksumSetting

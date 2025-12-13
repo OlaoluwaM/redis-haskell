@@ -5,10 +5,20 @@ module Redis.Server.Settings (
     ServerSettingsRef,
     serializeSettingsValue,
     serverSettings,
+    defaultRDBFileDirectory,
+    defaultRDBFilename,
+    defaultGenerateChecksumWithRDB,
+    defaultUseCompressionWithRDB,
+    rdbCompressionSettingKey,
+    rdbChecksumSettingKey,
+    rdbFilenameSettingKey,
+    rdbFileDirectorySettingKey,
 
     -- ** Testing
     SettingValue (..),
 ) where
+
+import Path
 
 import Control.Applicative (Alternative (..))
 import Control.Arrow ((&&&))
@@ -36,20 +46,7 @@ import Options.Applicative (
     value,
  )
 import Options.Applicative.Types (ReadM, readerAsk)
-import Path (
-    Abs,
-    Dir,
-    File,
-    Path,
-    SomeBase (..),
-    filename,
-    parseAbsDir,
-    parseAbsFile,
-    parseRelDir,
-    parseRelFile,
-    reldir,
-    relfile,
- )
+import System.FilePath (dropTrailingPathSeparator)
 
 -- Redis configurations as defined https://redis.io/docs/latest/operate/oss_and_stack/management/config/
 -- This module particularly implements the ability to set those configurations using command line options and arguments (https://redis.io/docs/latest/operate/oss_and_stack/management/config/#passing-arguments-using-the-command-line)
@@ -113,8 +110,8 @@ serializeSettingsValue = \case
     IntVal num -> fromString . show $ num
     FloatVal float -> fromString . show $ float
     BoolVal boolVal -> fromString . show $ boolVal
-    FilePathVal x -> fromString . show $ x
-    DirPathVal x -> fromString . show $ x
+    FilePathVal x -> fromString . fromSomeFile $ x
+    DirPathVal x -> fromString . dropTrailingPathSeparator . fromSomeDir $ x
 
 parserForCommandLineServerSettings :: Parser ServerSettings
 parserForCommandLineServerSettings =
@@ -131,33 +128,57 @@ This aligns with the default value for `dir` in the default redis.conf: https://
 -}
 rdbFileDirectoryParser :: Parser (Setting, SettingValue)
 rdbFileDirectoryParser =
-    (const (Setting "dir") &&& DirPathVal)
+    (const rdbFileDirectorySettingKey &&& DirPathVal)
         <$> option
             (maybeReader (fmap Abs . parseAbsDir) <|> maybeReader (fmap Rel . parseRelDir))
-            (long "dir" <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file" <> value (Rel [reldir|./|]))
+            (long "dir" <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file" <> value (Rel defaultRDBFileDirectory))
+
+rdbFileDirectorySettingKey :: Setting
+rdbFileDirectorySettingKey = Setting "dir"
+
+defaultRDBFileDirectory :: Path Rel Dir
+defaultRDBFileDirectory = [reldir|./|]
 
 {- | Parser for RDB filename setting
 This aligns with the default value for `dbfilename` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L493
 -}
 rdbFilenameParser :: Parser (Setting, SettingValue)
 rdbFilenameParser =
-    (const (Setting "dbfilename") &&& FilePathVal . Rel)
+    (const rdbFilenameSettingKey &&& FilePathVal . Rel)
         <$> option
             (maybeReader parseRelFile)
-            (long "dbfilename" <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension" <> value [relfile|dump.rdb|])
+            (long "dbfilename" <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension" <> value defaultRDBFilename)
+
+rdbFilenameSettingKey :: Setting
+rdbFilenameSettingKey = Setting "dbfilename"
+
+defaultRDBFilename :: Path Rel File
+defaultRDBFilename = [relfile|dump.rdb|]
 
 {- | Parser for RDB compression setting
 These align with the default values for `rdbcompression` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L466
 -}
 rdbCompressionParser :: Parser (Setting, SettingValue)
 rdbCompressionParser =
-    (const (Setting "rdbcompression") &&& BoolVal)
-        <$> option auto (long "rdbcompression" <> metavar "RDB_COMPRESSION" <> help "Enable or disable RDB compression (default: enabled)" <> value True)
+    (const rdbCompressionSettingKey &&& BoolVal)
+        <$> option auto (long "rdbcompression" <> metavar "RDB_COMPRESSION" <> help "Enable or disable RDB compression (default: enabled)" <> value defaultUseCompressionWithRDB)
+
+rdbCompressionSettingKey :: Setting
+rdbCompressionSettingKey = Setting "rdbcompression"
+
+defaultUseCompressionWithRDB :: Bool
+defaultUseCompressionWithRDB = True
 
 {- | Parser for RDB checksum setting
 These align with the default values for `rdbchecksum` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L475
 -}
 rdbChecksumParser :: Parser (Setting, SettingValue)
 rdbChecksumParser =
-    (const (Setting "rdbchecksum") &&& BoolVal)
-        <$> option auto (long "rdbchecksum" <> metavar "RDB_CHECKSUM" <> help "Enable or disable RDB checksum (default: enabled)" <> value True)
+    (const rdbChecksumSettingKey &&& BoolVal)
+        <$> option auto (long "rdbchecksum" <> metavar "RDB_CHECKSUM" <> help "Enable or disable RDB checksum (default: enabled)" <> value defaultGenerateChecksumWithRDB)
+
+rdbChecksumSettingKey :: Setting
+rdbChecksumSettingKey = Setting "rdbchecksum"
+
+defaultGenerateChecksumWithRDB :: Bool
+defaultGenerateChecksumWithRDB = True

@@ -52,7 +52,7 @@ runTestServer :: Eff (ServerEffects ServerContext) a -> PassableTestContext -> I
 runTestServer action testContext =
     do
         loopbackSocket <- mkLoopbackSocket
-        initialServerState <- atomically genInitialServerStateEff
+        initialServerState <- atomically $ genInitialServerStateEff Nothing
         serverSettings <- newTVarIO $ fromMaybe def testContext.settings
 
         let serverState = fromMaybe initialServerState testContext.serverState
