@@ -105,7 +105,6 @@ library:
     - aeson
     - async # may help with concurrency
     - attoparsec
-    - Blammo
     - codecrafters-redis-ffi
     - deepseq
     - envparse
@@ -143,14 +142,12 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - attoparsec
-      - Blammo
       - codecrafters-redis
       - directory
       - exceptions
       - filepath
       - hspec
       - hspec-golden
-      - hspec-hedgehog
       - hedgehog
       - optics
       - path
