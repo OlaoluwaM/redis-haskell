@@ -33,6 +33,7 @@ import Control.Applicative.Combinators (many, manyTill)
 import Control.Monad (when)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift)
+import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.Binary.Get (
     getByteString,
     getWord64le,
@@ -199,8 +200,9 @@ data RDBMagicString = Redis
 -}
 
 -- Currently, we only support version 7, though, for now, we only support a subset of the features of version 7
-data RDBVersion = RDBv4 | RDBv5 | RDBv7
-    deriving stock (Show, Eq, Ord, Enum, Bounded)
+-- We need to add support for non standard RDB versions for the codecrafters tests
+data RDBVersion = RDBv4 | RDBv5 | RDBv7 | CustomVer (Char, Char, Char, Char)
+    deriving stock (Show, Eq, Ord)
 
 {- | Key-value entry types with different expiry behaviors.
 
@@ -221,6 +223,7 @@ data RDBVersion = RDBv4 | RDBv5 | RDBv7
     The choice between millisecond and second precision depends on the application's
     timing requirements and storage efficiency considerations.
 -}
+
 -- https://github.com/redis/redis/blob/38d16a82eb4a8b0e393b51cc3e9144dc7b413fd1/src/rdb.c#L1195
 data KeyValueOpCode = FCOpCode KeyValWithExpiryInMS | KeyValOpCode KeyValWithNoExpiryInfo | FDOpcode KeyValWithExpiryInS
     deriving stock (Show, Eq)
@@ -498,20 +501,24 @@ instance RDBBinary RDBVersion where
         RDBv4 -> genericRDBPutUsing (putByteString "0004")
         RDBv5 -> genericRDBPutUsing (putByteString "0005")
         RDBv7 -> genericRDBPutUsing (putByteString "0007")
+        CustomVer (a, b, c, d) -> genericRDBPutUsing (putByteString (BSC.pack [a, b, c, d]))
     rdbGet = do
         versionStr <- genericRDBGetUsing (getByteString 4)
         case versionStr of
             "0004" -> pure RDBv4
             "0005" -> pure RDBv5
             "0007" -> pure RDBv7
-            _ ->
-                throwRDBError $
-                    MKRDBErrorArg
-                        ParseError
-                        "RDB Version Parsing"
-                        ("Unsupported or invalid RDB version: " <> genericShow versionStr)
+            _ -> do
+                let versionStrParser = (,,,) <$> AC.digit <*> AC.digit <*> AC.digit <*> AC.digit
+                case AC.parseOnly versionStrParser versionStr of
+                    Right parsedVersion -> pure $ CustomVer parsedVersion
+                    Left _ -> do
+                        throwRDBError $
+                            MKRDBErrorArg
+                                ValidationError
+                                "RDB Version Parsing"
+                                ("Unsupported or invalid RDB version: " <> genericShow versionStr)
 
--- | Magic string is exactly "REDIS" (5 ASCII bytes)
 instance RDBBinary RDBMagicString where
     rdbPut Redis = genericRDBPutUsing (putByteString "REDIS")
     rdbGet = do
