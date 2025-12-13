@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-missing-export-lists #-}
+
 module Effect.Time where
 
 import Data.Time qualified as Time

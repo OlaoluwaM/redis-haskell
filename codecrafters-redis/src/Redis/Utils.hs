@@ -1,3 +1,6 @@
+-- This is for the pTrace calls
+{-# OPTIONS_GHC -Wno-warnings-deprecations #-}
+
 module Redis.Utils (
     myTracePretty,
     myTracePrettyM,
@@ -8,10 +11,10 @@ module Redis.Utils (
     convergeEither,
     toUpperBs,
     showUsingBase,
-    combineDecimalDigits,
     genericShow,
     logInternalServerError,
     logDebug,
+    logInfo,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
@@ -58,10 +61,6 @@ showUsingBase base num = go num ""
         (0, r) -> showChar (intToDigit r)
         (d, r) -> go d . showChar (intToDigit r)
 
-combineDecimalDigits :: [Int] -> Int
-combineDecimalDigits [] = 0
-combineDecimalDigits digits = sum $ zipWith (\digit numOfZeros -> digit * (10 ^ numOfZeros)) (reverse digits) [0 ..]
-
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
 
@@ -70,3 +69,6 @@ logInternalServerError = logAttention "Internal server error: "
 
 logDebug :: (Log :> es, ToJSON a) => a -> Eff es ()
 logDebug = logTrace "Debug: "
+
+logInfo :: (Log :> es, ToJSON a) => a -> Eff es ()
+logInfo = logTrace "Info: "

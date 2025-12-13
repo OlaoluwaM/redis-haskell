@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-missing-export-lists #-}
+
 module Effect.Communication where
 
 import Data.ByteString (ByteString)
