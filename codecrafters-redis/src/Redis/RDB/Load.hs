@@ -1,17 +1,29 @@
 module Redis.RDB.Load (
     RDBStateInfo (..),
     loadRDBFile,
+    loadStoreFromRDBDump,
 ) where
 
+import Path
 import Redis.RDB.Data
 import Redis.RDB.Format
+import Redis.Server.Settings
 import Redis.Store.Data
 
 import Data.HashMap.Strict qualified as HashMap
-
-import Data.Foldable (foldl')
 import Data.List.NonEmpty qualified as NE
+import Effectful.Exception qualified as Eff
+import Effectful.FileSystem qualified as Eff
+import Redis.RDB.Binary qualified as Binary
+
+import Control.Exception (SomeException, displayException)
+import Data.Foldable (foldl')
+import Effectful (Eff, (:>))
+import Effectful.Log (Log)
+import Prettyprinter (Pretty (pretty), line, (<+>))
+import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
 import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
+import Redis.Utils (logDebug)
 
 data RDBStateInfo = RDBStateInfo
     { redisVer :: Maybe RedisVersion
@@ -20,6 +32,26 @@ data RDBStateInfo = RDBStateInfo
     , usedMem :: Maybe UsedMem
     }
     deriving stock (Eq, Show)
+
+loadStoreFromRDBDump :: (Eff.FileSystem :> es, Log :> es) => ServerSettings -> Eff es (Maybe (Store, RDBStateInfo))
+loadStoreFromRDBDump settings = do
+    let rdbFilePath = getRDBDumpFilePathFromSettings settings
+    let rdbConfig = genRDBConfigFromSettings settings
+    rdbFileE <-
+        Eff.catch @SomeException (Binary.decodeFileOrFail @_ @RDBFile rdbConfig (fromSomeFile rdbFilePath)) $ \err -> pure . Left $ (0, displayException err)
+
+    case rdbFileE of
+        Left err -> do
+            let debugMsg =
+                    show $
+                        "Failed to decode RDB file:"
+                            <+> pretty (show rdbFilePath)
+                            <> line
+                            <> pretty err
+
+            logDebug debugMsg
+            pure Nothing
+        Right rdbFileContents -> pure . Just . loadRDBFile $ rdbFileContents
 
 loadRDBFile :: RDBFile -> (Store, RDBStateInfo)
 loadRDBFile rdbFile = (store, stateInfo)

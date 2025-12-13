@@ -13,6 +13,7 @@ module Redis.RDB.Binary (
     encode,
     decode,
     decodeOrFail,
+    decodeFileOrFail,
     encodeFile,
     decodeFile,
     RDBError (..),
@@ -27,12 +28,14 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy.Internal qualified as BSL
 import Data.Sequence qualified as Seq
+import Effectful.Exception qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Effectful.FileSystem.IO qualified as Eff
 import Effectful.FileSystem.IO.ByteString qualified as FSEffBS
 import Effectful.FileSystem.IO.ByteString.Lazy qualified as FSEffBSL
 
 import Control.Applicative (Alternative (..), (<|>))
+import Control.Exception (Exception)
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT (..), MonadError, runExceptT, throwError)
 import Control.Monad.Reader (MonadReader, ReaderT (..), ask)
@@ -46,7 +49,6 @@ import Data.Binary.Get (
     Get,
     bytesRead,
     getByteString,
-    getLazyByteString,
     lookAhead,
     runGet,
     runGetIncremental,
@@ -202,17 +204,6 @@ getWithConsumedInput' decoder = do
     consumedInput <- getByteString (fromIntegral size)
     pure (value, consumedInput)
 
--- | Get a value and the consumed input as a lazy ByteString
-getWithConsumedInput :: Get a -> Get (a, BSL.ByteString)
-getWithConsumedInput decoder = do
-    (size, value) <- lookAhead do
-        before <- bytesRead
-        value <- decoder
-        after <- bytesRead
-        pure (after - before, value)
-    consumedInput <- getLazyByteString size
-    pure (value, consumedInput)
-
 encode :: (RDBBinary a) => RDBConfig -> a -> BSL.ByteString
 encode config = snd . runPutM . execRDBPut config . rdbPut
 
@@ -236,6 +227,16 @@ decodeFile config filePath = do
         Right x -> return x
         Left (_, str) -> error str
 
+{- | Decode a binary RDB file from the given filepath.
+
+This function attempts to read and decode an RDB file according to the
+provided configuration. It returns either a parsing error with byte offset
+and error message, or the successfully decoded value.
+
+__Unsafe:__ This function may throw an exception from 'withBinaryFile' if
+the target filepath doesn't exist, is not a regular file, or cannot be
+opened for reading due to permission issues.
+-}
 decodeFileOrFail :: (Eff.FileSystem :> es, RDBBinary a) => RDBConfig -> FilePath -> Eff es (Either (ByteOffset, String) a)
 decodeFileOrFail config filePath =
     Eff.withBinaryFile filePath ReadMode $ \h -> do
