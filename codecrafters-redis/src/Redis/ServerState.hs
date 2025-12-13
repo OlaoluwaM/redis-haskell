@@ -4,7 +4,6 @@ module Redis.ServerState (
     Store,
     ServerState (..),
     LastRDBSave (..),
-    genInitialStore,
     genInitialServerStateEff,
     getItemFromStore,
     addItemToStore,
@@ -20,6 +19,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.ByteString (ByteString)
 import Data.HashMap.Strict (HashMap)
 import Data.Hashable (Hashable)
+import Data.Maybe (fromMaybe)
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 import Redis.Store.Data (RedisDataType)
@@ -52,9 +52,6 @@ data LastRDBSave = LastRDBSave
     }
     deriving stock (Generic)
 
-genInitialStore :: Store
-genInitialStore = HashMap.empty
-
 getItemFromStore :: StoreKey -> Store -> Maybe StoreValue
 getItemFromStore = HashMap.lookup
 
@@ -67,10 +64,10 @@ mkStoreValue value ttl = StoreValue{value, ttlTimestamp = ttl}
 getItemTTLValue :: StoreValue -> Maybe UnixTimestampMS
 getItemTTLValue = (.ttlTimestamp)
 
-genInitialServerStateEff :: STM.STM ServerState
-genInitialServerStateEff = do
+genInitialServerStateEff :: Maybe Store -> STM.STM ServerState
+genInitialServerStateEff mStore = do
     let initialLastRDBSave = Nothing
-    kvStore <- STM.newTVar genInitialStore
+    kvStore <- STM.newTVar . fromMaybe HashMap.empty $ mStore
     inProgress <- STM.newTMVar initialLastRDBSave
     lastRDBSave <- STM.newTVar $ LastRDBSave inProgress initialLastRDBSave
     pure $ ServerState kvStore lastRDBSave

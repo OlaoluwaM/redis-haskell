@@ -5,7 +5,6 @@ module Redis.RDB.IntegrationSpec where
 import Redis.RDB.Data
 import Redis.RDB.Format
 import Test.Hspec
-import Test.Hspec.Hedgehog hiding (assert)
 
 import Effectful qualified as Eff
 import Effectful.FileSystem qualified as Eff
@@ -19,13 +18,15 @@ import Effectful (Eff, IOE)
 import Effectful.FileSystem (FileSystem)
 import Path (addExtension, parseRelFile, reldir, toFilePath, (</>))
 import Redis.Helper (encodeThenDecodeUsingRDBBinary)
-import Redis.RDB.Config (RDBConfig (..))
-import Redis.RDB.TestConfig (defaultRDBConfig, genRDBConfig)
+import Redis.RDB.Binary (decodeOrFail, encode)
+import Redis.RDB.Config (RDBConfig (..), defaultRDBConfig)
+import Redis.RDB.TestConfig (genRDBConfig)
 import Rerefined.Refine.TH (refineTH)
 import System.Directory (doesFileExist)
 import Test.Tasty (TestTree)
 import Test.Tasty.Golden (goldenVsFileDiff)
 import Test.Tasty.HUnit (assertFailure)
+import Test.Tasty.Hedgehog (testProperty)
 
 createSampleRDBStructure :: POSIXTime -> RDBFile
 createSampleRDBStructure currentTime =
@@ -177,23 +178,35 @@ spec_RDB_integration_tests = do
 
                 decoded `shouldBe` rdbStructure
 
-            it "Encodes/decodes an empty RDB file successfully" $ hedgehog $ do
-                rdbConfig <- H.forAll genRDBConfig
-                evalIO $ encodeThenDecodeUsingRDBBinary rdbConfig emptyRDBFile `shouldBe` emptyRDBFile
+test_RDB_roundtrip_prop_tests :: [TestTree]
+test_RDB_roundtrip_prop_tests =
+    [ testProperty "Encodes/decodes an empty RDB file successfully" emptyRDBFileRoundtrip
+    , testProperty "Encodes/decodes an auxiliary-only RDB file successfully" auxOnlyRDBFileRoundtrip
+    , testProperty "handles multiple databases correctly" multiDatabaseRoundtrip
+    , testProperty "encodes large RDB files efficiently" largeRDBRoundtrip
+    ]
 
-            it "Encodes/decodes an auxiliary-only RDB file successfully" $ hedgehog $ do
-                rdbConfig <- H.forAll genRDBConfig
-                evalIO $ encodeThenDecodeUsingRDBBinary rdbConfig rdbFileWithOnlyAuxFields `shouldBe` rdbFileWithOnlyAuxFields
+emptyRDBFileRoundtrip :: H.Property
+emptyRDBFileRoundtrip = H.property $ do
+    rdbConfig <- H.forAll genRDBConfig
+    H.tripping emptyRDBFile (encode rdbConfig) (decodeOrFail rdbConfig)
 
-            it "handles multiple databases correctly" $ hedgehog $ do
-                rdbConfig <- H.forAll genRDBConfig
-                evalIO $ encodeThenDecodeUsingRDBBinary rdbConfig multiDatabaseRDBStructure `shouldBe` multiDatabaseRDBStructure
+auxOnlyRDBFileRoundtrip :: H.Property
+auxOnlyRDBFileRoundtrip = H.property $ do
+    rdbConfig <- H.forAll genRDBConfig
+    H.tripping rdbFileWithOnlyAuxFields (encode rdbConfig) (decodeOrFail rdbConfig)
 
-            it "encodes large RDB files efficiently" $ hedgehog $ do
-                currentTime <- evalIO getPOSIXTime
-                let largeRDB = createLargeRDB currentTime
-                rdbConfig <- H.forAll genRDBConfig
-                evalIO $ encodeThenDecodeUsingRDBBinary rdbConfig largeRDB `shouldBe` largeRDB
+multiDatabaseRoundtrip :: H.Property
+multiDatabaseRoundtrip = H.property $ do
+    rdbConfig <- H.forAll genRDBConfig
+    H.tripping multiDatabaseRDBStructure (encode rdbConfig) (decodeOrFail rdbConfig)
+
+largeRDBRoundtrip :: H.Property
+largeRDBRoundtrip = H.withTests 7 $ H.property $ do
+    currentTime <- H.evalIO getPOSIXTime
+    let largeRDB = createLargeRDB currentTime
+    rdbConfig <- H.forAll genRDBConfig
+    H.tripping largeRDB (encode rdbConfig) (decodeOrFail rdbConfig)
 
 test_Decoding_sample_rdb_file :: IO [TestTree]
 test_Decoding_sample_rdb_file = do

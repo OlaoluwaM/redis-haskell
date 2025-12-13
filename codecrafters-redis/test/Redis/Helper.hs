@@ -21,7 +21,7 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Vector (fromList)
 import Redis.Commands.Parser (Command (..))
-import Redis.RDB.TestConfig (RDBConfig)
+import Redis.RDB.Config (RDBConfig)
 import Redis.RESP (Array (..), BulkString (..), RESPDataType (MkArrayResponse, MkBulkStringResponse), serializeRESPDataType, toOptionString)
 
 mkCmdReqStr :: [RESPDataType] -> ByteString
