@@ -157,6 +157,7 @@ exampleRDBFiles =
     , "multiple_databases"
     , "non_ascii_values"
     , "easily_compressible_string_key"
+    , "keys_command"
     ]
 
 spec_RDB_integration_tests :: Spec

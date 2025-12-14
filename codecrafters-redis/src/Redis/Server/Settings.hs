@@ -32,17 +32,20 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
+import Effectful.Log (LogLevel (..), defaultLogLevel)
 import GHC.Generics (Generic)
 import Options.Applicative (
     Parser,
     argument,
     auto,
+    flag,
     help,
     long,
     maybeReader,
     metavar,
     option,
     optional,
+    short,
     value,
  )
 import Options.Applicative.Types (ReadM, readerAsk)
@@ -58,6 +61,7 @@ import System.FilePath (dropTrailingPathSeparator)
 
 data Settings = Settings
     { settingsFromConfigFile :: Maybe RedisConfFile -- Path to a redis.conf file. Ideally we would parse this file and use it to set server settings in addition to what we get from the command line (with a preference of the latter), but for now we just accept it as an argument and do nothing with it
+    , logLevel :: LogLevel
     , settingsFromCommandLine :: ServerSettings -- Settings provided via command line arguments
     }
 
@@ -80,6 +84,7 @@ serverSettings :: Parser Settings
 serverSettings =
     Settings
         <$> optional parserForRedisConfigArgument
+        <*> logLevelParser
         <*> parserForCommandLineServerSettings
 
 parserForRedisConfigArgument :: Parser RedisConfFile
@@ -103,6 +108,16 @@ parseRedisConfFile = do
     if filename path == [relfile|redis.conf|]
         then pure (RedisConfFile path)
         else fail "The file provided is not named redis.conf"
+
+logLevelParser :: Parser LogLevel
+logLevelParser =
+    flag
+        defaultLogLevel
+        LogTrace
+        ( long "verbose"
+            <> short 'v'
+            <> help "Enable verbose mode"
+        )
 
 serializeSettingsValue :: SettingValue -> ByteString
 serializeSettingsValue = \case
@@ -167,7 +182,7 @@ rdbCompressionSettingKey :: Setting
 rdbCompressionSettingKey = Setting "rdbcompression"
 
 defaultUseCompressionWithRDB :: Bool
-defaultUseCompressionWithRDB = True
+defaultUseCompressionWithRDB = False
 
 {- | Parser for RDB checksum setting
 These align with the default values for `rdbchecksum` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L475
