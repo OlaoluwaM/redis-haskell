@@ -14,10 +14,12 @@ import Control.Concurrent.STM (atomically, newTVarIO)
 import Control.Exception (
     Exception (displayException),
     SomeException,
+    bracket,
+    bracketOnError,
     catch,
     throwIO,
  )
-import Control.Monad (unless)
+import Control.Monad (forever, unless, void)
 
 import Data.String (IsString (fromString))
 import Effectful.Log (
@@ -26,11 +28,15 @@ import Effectful.Log (
     runLogT,
  )
 
+import Control.Concurrent (forkFinally, myThreadId)
 import Control.Monad.Trans (lift)
-import Log (logExceptions, logInfo_, logTrace_)
+import Data.List.NonEmpty qualified as NE
+import Data.Time (getCurrentTime)
+import GHC.Conc (labelThread)
+import Log (LogLevel (..), logExceptions, logInfo_, logMessageIO, logTrace_)
 import Log.Backend.StandardOutput (withStdOutLogger)
-import Network.Run.TCP (runTCPServer)
-import Network.Socket (Socket)
+import Network.Run.TCP (openTCPServerSocket, resolve)
+import Network.Socket (AddrInfoFlag (..), HostName, ServiceName, Socket, SocketType (..), accept, close, gracefulClose)
 import Network.Socket.ByteString (recv)
 import Options.Applicative (
     execParser,
@@ -87,7 +93,7 @@ main = do
 
             logInfo_ ("Redis server listening on port " <> fromString port)
 
-            lift $ runTCPServer Nothing port (handleRedisClientConnection initialServerStateRef serverSettingsRef loggerEnv)
+            lift $ runTCPServer Nothing port loggerEnv (handleRedisClientConnection initialServerStateRef serverSettingsRef loggerEnv)
   where
     port :: String
     port = "6379"
@@ -109,3 +115,41 @@ handleRedisClientConnection serverState settingsRef loggerEnv socket = do
                 throwIO e -- Rethrow after logging so that the connection can be closed properly
             )
         handleRedisClientConnection serverState settingsRef loggerEnv socket
+
+-- | Running a TCP server with an accepted socket and its peer name. Lifted from https://www.stackage.org/haddock/lts-24.25/network-run-0.4.4/src/Network.Run.TCP.html#runTCPServer
+runTCPServer :: Maybe HostName -> ServiceName -> LoggerEnv -> (Socket -> IO a) -> IO a
+runTCPServer mhost port loggerEnv server = do
+    addr <- resolve Stream mhost port [AI_PASSIVE] NE.head
+    bracket (openTCPServerSocket addr) close $ \sock ->
+        runTCPServerWithSocket sock loggerEnv server
+
+{- | Running a TCP client with a connected socket for a given listen
+socket.
+-}
+runTCPServerWithSocket ::
+    Socket ->
+    LoggerEnv ->
+    -- | Called for each incoming connection, in a new thread
+    (Socket -> IO a) ->
+    IO a
+runTCPServerWithSocket sock loggerEnv server = forever $ do
+    now <- getCurrentTime
+    bracketOnError (accept sock) (close . fst) $
+        \(conn, _peer) ->
+            void $
+                forkFinally
+                    (labelMe "TCP server" >> server conn)
+                    ( \case
+                        Left exception -> do
+                            logMessageIO loggerEnv now LogAttention ("Connection closed with error: " <> fromString (displayException exception)) ""
+                            gclose conn
+                        Right _ -> gclose conn
+                    )
+  where
+    gclose :: Socket -> IO ()
+    gclose sock' = gracefulClose sock' 5000
+
+    labelMe :: String -> IO ()
+    labelMe name = do
+        tid <- myThreadId
+        labelThread tid name
