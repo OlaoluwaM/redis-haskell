@@ -32,7 +32,7 @@ createSampleRDBStructure :: POSIXTime -> RDBFile
 createSampleRDBStructure currentTime =
     RDBFile
         { magicString = Redis
-        , version = RDBv7
+        , version = CustomRDBVer $$(refineTH "0011")
         , auxFieldEntries =
             [ AuxFieldRedisVer . RedisVersion $ $$(refineTH "7.0.0")
             , AuxFieldRedisBits RedisBits64
@@ -82,7 +82,7 @@ emptyRDBFile :: RDBFile
 emptyRDBFile =
     RDBFile
         { magicString = Redis
-        , version = RDBv7
+        , version = CustomRDBVer $$(refineTH "0003")
         , auxFieldEntries = []
         , dbEntries = []
         }

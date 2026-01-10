@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies #-}
+
 module Redis.RDB.Format (
     KeyValueOpCode (..),
     EOF (..),
@@ -25,6 +27,7 @@ import Redis.RDB.Binary
 import Redis.RDB.Data
 
 import Control.Monad.State.Strict qualified as State
+import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 
 import Bits.Show (showFiniteBits)
@@ -33,7 +36,6 @@ import Control.Applicative.Combinators (many, manyTill)
 import Control.Monad (when)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift)
-import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.Binary.Get (
     getByteString,
     getWord64le,
@@ -42,12 +44,17 @@ import Data.Binary.Put (
     putByteString,
     putWord64le,
  )
+import Data.Char (isDigit)
+import Data.Data (Proxy (..))
 import Data.Default (Default (..))
 import Data.Word (Word8)
+import GHC.TypeLits (natVal)
 import Redis.RDB.CRC64 (CheckSum, fromChecksum, toChecksum)
 import Redis.RDB.Config (RDBConfig (..))
 import Redis.Utils (genericShow)
-import Rerefined (unrefine)
+import Rerefined (Refined, prettyRefineFailure, refine, unrefine)
+import Rerefined.Predicate (Predicate (..), Refine (..))
+import Rerefined.Predicate.Common (validateFail)
 import Rerefined.Refine.TH (refineTH)
 
 {- | Redis RDB Format Implementation
@@ -201,7 +208,22 @@ data RDBMagicString = Redis
 
 -- Currently, we only support version 7, though, for now, we only support a subset of the features of version 7
 -- We need to add support for non standard RDB versions for the codecrafters tests
-data RDBVersion = RDBv4 | RDBv5 | RDBv7 | CustomVer (Char, Char, Char, Char)
+
+data RDBCustomVersionASCIIPred
+
+type RDBVersionLen = 4
+
+instance Predicate RDBCustomVersionASCIIPred where
+    type PredicateName d RDBCustomVersionASCIIPred = "RDBCustomVersionASCIIPred"
+
+instance Refine RDBCustomVersionASCIIPred BS.ByteString where
+    validate p bs
+        | BS.length bs == fromInteger (natVal @RDBVersionLen Proxy) && BSC.all isDigit bs = Nothing
+        | otherwise = validateFail p "RDB version must be exactly 4 ASCII digit characters" []
+
+type RDBCustomVersion = Refined RDBCustomVersionASCIIPred BS.ByteString
+
+data RDBVersion = RDBv4 | RDBv5 | RDBv7 | CustomRDBVer RDBCustomVersion
     deriving stock (Show, Eq, Ord)
 
 {- | Key-value entry types with different expiry behaviors.
@@ -501,7 +523,7 @@ instance RDBBinary RDBVersion where
         RDBv4 -> genericRDBPutUsing (putByteString "0004")
         RDBv5 -> genericRDBPutUsing (putByteString "0005")
         RDBv7 -> genericRDBPutUsing (putByteString "0007")
-        CustomVer (a, b, c, d) -> genericRDBPutUsing (putByteString (BSC.pack [a, b, c, d]))
+        CustomRDBVer customVer -> genericRDBPutUsing . putByteString . unrefine $ customVer
     rdbGet = do
         versionStr <- genericRDBGetUsing (getByteString 4)
         case versionStr of
@@ -509,15 +531,14 @@ instance RDBBinary RDBVersion where
             "0005" -> pure RDBv5
             "0007" -> pure RDBv7
             _ -> do
-                let versionStrParser = (,,,) <$> AC.digit <*> AC.digit <*> AC.digit <*> AC.digit
-                case AC.parseOnly versionStrParser versionStr of
-                    Right parsedVersion -> pure $ CustomVer parsedVersion
-                    Left _ -> do
+                case refine versionStr of
+                    Right parsedVersion -> pure $ CustomRDBVer parsedVersion
+                    Left rf -> do
                         throwRDBError $
                             MKRDBErrorArg
                                 ValidationError
                                 "RDB Version Parsing"
-                                ("Unsupported or invalid RDB version: " <> genericShow versionStr)
+                                (prettyRefineFailure rf <> genericShow versionStr)
 
 instance RDBBinary RDBMagicString where
     rdbPut Redis = genericRDBPutUsing (putByteString "REDIS")
