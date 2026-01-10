@@ -11,10 +11,8 @@ import Path
 import Redis.Server.Settings
 import Redis.ServerState
 
-import Data.HashMap.Strict qualified as HashMap
 import Effectful.Concurrent qualified as Eff
 import Effectful.Concurrent.STM qualified as STMEff
-import Effectful.Error.Static qualified as Eff
 import Effectful.Exception qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Effectful.Reader.Static qualified as ReaderEff
@@ -25,7 +23,7 @@ import Control.Concurrent.STM (
     putTMVar,
     tryTakeTMVar,
  )
-import Control.Exception (Exception (..))
+import Control.Exception (Exception (..), SomeException)
 import Control.Monad (void)
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
@@ -38,9 +36,9 @@ import GHC.Stack (HasCallStack)
 import Network.Socket (Socket)
 import Optics (set, view)
 import Redis.Effects (RDBWrite)
-import Redis.RDB.Config (MkRDBConfigArg (..), RDBConfig, mkRDBConfig)
 import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
+import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
 import Redis.Utils (logInternalServerError)
 
 -- https://redis.io/docs/latest/commands/save/
@@ -54,20 +52,6 @@ newtype BGSaveCmdArg = BGSaveCmdArg (Maybe ShouldSchedule)
 newtype ShouldSchedule = ShouldSchedule Bool
     deriving stock (Eq, Show)
     deriving newtype (ToJSON)
-
-data SaveFailure
-    = MissingRDBFilePathSetting
-    | MissingRDBCompressionSetting
-    | MissingRDBChecksumSetting
-    | IncompatibleRDBCompressionOrChecksumSetting
-    | MissingDirSetting
-    | MissingDBFilenameSetting
-    | IncompatibleDirAndFilePathTypes
-    | BackgroundSaveInProgress
-    | RDBSaveFailed String
-    deriving stock (Eq, Show)
-
-instance Exception SaveFailure
 
 mkBGSaveCmdArg :: (MonadFail m) => [BulkString] -> m BGSaveCmdArg
 mkBGSaveCmdArg [] = pure $ BGSaveCmdArg Nothing
@@ -92,7 +76,8 @@ handleSave = do
 
     let onSuccess = sendMessage socket . serializeRESPDataType $ SimpleString "OK"
 
-    Eff.runErrorNoCallStackWith @SaveFailure
+    -- We are using handleSync here because should an asynchronous exception occur during the save process, we want to ensure that such an exception is propagated to the parent thread from which the thread that will end up performing this `handleSave` operation will be spawned. However, though, it looks like the distinction between `handle` and `handleSync` doesn't truly matter in practice here because unless we throw an asynchronous exception to the thread executing the `handleSave` operation, no asynchronous exceptions *can* be received here. If we start up the redis server and kill it that only affects the main thread, as in, the asynchronous exception that is raised from killing the process is sent to the main thread, not to any of the child threads spawned from it tasked with handling client connections and requests. Using `handleSync` here would ensure that if we were ever to throw an asynchronous exception to the child thread executing the save process, the async exception is not swallowed silently but rather propagated appropriately to the parent thread to be handled, cleaning up the child thread appropriately (at least, that would be ideal). Another thing to note is that we can't even easily gain access to the threadId of the relevant child thread either for a `throwTo` async exception. In any case, I'd like for an asynchronous exception to interrupt the save process in a similar manner as a synchronous exception would, so perhaps `handle` would be more appropriate after all.
+    Eff.handle @SomeException
         (\e -> notifyOfSaveError socket e "Saving failed")
         (performRDBSave serverState serverSettingsRef socket onSuccess)
 
@@ -118,7 +103,7 @@ handleBGSave _ = do
             )
   where
     performRDBBackgroundSave socket serverState serverSettingsRef =
-        Eff.runErrorNoCallStackWith @SaveFailure
+        Eff.handle @SomeException
             Eff.throwIO -- If an error is thrown by performRDBSave, we handle it by rethrowing so we can satisfy/pop off the Error effect constraint and have the outer forkFinally handle it correctly
             (performRDBSave serverState serverSettingsRef socket (onSuccess socket))
 
@@ -130,14 +115,13 @@ performRDBSave ::
     , Eff.FileSystem :> es
     , Eff.Concurrent :> es
     , Communication :> es
-    , Eff.Error SaveFailure :> es
     , Time :> es
     ) =>
     ServerState -> ServerSettingsRef -> Socket -> Eff es () -> Eff es ()
 performRDBSave serverState serverSettingsRef socket onSuccess = do
     settings <- STMEff.readTVarIO serverSettingsRef
-    rdbDirPath <- getRDBFilePathFromSettings settings
-    rdbConfig <- mkRDBConfigFromSettings settings
+    let rdbDirPath = getRDBDumpFilePathFromSettings settings
+    let rdbConfig = genRDBConfigFromSettings settings
 
     kvStore <- STMEff.readTVarIO serverState.keyValueStoreRef
     lastRDBSave <- STMEff.readTVarIO serverState.lastRDBSaveRef
@@ -178,33 +162,3 @@ notifyOfSaveError :: (Log :> es, Communication :> es, Exception e) => Socket -> 
 notifyOfSaveError socket e returnMsg = do
     logInternalServerError $ "Error occured while attempting to save RDB file: " <> displayException e
     sendMessage socket . serializeRESPDataType $ SimpleString returnMsg
-
-getRDBFilePathFromSettings ::
-    ( Eff.Error SaveFailure :> es
-    , HasCallStack
-    ) =>
-    ServerSettings -> Eff es (SomeBase File)
-getRDBFilePathFromSettings (ServerSettings settings) = do
-    dirPath <- maybe (Eff.throwError MissingDirSetting) pure $ HashMap.lookup rdbFileDirectorySettingKey settings
-    fileName <- maybe (Eff.throwError MissingDBFilenameSetting) pure $ HashMap.lookup rdbFilenameSettingKey settings
-
-    case (dirPath, fileName) of
-        (DirPathVal (Abs dir), FilePathVal (Rel file)) -> pure $ Abs $ dir </> file
-        (DirPathVal (Rel dir), FilePathVal (Rel file)) -> pure $ Rel $ dir </> file
-        _ -> Eff.throwError IncompatibleDirAndFilePathTypes
-
-mkRDBConfigFromSettings ::
-    ( Eff.Error SaveFailure :> es
-    , HasCallStack
-    ) =>
-    ServerSettings -> Eff es RDBConfig
-mkRDBConfigFromSettings (ServerSettings settings) = do
-    rawRDBCompressionSetting <- maybe (Eff.throwError MissingRDBCompressionSetting) pure $ HashMap.lookup rdbCompressionSettingKey settings
-    rawRDBChecksumSetting <- maybe (Eff.throwError MissingRDBChecksumSetting) pure $ HashMap.lookup rdbChecksumSettingKey settings
-
-    case (rawRDBCompressionSetting, rawRDBChecksumSetting) of
-        (BoolVal rdbCompressionSettingVal, BoolVal rdbChecksumSettingVal) ->
-            pure $
-                mkRDBConfig $
-                    MkRDBConfigArg{useCompression = rdbCompressionSettingVal, generateChecksum = rdbChecksumSettingVal}
-        _ -> Eff.throwError IncompatibleRDBCompressionOrChecksumSetting
