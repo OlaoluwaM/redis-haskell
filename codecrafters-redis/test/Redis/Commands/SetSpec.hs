@@ -11,14 +11,13 @@ import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
-import Data.Default (def)
 import Data.String (fromString)
 import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (..))
 import Data.Time (addUTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime)
 import Redis.Commands.Parser (Command (..), commandParser)
-import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation)
+import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation, defaultSetCmdOpts)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
@@ -34,47 +33,47 @@ spec_set_cmd_tests = do
         it "should parse basic SET command with only required arguments" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts))
 
         it "should parse SET command with EX (seconds) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "EX", mkBulkString "60"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = EX (Tagged 60)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{ttlOption = EX (Tagged 60)}))
 
         it "should parse SET command with PX (milliseconds) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "PX", mkBulkString "30000"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = PX (Tagged 30000)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{ttlOption = PX (Tagged 30000)}))
 
         it "should parse SET command with EXAT (unix timestamp) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "EXAT", mkBulkString "1746057600"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = EXAT (Tagged 1746057600)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{ttlOption = EXAT (Tagged 1746057600)}))
 
         it "should parse SET command with PXAT (unix timestamp in ms) TTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "PXAT", mkBulkString "1746057600000"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = PXAT (Tagged 1746057600000)}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{ttlOption = PXAT (Tagged 1746057600000)}))
 
         it "should parse SET command with KEEPTTL option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "KEEPTTL"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{ttlOption = KeepTTL}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{ttlOption = KeepTTL}))
 
         it "should parse SET command with NX option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "NX"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{setCondition = OnlyIfKeyDoesNotExist}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{setCondition = OnlyIfKeyDoesNotExist}))
 
         it "should parse SET command with XX option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "XX"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{setCondition = OnlyIfKeyExists}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{setCondition = OnlyIfKeyExists}))
 
         it "should parse SET command with GET option" do
             let cmdReq = mkCmdReqStr [setCmd, mkBulkString "key", mkBulkString "value", mkBulkString "GET"]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" def{returnOldVal = True}))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" defaultSetCmdOpts{returnOldVal = True}))
 
         it "should parse multiple SET options together" do
             let cmdReq =
@@ -127,7 +126,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "NX"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (def{setCondition = OnlyIfKeyExists})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (defaultSetCmdOpts{setCondition = OnlyIfKeyExists})))
 
         it "should accept the first TTL option when multiple are provided" do
             let cmdReq =
@@ -141,7 +140,7 @@ spec_set_cmd_tests = do
                         , mkBulkString "1000"
                         ]
             let result = parseOnly commandParser cmdReq
-            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (def{ttlOption = EX (Tagged 60)})))
+            result `shouldBe` Right (Set (SetCmdArg (StoreKey "key") "value" (defaultSetCmdOpts{ttlOption = EX (Tagged 60)})))
 
     describe "TTL Calculation Logic" do
         it "should correctly set up TTL with EX option" do

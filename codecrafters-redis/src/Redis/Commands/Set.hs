@@ -2,6 +2,8 @@ module Redis.Commands.Set (
     SetCmdArg (..),
     mkSetCmdArg,
     handleSet,
+    defaultSetCmdOpts,
+    defaultTTLOption,
 
     -- ** Testing
     setupTTLCalculation,
@@ -32,7 +34,6 @@ import Data.Attoparsec.ByteString (Parser)
 import Data.Attoparsec.Combinator ((<?>))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.Default (Default (def))
 import Data.Either (fromRight)
 import Data.Either.Extra (fromEither)
 import Data.Functor (($>), (<&>))
@@ -90,15 +91,15 @@ data MilliSeconds
 data UnixEpochTimeSeconds
 data UnixEpochTimeMilliSeconds
 
-instance Default SetCmdOpts where
-    def = SetCmdOpts{setCondition = Always, returnOldVal = False, ttlOption = def @TTLOption}
+defaultSetCmdOpts :: SetCmdOpts
+defaultSetCmdOpts = SetCmdOpts{setCondition = Always, returnOldVal = False, ttlOption = defaultTTLOption}
 
-instance Default TTLOption where
-    def = DiscardTTL
+defaultTTLOption :: TTLOption
+defaultTTLOption = DiscardTTL
 
 parseSetCmdOptions :: Parser SetCmdOpts
 parseSetCmdOptions =
-    let defaultCmdOpts = def @SetCmdOpts
+    let defaultCmdOpts = defaultSetCmdOpts
      in intercalateEffect
             (some AC.space)
             ( mkSetCmdOpts
@@ -130,7 +131,7 @@ mkSetCmdOpts = SetCmdOpts
 
 mkSetCmdArg :: (MonadFail m) => [BulkString] -> m SetCmdArg
 mkSetCmdArg [] = fail "SET command requires at least 2 arguments. None were provided"
-mkSetCmdArg [BulkString key, BulkString val] = pure $ SetCmdArg{key = StoreKey key, val, opts = def @SetCmdOpts}
+mkSetCmdArg [BulkString key, BulkString val] = pure $ SetCmdArg{key = StoreKey key, val, opts = defaultSetCmdOpts}
 mkSetCmdArg (BulkString key : BulkString val : cmdOpts) = do
     let cmdOptsBytestring = toOptionString cmdOpts
     let result = AC.parseOnly parseSetCmdOptions cmdOptsBytestring
