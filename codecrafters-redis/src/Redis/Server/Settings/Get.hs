@@ -1,10 +1,12 @@
 module Redis.Server.Settings.Get (
     getRDBDumpFilePathFromSettings,
     genRDBConfigFromSettings,
+    getRedisPortFromSettings,
 ) where
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (fromMaybe)
+import Data.Text qualified as T
 import Path
 import Redis.RDB.Config (MkRDBConfigArg (..), RDBConfig, defaultRDBConfig, mkRDBConfig)
 import Redis.Server.Settings
@@ -34,4 +36,12 @@ genRDBConfigFromSettings (ServerSettings settings) = fromMaybe defaultRDBConfig 
                         { useCompression
                         , generateChecksum = genChecksum
                         }
+        _ -> Nothing
+
+getRedisPortFromSettings :: ServerSettings -> String
+getRedisPortFromSettings (ServerSettings settings) = fromMaybe (show redisDefaultPort) $ do
+    redisPortVal <- HashMap.lookup redisPortSettingKey settings
+
+    case redisPortVal of
+        (TextVal portStr) -> pure . T.unpack $ portStr
         _ -> Nothing

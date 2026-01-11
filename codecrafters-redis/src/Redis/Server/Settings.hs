@@ -13,6 +13,8 @@ module Redis.Server.Settings (
     rdbChecksumSettingKey,
     rdbFilenameSettingKey,
     rdbFileDirectorySettingKey,
+    redisPortSettingKey,
+    redisDefaultPort,
     defaultServerSettings,
 
     -- ** Testing
@@ -136,6 +138,7 @@ parserForCommandLineServerSettings =
             , optional rdbFilenameParser
             , optional rdbCompressionParser
             , optional rdbChecksumParser
+            , optional redisPortParser
             ]
 
 {- | Parser for RDB directory setting
@@ -146,10 +149,13 @@ rdbFileDirectoryParser =
     (const rdbFileDirectorySettingKey &&& DirPathVal)
         <$> option
             (maybeReader (fmap Abs . parseAbsDir) <|> maybeReader (fmap Rel . parseRelDir))
-            (long "dir" <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file" <> value (Rel defaultRDBFileDirectory))
+            (long rdbFileDirectorySettingKeyText <> metavar "RDB_DIR_PATH" <> help "Directory containing RDB file" <> value (Rel defaultRDBFileDirectory))
 
 rdbFileDirectorySettingKey :: Setting
-rdbFileDirectorySettingKey = Setting "dir"
+rdbFileDirectorySettingKey = Setting rdbFileDirectorySettingKeyText
+
+rdbFileDirectorySettingKeyText :: (IsString a) => a
+rdbFileDirectorySettingKeyText = "dir"
 
 defaultRDBFileDirectory :: Path Rel Dir
 defaultRDBFileDirectory = [reldir|./|]
@@ -162,10 +168,13 @@ rdbFilenameParser =
     (const rdbFilenameSettingKey &&& FilePathVal . Rel)
         <$> option
             (maybeReader parseRelFile)
-            (long "dbfilename" <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension" <> value defaultRDBFilename)
+            (long rdbFilenameSettingKeyText <> metavar "RDB_FILENAME" <> help "Directory containing RDB file with extension" <> value defaultRDBFilename)
 
 rdbFilenameSettingKey :: Setting
-rdbFilenameSettingKey = Setting "dbfilename"
+rdbFilenameSettingKey = Setting rdbFilenameSettingKeyText
+
+rdbFilenameSettingKeyText :: (IsString a) => a
+rdbFilenameSettingKeyText = "dbfilename"
 
 defaultRDBFilename :: Path Rel File
 defaultRDBFilename = [relfile|dump.rdb|]
@@ -176,10 +185,13 @@ These align with the default values for `rdbcompression` in the default redis.co
 rdbCompressionParser :: Parser (Setting, SettingValue)
 rdbCompressionParser =
     (const rdbCompressionSettingKey &&& BoolVal)
-        <$> option auto (long "rdbcompression" <> metavar "RDB_COMPRESSION" <> help "Enable or disable RDB compression (default: enabled)" <> value defaultUseCompressionWithRDB)
+        <$> option auto (long rdbCompressionSettingKeyText <> metavar "RDB_COMPRESSION" <> help "Enable or disable RDB compression (default: enabled)" <> value defaultUseCompressionWithRDB)
 
 rdbCompressionSettingKey :: Setting
-rdbCompressionSettingKey = Setting "rdbcompression"
+rdbCompressionSettingKey = Setting rdbCompressionSettingKeyText
+
+rdbCompressionSettingKeyText :: (IsString a) => a
+rdbCompressionSettingKeyText = "rdbcompression"
 
 defaultUseCompressionWithRDB :: Bool
 defaultUseCompressionWithRDB = False
@@ -190,10 +202,34 @@ These align with the default values for `rdbchecksum` in the default redis.conf:
 rdbChecksumParser :: Parser (Setting, SettingValue)
 rdbChecksumParser =
     (const rdbChecksumSettingKey &&& BoolVal)
-        <$> option auto (long "rdbchecksum" <> metavar "RDB_CHECKSUM" <> help "Enable or disable RDB checksum (default: enabled)" <> value defaultGenerateChecksumWithRDB)
+        <$> option auto (long rdbChecksumSettingKeyText <> metavar "RDB_CHECKSUM" <> help "Enable or disable RDB checksum (default: enabled)" <> value defaultGenerateChecksumWithRDB)
 
 rdbChecksumSettingKey :: Setting
-rdbChecksumSettingKey = Setting "rdbchecksum"
+rdbChecksumSettingKey = Setting rdbChecksumSettingKeyText
+
+rdbChecksumSettingKeyText :: (IsString a) => a
+rdbChecksumSettingKeyText = "rdbchecksum"
 
 defaultGenerateChecksumWithRDB :: Bool
 defaultGenerateChecksumWithRDB = True
+
+redisPortParser :: Parser (Setting, SettingValue)
+redisPortParser =
+    (const (Setting "port") &&& TextVal . fromString . show)
+        <$> option
+            auto
+            ( long redisPortSettingKeyText
+                <> short 'p'
+                <> metavar "PORT_NUMBER"
+                <> help ("Port number for the Redis server to listen on (default: " <> (fromString . show $ redisDefaultPort) <> ")")
+                <> value redisDefaultPort
+            )
+
+redisPortSettingKey :: Setting
+redisPortSettingKey = Setting redisPortSettingKeyText
+
+redisPortSettingKeyText :: (IsString a) => a
+redisPortSettingKeyText = "port"
+
+redisDefaultPort :: Int
+redisDefaultPort = 6379

@@ -52,6 +52,7 @@ import Redis.Handler (handleCommandReq)
 import Redis.RDB.Load (loadStoreFromRDBDump)
 import Redis.Server (runServer)
 import Redis.Server.Context (ServerContext (..))
+import Redis.Server.Settings.Get (getRedisPortFromSettings)
 import Redis.Server.Version (redisVersion)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
@@ -62,6 +63,7 @@ main = do
     hSetBuffering stderr NoBuffering
 
     settings <- execParser serverSettingsParser
+    let port = getRedisPortFromSettings settings.settingsFromCommandLine
 
     withStdOutLogger $ \logger -> do
         let loggerEnv =
@@ -95,10 +97,10 @@ main = do
 
             lift $ runTCPServer Nothing port loggerEnv (handleRedisClientConnection initialServerStateRef serverSettingsRef loggerEnv)
   where
-    port :: String
-    port = "6379"
-
-    serverSettingsParser = info (serverSettings <**> helper <**> simpleVersioner redisVersion) (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
+    serverSettingsParser =
+        info
+            (serverSettings <**> helper <**> simpleVersioner redisVersion)
+            (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
 
 handleRedisClientConnection :: ServerState -> ServerSettingsRef -> LoggerEnv -> Socket -> IO ()
 handleRedisClientConnection serverState settingsRef loggerEnv socket = do
