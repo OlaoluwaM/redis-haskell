@@ -9,7 +9,6 @@ import Redis.Store.Timestamp
 
 import Data.HashMap.Strict qualified as HashMap
 
-import Data.Default (Default (..))
 import Data.Maybe (isJust)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Redis.Server.Version (redisVersion)
@@ -29,7 +28,7 @@ saveRedisStoreToRDB creationTime store =
                 [ RDbEntry
                     { resizeDBEntry = ResizeDB totalNumOfKeys numOfKeysWithTTL
                     , keyValEntries
-                    , entryId = def -- We only support a single database (database 0) for now as any more is discouraged in favor of multiple redis instances https://stackoverflow.com/questions/16221563/whats-the-point-of-multiple-redis-databases
+                    , entryId = defaultSelectDB -- We only support a single database (database 0) for now as any more is discouraged in favor of multiple redis instances https://stackoverflow.com/questions/16221563/whats-the-point-of-multiple-redis-databases
                     }
                 ]
             }

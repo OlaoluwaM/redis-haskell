@@ -18,6 +18,8 @@ module Redis.RDB.Format (
     RedisBits (..),
     CTime (..),
     UsedMem (..),
+    defaultResizeDB,
+    defaultSelectDB,
 
     -- ** For Testing
     defaultChecksum,
@@ -46,7 +48,6 @@ import Data.Binary.Put (
  )
 import Data.Char (isDigit)
 import Data.Data (Proxy (..))
-import Data.Default (Default (..))
 import Data.Word (Word8)
 import GHC.TypeLits (natVal)
 import Redis.RDB.CRC64 (CheckSum, fromChecksum, toChecksum)
@@ -363,8 +364,8 @@ newtype SelectDB
       SelectDB {dbIndex :: RDBLengthPrefix6} -- Using this type because this is how it is encoded
     deriving stock (Show, Eq)
 
-instance Default SelectDB where
-    def = SelectDB $$(refineTH 0) -- Default to database 0. Most redis instances use only database 0 as multiple databases in a single instance is discouraged in favor of multiple instances. https://stackoverflow.com/questions/16221563/whats-the-point-of-multiple-redis-databases
+defaultSelectDB :: SelectDB
+defaultSelectDB = SelectDB $$(refineTH 0) -- Default to database 0. Most redis instances use only database 0 as multiple databases in a single instance is discouraged in favor of multiple instances. https://stackoverflow.com/questions/16221563/whats-the-point-of-multiple-redis-databases
 
 {- | Memory allocation optimization hints (opcode 0xFB).
 
@@ -386,8 +387,8 @@ data ResizeDB = ResizeDB
     }
     deriving stock (Show, Eq)
 
-instance Default ResizeDB where
-    def = ResizeDB 0 0
+defaultResizeDB :: ResizeDB
+defaultResizeDB = ResizeDB 0 0
 
 {- | Auxiliary field (opcode 0xFA) containing metadata.
 
@@ -512,8 +513,8 @@ instance RDBBinary RDbEntry where
         mapM_ rdbPut keyValEntries
 
     rdbGet = do
-        entryId <- rdbGet @SelectDB <|> pure def -- Default to SelectDB 0 if not present
-        resizeDBEntry <- rdbGet @ResizeDB <|> pure def -- Default to ResizeDB 0 0 if not present
+        entryId <- rdbGet @SelectDB <|> pure defaultSelectDB -- Default to SelectDB 0 if not present
+        resizeDBEntry <- rdbGet @ResizeDB <|> pure defaultResizeDB -- Default to ResizeDB 0 0 if not present
         keyValEntries <- many $ rdbGet @KeyValueOpCode
         pure $ RDbEntry entryId resizeDBEntry keyValEntries
 
