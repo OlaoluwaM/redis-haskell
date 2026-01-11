@@ -17,7 +17,6 @@ import Effectful.Reader.Static qualified as ReaderEff
 
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
-import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
 import Effectful (Eff)
@@ -39,7 +38,7 @@ import Network.Socket (
  )
 import Redis.Effects (ServerEffects)
 import Redis.Server.Context (ServerContext (..))
-import Redis.Server.Settings (ServerSettings)
+import Redis.Server.Settings (ServerSettings, defaultServerSettings)
 import Redis.ServerState (ServerState (..), genInitialServerStateEff)
 
 data PassableTestContext = PassableTestContext
@@ -53,7 +52,7 @@ runTestServer action testContext =
     do
         loopbackSocket <- mkLoopbackSocket
         initialServerState <- atomically $ genInitialServerStateEff Nothing
-        serverSettings <- newTVarIO $ fromMaybe def testContext.settings
+        serverSettings <- newTVarIO $ fromMaybe defaultServerSettings testContext.settings
 
         let serverState = fromMaybe initialServerState testContext.serverState
 

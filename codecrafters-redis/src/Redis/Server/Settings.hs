@@ -13,6 +13,7 @@ module Redis.Server.Settings (
     rdbChecksumSettingKey,
     rdbFilenameSettingKey,
     rdbFileDirectorySettingKey,
+    defaultServerSettings,
 
     -- ** Testing
     SettingValue (..),
@@ -24,7 +25,6 @@ import Control.Applicative (Alternative (..))
 import Control.Arrow ((&&&))
 import Control.Concurrent.STM qualified as STM
 import Data.ByteString (ByteString)
-import Data.Default (Default (..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Hashable (Hashable)
@@ -77,8 +77,8 @@ newtype Setting = Setting {setting :: Text}
 data SettingValue = TextVal Text | IntVal Integer | BoolVal Bool | FloatVal Double | FilePathVal (SomeBase File) | DirPathVal (SomeBase Dir)
     deriving stock (Eq, Show, Generic)
 
-instance Default ServerSettings where
-    def = ServerSettings HashMap.empty
+defaultServerSettings :: ServerSettings
+defaultServerSettings = ServerSettings HashMap.empty
 
 serverSettings :: Parser Settings
 serverSettings =

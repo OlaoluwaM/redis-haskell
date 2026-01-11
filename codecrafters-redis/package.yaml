@@ -15,7 +15,6 @@ dependencies:
   - bits-show
   - bytestring # useful to send bytes over the network
   - containers
-  - data-default # TODO: Remove this dependency
   - effectful
   - effectful-th
   - log-base
