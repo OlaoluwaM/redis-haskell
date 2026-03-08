@@ -9,7 +9,7 @@ import Effectful.Reader.Static qualified as ReaderEff
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
 import Optics (view)

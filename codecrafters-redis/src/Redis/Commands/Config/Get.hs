@@ -16,7 +16,7 @@ import Data.Bifunctor (bimap)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
 import Optics (view)

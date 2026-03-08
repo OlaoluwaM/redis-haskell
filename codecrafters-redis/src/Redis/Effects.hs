@@ -9,8 +9,8 @@ module Redis.Effects (
     ServerEffects,
 ) where
 
-import Effect.Communication (Communication)
-import Effect.Time (Time)
+import Redis.Effect.Communication (Communication)
+import Redis.Effect.Time (Time)
 import Effectful (IOE, (:>))
 import Effectful.Concurrent (Concurrent)
 import Effectful.FileSystem (FileSystem)

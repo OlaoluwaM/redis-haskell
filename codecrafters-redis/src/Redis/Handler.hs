@@ -16,7 +16,7 @@ import Log qualified
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
 import Data.String.Interpolate (i)
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff, (:>))
 import Effectful.FileSystem qualified as Eff
 import Effectful.Log (Log)

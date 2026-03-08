@@ -7,7 +7,7 @@ module Redis.Store.Timestamp (
 
 import Data.Time (UTCTime, nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds)
-import Effect.Time qualified as Eff
+import Redis.Effect.Time qualified as Eff
 import Effectful (Eff, (:>))
 import GHC.Generics (Generic)
 

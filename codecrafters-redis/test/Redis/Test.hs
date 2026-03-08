@@ -7,8 +7,8 @@ module Redis.Test (
 ) where
 
 import Data.List.NonEmpty qualified as NE
-import Effect.Communication qualified as Eff
-import Effect.Time qualified as Eff
+import Redis.Effect.Communication qualified as Eff
+import Redis.Effect.Time qualified as Eff
 import Effectful qualified as Eff
 import Effectful.Concurrent.STM qualified as Eff
 import Effectful.FileSystem qualified as Eff

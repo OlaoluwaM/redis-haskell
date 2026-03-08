@@ -19,7 +19,7 @@ import Redis.Store.Timestamp
 
 import Data.Attoparsec.ByteString.Char8 qualified as AC
 import Data.HashMap.Strict qualified as HashMap
-import Effect.Time qualified as Time
+import Redis.Effect.Time qualified as Time
 import Effectful.Concurrent.STM qualified as STMEff
 import Effectful.Reader.Static qualified as ReaderEff
 
@@ -41,7 +41,7 @@ import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (Tagged), untag)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8')
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
 import Optics (view)
