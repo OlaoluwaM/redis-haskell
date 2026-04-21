@@ -12,20 +12,14 @@ module Redis.Utils (
     toUpperBs,
     showUsingBase,
     genericShow,
-    logInternalServerError,
-    logDebug,
-    logInfo,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
-import Effectful.Log qualified as EffLog
 
-import Data.Aeson (ToJSON)
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
 import Data.String (IsString (..))
 import Debug.Pretty.Simple (pTrace, pTraceM)
-import Effectful (Eff, (:>))
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -63,12 +57,3 @@ showUsingBase base num = go num ""
 
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
-
-logInternalServerError :: (EffLog.Log :> es, ToJSON a) => a -> Eff es ()
-logInternalServerError = EffLog.logAttention "Internal server error: "
-
-logDebug :: (EffLog.Log :> es, ToJSON a) => a -> Eff es ()
-logDebug = EffLog.logTrace "Debug: "
-
-logInfo :: (EffLog.Log :> es, ToJSON a) => a -> Eff es ()
-logInfo = EffLog.logInfo "Info: "

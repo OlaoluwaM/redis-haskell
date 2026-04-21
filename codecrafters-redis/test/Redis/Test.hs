@@ -6,26 +6,23 @@ module Redis.Test (
     runTestServer,
 ) where
 
+import Blammo.Logging.Setup qualified as Blammo
 import Data.List.NonEmpty qualified as NE
-import Redis.Effect.Communication qualified as Eff
-import Redis.Effect.Time qualified as Eff
 import Effectful qualified as Eff
 import Effectful.Concurrent.STM qualified as Eff
 import Effectful.FileSystem qualified as Eff
-import Effectful.Log qualified as Eff
 import Effectful.Reader.Static qualified as ReaderEff
+import Redis.Effect.Communication qualified as Eff
+import Redis.Effect.Logging qualified as Eff
+import Redis.Effect.Time qualified as Eff
 
+import Blammo.Logging (Logger)
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
 import Effectful (Eff)
-import Effectful.Log (
-    LogLevel (..),
-    LoggerEnv (..),
- )
 import GHC.Generics (Generic)
-import Log.Backend.StandardOutput (withStdOutLogger)
 
 import Network.Socket (
     AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
@@ -56,25 +53,17 @@ runTestServer action testContext =
 
         let serverState = fromMaybe initialServerState testContext.serverState
 
-        mRes <- withStdOutLogger $ \logger -> do
-            let loggerEnv =
-                    LoggerEnv
-                        { leMaxLogLevel = LogAttention
-                        , leLogger = logger
-                        , leDomain = []
-                        , leData = []
-                        , leComponent = "redis-server-hs-test"
-                        }
+        mRes <- Blammo.withLoggerEnv $ \logger -> do
             let env = ServerContext loopbackSocket serverState serverSettings
-            runServer env loggerEnv action
+            runServer env logger action
 
         pure $ fromMaybe "We got nothing bro. This probably shouldn't have happened" $ getLast mRes
   where
-    runServer :: ServerContext -> LoggerEnv -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
-    runServer env loggerEnv =
+    runServer :: ServerContext -> Logger -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
+    runServer env logger =
         Eff.runEff
             . Eff.runCommunicationPure
-            . Eff.runLog loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel
+            . Eff.runLoggingWithLogger logger
             . Eff.runGetTimeIO
             . Eff.runConcurrent
             . Eff.runFileSystem

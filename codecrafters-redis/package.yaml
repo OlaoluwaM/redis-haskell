@@ -13,12 +13,12 @@ dependencies:
   - binary
   - binary-instances
   - bits-show
+  - Blammo
+  - Blammo-wai
   - bytestring # useful to send bytes over the network
   - containers
   - effectful
   - effectful-th
-  - log-base
-  - log-effectful
   - mono-traversable
   - mtl
   - network

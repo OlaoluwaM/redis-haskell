@@ -5,11 +5,16 @@ module Main (main) where
 import Redis.Server.Settings
 import Redis.ServerState
 
+import Blammo.Logging qualified as Blammo
+import Blammo.Logging.Setup qualified as Blammo
 import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NE
 import Effectful qualified as Eff
 import Effectful.FileSystem qualified as Eff
-import Effectful.Log qualified as Eff
+import Redis.Effect.Logging qualified as Eff
 
+import Blammo.Logging (Logger, Message (..), (.=))
+import Control.Concurrent (forkFinally, myThreadId)
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Control.Exception (
     Exception (displayException),
@@ -20,21 +25,8 @@ import Control.Exception (
     throwIO,
  )
 import Control.Monad (forever, unless, void)
-
 import Data.String (IsString (fromString))
-import Effectful.Log (
-    LoggerEnv (..),
-    logAttention,
-    runLogT,
- )
-
-import Control.Concurrent (forkFinally, myThreadId)
-import Control.Monad.Trans (lift)
-import Data.List.NonEmpty qualified as NE
-import Data.Time (getCurrentTime)
 import GHC.Conc (labelThread)
-import Log (LogLevel (..), logExceptions, logInfo_, logMessageIO, logTrace_)
-import Log.Backend.StandardOutput (withStdOutLogger)
 import Network.Run.TCP (openTCPServerSocket, resolve)
 import Network.Socket (AddrInfoFlag (..), HostName, ServiceName, Socket, SocketType (..), accept, close, gracefulClose)
 import Network.Socket.ByteString (recv)
@@ -54,6 +46,8 @@ import Redis.Server (runServer)
 import Redis.Server.Context (ServerContext (..))
 import Redis.Server.Settings.Get (getRedisPortFromSettings)
 import Redis.Server.Version (redisVersion)
+import Redis.Utils (myTracePrettyM)
+import System.Environment (getEnv)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
@@ -62,80 +56,70 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
+    en <- getEnv "LOG_LEVEL"
+    myTracePrettyM "The env " en
     settings <- execParser serverSettingsParser
     let port = getRedisPortFromSettings settings.settingsFromCommandLine
 
-    withStdOutLogger $ \logger -> do
-        let loggerEnv =
-                LoggerEnv
-                    { leMaxLogLevel = settings.logLevel
-                    , leLogger = logger
-                    , leDomain = []
-                    , leData = []
-                    , leComponent = "redis-server-hs"
-                    }
+    Blammo.withLoggerEnv $ \logger -> do
+        Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Loading initial store from RDB dump file..."
+        mInitialStore <-
+            (fmap . fmap) fst
+                . Eff.runEff
+                . Eff.runLoggingWithLogger logger
+                . Eff.runFileSystem
+                $ loadStoreFromRDBDump settings.settingsFromCommandLine
 
-        runLogT loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel $ logExceptions $ do
-            logTrace_ "Loading initial store from RDB dump file..."
-            mInitialStore <-
-                lift
-                    . (fmap . fmap) fst
-                    . Eff.runEff
-                    . Eff.runLog loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel
-                    . Eff.runFileSystem
-                    $ loadStoreFromRDBDump settings.settingsFromCommandLine
+        serverSettingsRef <- newTVarIO settings.settingsFromCommandLine
+        initialServerStateRef <- atomically $ genInitialServerStateEff mInitialStore
 
-            serverSettingsRef <- lift $ newTVarIO settings.settingsFromCommandLine
-            initialServerStateRef <- lift $ atomically $ genInitialServerStateEff mInitialStore
+        maybe
+            (Blammo.runLoggerLoggingT logger $ Blammo.logDebug "No initial store loaded from RDB dump file. Defaulting to empty store.")
+            (const . Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Initial store loaded from RDB dump file.")
+            mInitialStore
 
-            maybe
-                (logTrace_ "No initial store loaded from RDB dump file. Defaulting to empty store.")
-                (const $ logTrace_ "Initial store loaded from RDB dump file.")
-                mInitialStore
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo (fromString $ "Redis server listening on port " <> fromString port)
 
-            logInfo_ ("Redis server listening on port " <> fromString port)
-
-            lift $ runTCPServer Nothing port loggerEnv (handleRedisClientConnection initialServerStateRef serverSettingsRef loggerEnv)
+        runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef serverSettingsRef logger)
   where
     serverSettingsParser =
         info
             (serverSettings <**> helper <**> simpleVersioner redisVersion)
             (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
 
-handleRedisClientConnection :: ServerState -> ServerSettingsRef -> LoggerEnv -> Socket -> IO ()
-handleRedisClientConnection serverState settingsRef loggerEnv socket = do
+handleRedisClientConnection :: ServerState -> ServerSettingsRef -> Logger -> Socket -> IO ()
+handleRedisClientConnection serverState settingsRef logger socket = do
     req <- recv socket 1024
     unless (BS.null req) $ do
         catch @SomeException
             ( runServer
                 (ServerContext socket serverState settingsRef)
-                loggerEnv
+                logger
                 (handleCommandReq @ServerContext req)
             )
             ( \e -> do
-                runLogT loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel $ logAttention "An error occurred while handling client request" (displayException e)
+                Blammo.runLoggerLoggingT logger $ Blammo.logError $ "An error occurred while handling client request" :# ["Error" .= displayException e]
                 throwIO e -- Rethrow after logging so that the connection can be closed properly
             )
-        handleRedisClientConnection serverState settingsRef loggerEnv socket
+        handleRedisClientConnection serverState settingsRef logger socket
 
 -- | Running a TCP server with an accepted socket and its peer name. Lifted from https://www.stackage.org/haddock/lts-24.25/network-run-0.4.4/src/Network.Run.TCP.html#runTCPServer
-runTCPServer :: Maybe HostName -> ServiceName -> LoggerEnv -> (Socket -> IO a) -> IO a
-runTCPServer mhost port loggerEnv server = do
+runTCPServer :: Maybe HostName -> ServiceName -> Logger -> (Socket -> IO a) -> IO a
+runTCPServer mhost port logger server = do
     addr <- resolve Stream mhost port [AI_PASSIVE] NE.head
     bracket (openTCPServerSocket addr) close $ \sock ->
-        runTCPServerWithSocket sock loggerEnv server
+        runTCPServerWithSocket sock logger server
 
 {- | Running a TCP client with a connected socket for a given listen
 socket.
 -}
 runTCPServerWithSocket ::
     Socket ->
-    LoggerEnv ->
+    Logger ->
     -- | Called for each incoming connection, in a new thread
     (Socket -> IO a) ->
     IO a
-runTCPServerWithSocket sock loggerEnv server = forever $ do
-    now <- getCurrentTime
+runTCPServerWithSocket sock logger server = forever $ do
     bracketOnError (accept sock) (close . fst) $
         \(conn, _peer) ->
             void $
@@ -143,7 +127,7 @@ runTCPServerWithSocket sock loggerEnv server = forever $ do
                     (labelMe "TCP server" >> server conn)
                     ( \case
                         Left exception -> do
-                            logMessageIO loggerEnv now LogAttention ("Connection closed with error: " <> fromString (displayException exception)) ""
+                            void $ Blammo.runLoggerLoggingT logger $ Blammo.logError $ "Connection closed with error" :# ["error" .= displayException exception]
                             gclose conn
                         Right _ -> gclose conn
                     )

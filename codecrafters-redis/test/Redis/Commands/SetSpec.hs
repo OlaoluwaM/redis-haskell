@@ -11,13 +11,12 @@ import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
-import Data.String (fromString)
 import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (..))
 import Data.Time (addUTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime)
 import Redis.Commands.Parser (Command (..), commandParser)
-import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation, defaultSetCmdOpts)
+import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), defaultSetCmdOpts, setupTTLCalculation)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
@@ -25,7 +24,7 @@ import Redis.Server (ServerContext)
 import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
-import Redis.Utils (millisecondsToSeconds)
+import Redis.Utils (genericShow, millisecondsToSeconds)
 
 spec_set_cmd_tests :: Spec
 spec_set_cmd_tests = do
@@ -301,7 +300,7 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "green"
                             , mkBulkString "EXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampS
+                            , mkBulkString . genericShow $ ttlTimestampS
                             ]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
@@ -325,7 +324,7 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "yellow"
                             , mkBulkString "PXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampMS
+                            , mkBulkString . genericShow $ ttlTimestampMS
                             ]
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
@@ -349,7 +348,7 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "zero"
                             , mkBulkString "EXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampS
+                            , mkBulkString . genericShow $ ttlTimestampS
                             ]
                 let setCmdReq2 =
                         mkCmdReqStr

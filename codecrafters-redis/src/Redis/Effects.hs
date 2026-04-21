@@ -7,17 +7,18 @@ module Redis.Effects (
     RedisServerSettings,
     RDBWrite,
     ServerEffects,
+    Logging,
 ) where
 
-import Redis.Effect.Communication (Communication)
-import Redis.Effect.Time (Time)
 import Effectful (IOE, (:>))
 import Effectful.Concurrent (Concurrent)
 import Effectful.FileSystem (FileSystem)
-import Effectful.Log (Log)
 import Effectful.Reader.Static (Reader)
 import Network.Socket (Socket)
 import Optics (A_Lens, LabelOptic)
+import Redis.Effect.Communication (Communication)
+import Redis.Effect.Logging (Logging)
+import Redis.Effect.Time (Time)
 import Redis.Server.Settings (ServerSettingsRef)
 import Redis.ServerState (ServerState)
 
@@ -48,7 +49,7 @@ type RDBWrite r es =
     ( RedisClientCommunication r es
     , RedisServerState r es
     , RedisServerSettings r es
-    , Log :> es
+    , Logging :> es
     , FileSystem :> es
     )
 
@@ -57,7 +58,7 @@ type ServerEffects r =
      , FileSystem
      , Concurrent
      , Time
-     , Log
+     , Logging
      , Communication
      , IOE
      ]

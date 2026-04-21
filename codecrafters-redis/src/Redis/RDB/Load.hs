@@ -18,12 +18,12 @@ import Redis.RDB.Binary qualified as Binary
 
 import Control.Exception (SomeException, displayException)
 import Data.Foldable (foldl')
+import Data.String (IsString (fromString))
 import Effectful (Eff, (:>))
-import Effectful.Log (Log)
 import Prettyprinter (Pretty (pretty), line, (<+>))
+import Redis.Effect.Logging (Logging, logDebug)
 import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
 import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
-import Redis.Utils (logDebug)
 
 data RDBStateInfo = RDBStateInfo
     { redisVer :: Maybe RedisVersion
@@ -33,7 +33,7 @@ data RDBStateInfo = RDBStateInfo
     }
     deriving stock (Eq, Show)
 
-loadStoreFromRDBDump :: (Eff.FileSystem :> es, Log :> es) => ServerSettings -> Eff es (Maybe (Store, RDBStateInfo))
+loadStoreFromRDBDump :: (Eff.FileSystem :> es, Logging :> es) => ServerSettings -> Eff es (Maybe (Store, RDBStateInfo))
 loadStoreFromRDBDump settings = do
     let rdbFilePath = getRDBDumpFilePathFromSettings settings
     let rdbConfig = genRDBConfigFromSettings settings
@@ -43,11 +43,12 @@ loadStoreFromRDBDump settings = do
     case rdbFileE of
         Left err -> do
             let debugMsg =
-                    show $
-                        "Failed to decode RDB file:"
-                            <+> pretty (show rdbFilePath)
-                            <> line
-                            <> pretty err
+                    fromString $
+                        show $
+                            "Failed to decode RDB file:"
+                                <+> pretty (show rdbFilePath)
+                                <> line
+                                <> pretty err
 
             logDebug debugMsg
             pure Nothing

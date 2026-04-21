@@ -34,13 +34,11 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
-import Effectful.Log (LogLevel (..), defaultLogLevel)
 import GHC.Generics (Generic)
 import Options.Applicative (
     Parser,
     argument,
     auto,
-    flag,
     help,
     long,
     maybeReader,
@@ -51,6 +49,7 @@ import Options.Applicative (
     value,
  )
 import Options.Applicative.Types (ReadM, readerAsk)
+import Redis.Utils (genericShow)
 import System.FilePath (dropTrailingPathSeparator)
 
 -- Redis configurations as defined https://redis.io/docs/latest/operate/oss_and_stack/management/config/
@@ -63,7 +62,6 @@ import System.FilePath (dropTrailingPathSeparator)
 
 data Settings = Settings
     { settingsFromConfigFile :: Maybe RedisConfFile -- Path to a redis.conf file. Ideally we would parse this file and use it to set server settings in addition to what we get from the command line (with a preference of the latter), but for now we just accept it as an argument and do nothing with it
-    , logLevel :: LogLevel
     , settingsFromCommandLine :: ServerSettings -- Settings provided via command line arguments
     }
 
@@ -86,7 +84,6 @@ serverSettings :: Parser Settings
 serverSettings =
     Settings
         <$> optional parserForRedisConfigArgument
-        <*> logLevelParser
         <*> parserForCommandLineServerSettings
 
 parserForRedisConfigArgument :: Parser RedisConfFile
@@ -111,22 +108,12 @@ parseRedisConfFile = do
         then pure (RedisConfFile path)
         else fail "The file provided is not named redis.conf"
 
-logLevelParser :: Parser LogLevel
-logLevelParser =
-    flag
-        defaultLogLevel
-        LogTrace
-        ( long "verbose"
-            <> short 'v'
-            <> help "Enable verbose mode"
-        )
-
 serializeSettingsValue :: SettingValue -> ByteString
 serializeSettingsValue = \case
     TextVal txt -> encodeUtf8 txt
-    IntVal num -> fromString . show $ num
-    FloatVal float -> fromString . show $ float
-    BoolVal boolVal -> fromString . show $ boolVal
+    IntVal num -> genericShow num
+    FloatVal float -> genericShow float
+    BoolVal boolVal -> genericShow boolVal
     FilePathVal x -> fromString . fromSomeFile $ x
     DirPathVal x -> fromString . dropTrailingPathSeparator . fromSomeDir $ x
 
@@ -215,13 +202,13 @@ defaultGenerateChecksumWithRDB = True
 
 redisPortParser :: Parser (Setting, SettingValue)
 redisPortParser =
-    (const (Setting "port") &&& TextVal . fromString . show)
+    (const (Setting "port") &&& TextVal . genericShow)
         <$> option
             auto
             ( long redisPortSettingKeyText
                 <> short 'p'
                 <> metavar "PORT_NUMBER"
-                <> help ("Port number for the Redis server to listen on (default: " <> (fromString . show $ redisDefaultPort) <> ")")
+                <> help ("Port number for the Redis server to listen on (default: " <> genericShow redisDefaultPort <> ")")
                 <> value redisDefaultPort
             )
 
