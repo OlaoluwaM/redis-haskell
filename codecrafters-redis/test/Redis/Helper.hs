@@ -10,6 +10,7 @@ module Redis.Helper (
     getCmd,
     saveCmd,
     bgSaveCmd,
+    infoCmd,
     isInvalidCommand,
     seqHead,
 ) where
@@ -50,6 +51,9 @@ saveCmd = mkBulkString "SAVE"
 
 bgSaveCmd :: RESPDataType
 bgSaveCmd = mkBulkString "BGSAVE"
+
+infoCmd :: RESPDataType
+infoCmd = mkBulkString "INFO"
 
 isInvalidCommand :: Command -> Bool
 isInvalidCommand (InvalidCommand _) = True
