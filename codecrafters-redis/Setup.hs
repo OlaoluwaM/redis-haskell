@@ -29,7 +29,7 @@ generateBuildInfo _ _ = do
 
     let contents =
             unlines
-                [ "module BuildInfo (gitSha1, gitDirty, ghcVersion, buildId) where"
+                [ "module BuildInfo (gitSha1, gitDirty, buildId) where"
                 , ""
                 , "import Data.String (IsString)"
                 , ""
