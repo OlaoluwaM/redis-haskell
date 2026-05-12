@@ -120,7 +120,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "*"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected = map mkNonNullBulkString ["hello", "foo", "hallo"]
@@ -143,7 +151,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h*llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- h*llo matches: hello, hallo, hxllo, hllo, heeeello
@@ -167,7 +183,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h?llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- h?llo matches exactly one character: hello, hallo, hxllo
@@ -189,7 +213,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h[ae]llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- h[ae]llo matches: hello, hallo (but not hillo)
@@ -211,7 +243,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h[^e]llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- h[^e]llo matches: hallo, hbllo (but not hello)
@@ -234,7 +274,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h[a-b]llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- h[a-b]llo matches: hallo, hbllo
@@ -257,7 +305,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "user:*"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected = map mkNonNullBulkString ["user:123", "user:456", "user:789:profile"]
@@ -277,7 +333,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "mykey"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "mykey"]
                 result `shouldBe` expected
@@ -293,7 +357,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "*name"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected = map mkNonNullBulkString ["firstname", "lastname", "username"]
@@ -314,7 +386,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "*user*"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 let expected = map mkNonNullBulkString ["user:123", "active_user", "superuser"]
@@ -337,7 +417,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "hello"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 -- Only exact case match "hello" is returned
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "hello"]
@@ -353,7 +441,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "HELLO"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 -- Only exact case match "HELLO" is returned
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "HELLO"]
@@ -369,7 +465,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "h*llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 -- Lowercase pattern doesn't match uppercase keys
                 result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
@@ -385,7 +489,15 @@ spec_keys_cmd_tests = do
                 initialServerState <- initializeServerState testStore
                 let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "H*llo"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+                result <-
+                    runTestServer
+                        (handleCommandReq @ServerContext cmdReq)
+                        ( PassableTestContext
+                            { serverState = Just initialServerState
+                            , settings = Nothing
+                            , metadata = Nothing
+                            }
+                        )
 
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
                 -- Only keys matching "H*llo" pattern (capital H, lowercase llo)
@@ -406,7 +518,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "nonexistent*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
@@ -419,7 +539,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "xyz*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
@@ -428,7 +556,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
@@ -441,7 +577,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "nonexistent"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
@@ -457,7 +601,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
             let expected =
@@ -485,7 +637,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "key\\*star"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             -- Escaping special characters to match literally
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
@@ -504,7 +664,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString ""]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
 
@@ -519,7 +687,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString longKey]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString longKey]
             result `shouldBe` expected
@@ -534,7 +710,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "[0-9]*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
             let expected = map mkNonNullBulkString ["123", "456"]
@@ -552,7 +736,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "key5*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
             -- Should match key5, key50, key51, ..., key59 (11 keys)
@@ -574,7 +766,15 @@ spec_keys_cmd_tests = do
             initialServerState <- initializeServerState testStore
             let cmdReq = mkCmdReqStr [keysCmd, mkBulkString "user:*"]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{serverState = Just initialServerState, settings = Nothing})
+            result <-
+                runTestServer
+                    (handleCommandReq @ServerContext cmdReq)
+                    ( PassableTestContext
+                        { serverState = Just initialServerState
+                        , settings = Nothing
+                        , metadata = Nothing
+                        }
+                    )
 
             let parsedResult = respArrayToList <$> parseOnly arrayParser result
 

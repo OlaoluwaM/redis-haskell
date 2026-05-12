@@ -80,6 +80,7 @@ spec_ping_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -95,6 +96,7 @@ spec_ping_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -110,6 +112,7 @@ spec_ping_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -125,6 +128,7 @@ spec_ping_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 

@@ -4,7 +4,9 @@ module Redis.Effects (
     HasServerState,
     RedisServerState,
     HasServerSettings,
+    HasServerMetadata,
     RedisServerSettings,
+    RedisServerMetadata,
     RDBWrite,
     ServerEffects,
     Logging,
@@ -19,12 +21,14 @@ import Optics (A_Lens, LabelOptic)
 import Redis.Effect.Communication (Communication)
 import Redis.Effect.Logging (Logging)
 import Redis.Effect.Time (Time)
+import Redis.Server.Metadata (ServerMetadata)
 import Redis.Server.Settings (ServerSettingsRef)
 import Redis.ServerState (ServerState)
 
 type HasClientSocket r = (LabelOptic "clientSocket" A_Lens r r Socket Socket)
 type HasServerState r = (LabelOptic "serverState" A_Lens r r ServerState ServerState)
 type HasServerSettings r = (LabelOptic "serverSettingsRef" A_Lens r r ServerSettingsRef ServerSettingsRef)
+type HasServerMetadata r = (LabelOptic "serverMetadata" A_Lens r r ServerMetadata ServerMetadata)
 
 type RedisClientCommunication r es =
     ( HasClientSocket r
@@ -43,6 +47,11 @@ type RedisServerSettings r es =
     ( HasServerSettings r
     , Reader r :> es
     , Concurrent :> es
+    )
+
+type RedisServerMetadata r es =
+    ( HasServerMetadata r
+    , Reader r :> es
     )
 
 type RDBWrite r es =

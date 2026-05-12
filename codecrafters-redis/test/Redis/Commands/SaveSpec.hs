@@ -94,6 +94,7 @@ saveCmdPropTest = withTests 75 $ H.property $ do
                 ( PassableTestContext
                     { settings = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -170,6 +171,7 @@ spec_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -178,6 +180,7 @@ spec_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -198,6 +201,7 @@ spec_save_cmd_tests = do
                     ( PassableTestContext
                         { settings = Just testSettingsForSnapshot
                         , serverState = Just initialServerState
+                        , metadata = Nothing
                         }
                     )
 

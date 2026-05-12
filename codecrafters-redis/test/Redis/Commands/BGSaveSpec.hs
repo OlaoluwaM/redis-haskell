@@ -101,6 +101,7 @@ spec_bg_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -109,6 +110,7 @@ spec_bg_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -127,6 +129,7 @@ spec_bg_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 

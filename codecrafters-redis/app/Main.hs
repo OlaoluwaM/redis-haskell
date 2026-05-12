@@ -12,6 +12,7 @@ import Data.List.NonEmpty qualified as NE
 import Effectful qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Redis.Effect.Logging qualified as Eff
+import Redis.Server.Metadata qualified as Metadata
 
 import Blammo.Logging (Logger, Message (..), (.=))
 import Control.Concurrent (forkFinally, myThreadId)
@@ -26,6 +27,7 @@ import Control.Exception (
  )
 import Control.Monad (forever, unless, void)
 import Data.String (IsString (fromString))
+import Data.Time (getCurrentTime)
 import GHC.Conc (labelThread)
 import Network.Run.TCP (openTCPServerSocket, resolve)
 import Network.Socket (AddrInfoFlag (..), HostName, ServiceName, Socket, SocketType (..), accept, close, gracefulClose)
@@ -44,10 +46,9 @@ import Redis.Handler (handleCommandReq)
 import Redis.RDB.Load (loadStoreFromRDBDump)
 import Redis.Server (runServer)
 import Redis.Server.Context (ServerContext (..))
+import Redis.Server.Metadata (ServerMetadata (..))
 import Redis.Server.Settings.Get (getRedisPortFromSettings)
 import Redis.Server.Version (redisVersion)
-import Redis.Utils (myTracePrettyM)
-import System.Environment (getEnv)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
@@ -56,10 +57,10 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
-    en <- getEnv "LOG_LEVEL"
-    myTracePrettyM "The env " en
     settings <- execParser serverSettingsParser
+    environment <- Metadata.loadEnvironment
     let port = getRedisPortFromSettings settings.settingsFromCommandLine
+    let configFilePathM = settings.settingsConfigFilePath
 
     Blammo.withLoggerEnv $ \logger -> do
         Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Loading initial store from RDB dump file..."
@@ -80,20 +81,29 @@ main = do
 
         Blammo.runLoggerLoggingT logger $ Blammo.logInfo (fromString $ "Redis server listening on port " <> fromString port)
 
-        runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef serverSettingsRef logger)
+        startupTime <- getCurrentTime
+
+        let serverMetadata =
+                ServerMetadata
+                    { startTime = startupTime
+                    , configFilePath = configFilePathM
+                    , environment = environment
+                    }
+
+        runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef serverSettingsRef logger serverMetadata)
   where
     serverSettingsParser =
         info
             (serverSettings <**> helper <**> simpleVersioner redisVersion)
             (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
 
-handleRedisClientConnection :: ServerState -> ServerSettingsRef -> Logger -> Socket -> IO ()
-handleRedisClientConnection serverState settingsRef logger socket = do
+handleRedisClientConnection :: ServerState -> ServerSettingsRef -> Logger -> ServerMetadata -> Socket -> IO ()
+handleRedisClientConnection serverState settingsRef logger metadata socket = do
     req <- recv socket 1024
     unless (BS.null req) $ do
         catch @SomeException
             ( runServer
-                (ServerContext socket serverState settingsRef)
+                (ServerContext socket serverState settingsRef metadata)
                 logger
                 (handleCommandReq @ServerContext req)
             )
@@ -101,7 +111,7 @@ handleRedisClientConnection serverState settingsRef logger socket = do
                 Blammo.runLoggerLoggingT logger $ Blammo.logError $ "An error occurred while handling client request" :# ["Error" .= displayException e]
                 throwIO e -- Rethrow after logging so that the connection can be closed properly
             )
-        handleRedisClientConnection serverState settingsRef logger socket
+        handleRedisClientConnection serverState settingsRef logger metadata socket
 
 -- | Running a TCP server with an accepted socket and its peer name. Lifted from https://www.stackage.org/haddock/lts-24.25/network-run-0.4.4/src/Network.Run.TCP.html#runTCPServer
 runTCPServer :: Maybe HostName -> ServiceName -> Logger -> (Socket -> IO a) -> IO a

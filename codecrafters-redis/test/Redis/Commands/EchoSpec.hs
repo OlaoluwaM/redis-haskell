@@ -65,6 +65,7 @@ spec_echo_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -81,6 +82,7 @@ spec_echo_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -97,6 +99,7 @@ spec_echo_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
@@ -113,6 +116,7 @@ spec_echo_cmd_tests = do
                     ( PassableTestContext
                         { settings = Nothing
                         , serverState = Nothing
+                        , metadata = Nothing
                         }
                     )
 
