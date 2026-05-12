@@ -12,12 +12,16 @@ module Redis.Utils (
     toUpperBs,
     showUsingBase,
     genericShow,
+    inverseMap,
+    universe,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as M
 import Data.String (IsString (..))
 import Debug.Pretty.Simple (pTrace, pTraceM)
 
@@ -57,3 +61,26 @@ showUsingBase base num = go num ""
 
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
+
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#inverseMap
+inverseMap ::
+    forall a k.
+    (Bounded a, Enum a, Ord k) =>
+    (a -> k) ->
+    (k -> Maybe a)
+inverseMap f = (`M.lookup` dict)
+  where
+    dict :: Map k a
+    dict = M.fromList (fmapToFst f (universe @a))
+
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#universe
+universe :: (Bounded a, Enum a) => [a]
+universe = [minBound .. maxBound]
+
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#fmapToFst
+fmapToFst :: (Functor f) => (a -> b) -> f a -> f (b, a)
+fmapToFst = fmap . toFst
+
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#toFst
+toFst :: (a -> b) -> a -> (b, a)
+toFst f a = (f a, a)

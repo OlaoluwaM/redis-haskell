@@ -6,6 +6,7 @@ import Redis.Commands.BGSave
 import Redis.Commands.Config.Get
 import Redis.Commands.Echo
 import Redis.Commands.Get
+import Redis.Commands.Info
 import Redis.Commands.LastSave
 import Redis.Commands.Set
 import Redis.Effects
@@ -38,6 +39,7 @@ handleCommandReq ::
     ( RedisClientCommunication r es
     , RedisServerState r es
     , RedisServerSettings r es
+    , RedisServerMetadata r es
     , Eff.FileSystem :> es
     , Logging :> es
     ) =>
@@ -52,6 +54,7 @@ dispatchCmd ::
     ( RedisClientCommunication r es
     , RedisServerState r es
     , RedisServerSettings r es
+    , RedisServerMetadata r es
     , Eff.FileSystem :> es
     , Logging :> es
     ) =>
@@ -65,6 +68,7 @@ dispatchCmd Save = handleSave @r
 dispatchCmd (BGSave bgSaveCmdArgs) = handleBGSave @r bgSaveCmdArgs
 dispatchCmd LastSave = handleLastSave @r
 dispatchCmd (Keys keyCmdArgs) = handleKeys @r keyCmdArgs
+dispatchCmd (Info infoCmdArgs) = handleInfo @r infoCmdArgs
 dispatchCmd (InvalidCommand msg) = do
     env <- ReaderEff.ask @r
     let socket = view #clientSocket env

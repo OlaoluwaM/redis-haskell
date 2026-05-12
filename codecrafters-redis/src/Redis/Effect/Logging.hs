@@ -22,3 +22,5 @@ runLoggingWithLogger logger = Eff.interpret_ $ \case
     LogDebug msg -> Blammo.runLoggerLoggingT logger $ Blammo.logDebug msg
     LogWarn msg -> Blammo.runLoggerLoggingT logger $ Blammo.logWarn msg
     LogError msg -> Blammo.runLoggerLoggingT logger $ Blammo.logError msg
+
+-- TODO: Can we add a pure interperter?
