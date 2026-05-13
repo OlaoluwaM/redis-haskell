@@ -52,6 +52,7 @@ mkInfoCmdArg rawInfoCmdSections =
                 NullBulkString -> Nothing
                 BulkString s -> case T.decodeUtf8' s of
                     Left _ -> Nothing
+                    -- NOTE: It might be faster to just implement the inverse of renderInfoCmdSection. inverseMap is a convenience function. Not as efficient since it builds a Map on each call. We could make it a CAF (top-level binding) to mitigate that and allow for sharing but y'know what they say about over-optimization
                     Right sectionText -> inverseMap renderInfoCmdSection . T.toLower $ sectionText
             )
         $ rawInfoCmdSections
