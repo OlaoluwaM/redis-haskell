@@ -24,7 +24,7 @@ data Environment = DEV | TEST | PROD
     deriving stock (Eq, Show)
 
 loadEnvironment :: IO Environment
-loadEnvironment = Env.parse (Env.header "Redis Haskell Server Environment") $ Env.var (Env.eitherReader @Env.Error parseEnvVar) "ENV" (Env.def DEV)
+loadEnvironment = Env.parse (Env.header "Redis Haskell Server Environment") $ Env.var (Env.eitherReader parseEnvVar) "ENV" (Env.def DEV)
 
 parseEnvVar :: String -> Either String Environment
 parseEnvVar str =
