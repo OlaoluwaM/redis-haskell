@@ -15,10 +15,11 @@ import Data.Text qualified as T
 import Effectful.Reader.Static qualified as ReaderEff
 
 import Blammo.Logging (Message (..), (.=))
+import Control.Exception (Exception (displayException))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
 import Data.String.Interpolate (i)
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (decodeUtf8')
 import Effectful (Eff, (:>))
 import Effectful.FileSystem qualified as Eff
 import Optics (view)
@@ -46,7 +47,7 @@ handleCommandReq ::
     ByteString -> Eff es ()
 handleCommandReq rawCmdReq = do
     let command = fromEither . mapLeft (mkInvalidCommand . T.pack) . parseOnly commandParser $ rawCmdReq
-    logDebug $ "Handling req for command" :# ["Command" .= command, "Raw command" .= decodeUtf8 rawCmdReq]
+    logDebug $ "Handling req for command" :# ["Command" .= command, "Raw command" .= mapLeft displayException (decodeUtf8' rawCmdReq)]
     dispatchCmd @r command
 
 dispatchCmd ::

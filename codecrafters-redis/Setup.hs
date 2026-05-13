@@ -9,6 +9,7 @@ import Distribution.Simple.Setup (BuildFlags)
 import Redis.RDB.CRC64 (CheckSum, crc64, fromChecksum)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Process (readProcess)
+import Text.Read (readMaybe)
 
 main :: IO ()
 main =
@@ -46,10 +47,9 @@ generateBuildInfo _ _ = do
     let path = "generated/BuildInfo.hs"
 
     currGitSha1 <- trim <$> readProcess "grep" ["-m1", "-oP", "^gitSha1\\s*=\\s*\"\\K[^\"]+(?=\")", path] "" `catch` \(_ :: SomeException) -> pure ""
-    currGitDirty <- read @Bool . trim <$> readProcess "grep" ["-m1", "-oP", "^gitDirty\\s*=\\s*\\K(True|False)", path] "" `catch` \(_ :: SomeException) -> pure ""
+    currGitDirtyM <- readMaybe @Bool . trim <$> readProcess "grep" ["-m1", "-oP", "^gitDirty\\s*=\\s*\\K(True|False)", path] "" `catch` \(_ :: SomeException) -> pure ""
 
-    let isUnchanged =
-            currGitSha1 == gitSha1 && currGitDirty == gitDirty
+    let isUnchanged = maybe False (\currGitDirty -> currGitSha1 == gitSha1 && currGitDirty == gitDirty) currGitDirtyM
 
     if isUnchanged
         then putStrLn "Build info is up to date, skipping regeneration."

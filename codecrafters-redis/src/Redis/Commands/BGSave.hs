@@ -160,5 +160,5 @@ performRDBSave serverState serverSettingsRef socket onSuccess = do
 
 notifyOfSaveError :: (Logging :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()
 notifyOfSaveError socket e returnMsg = do
-    logError $ "Error occured while attempting to save RDB file: " :# ["Error" .= displayException e]
+    logError $ "Error occurred while attempting to save RDB file: " :# ["Error" .= displayException e]
     sendMessage socket . serializeRESPDataType $ SimpleString returnMsg

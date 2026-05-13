@@ -50,7 +50,9 @@ mkInfoCmdArg rawInfoCmdSections =
         . mapMaybe
             ( \case
                 NullBulkString -> Nothing
-                BulkString s -> inverseMap renderInfoCmdSection . T.toLower . T.decodeUtf8 $ s
+                BulkString s -> case T.decodeUtf8' s of
+                    Left _ -> Nothing
+                    Right sectionText -> inverseMap renderInfoCmdSection . T.toLower $ sectionText
             )
         $ rawInfoCmdSections
 

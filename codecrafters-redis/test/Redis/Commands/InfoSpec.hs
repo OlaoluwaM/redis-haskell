@@ -2,7 +2,7 @@ module Redis.Commands.InfoSpec where
 
 import Test.Hspec
 
-import Data.ByteString (fromStrict)
+import Data.ByteString.Lazy (fromStrict)
 import Data.String (IsString (fromString))
 import Data.Traversable (for)
 import Path (parseRelFile, reldir, relfile, toFilePath, (</>))
@@ -89,7 +89,7 @@ test_info_cmd_golden_test_filtered_by_special_section_keywords = for ["all" :: S
 
     let goldenPath = [reldir|test/Redis/Commands/Info/golden|] </> goldenPathFilename
 
-    pure $ goldenVsString ("Golden test for INFO command filtered by multiple sections and the " <> specialSectionKeywordS <> " keywrod") (toFilePath goldenPath) (fromStrict <$> runInfoCmd)
+    pure $ goldenVsString ("Golden test for INFO command filtered by multiple sections and the " <> specialSectionKeywordS <> " keyword") (toFilePath goldenPath) (fromStrict <$> runInfoCmd)
 
 spec_info_cmd_golden_default_equivalency :: Spec
 spec_info_cmd_golden_default_equivalency = describe "INFO command invocation equivalency tests" $ do
