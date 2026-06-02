@@ -28,7 +28,7 @@ import Redis.Effect.Communication (sendMessage)
 import Redis.Effect.Time (Time)
 import Redis.Effects (RedisClientCommunication, RedisServerMetadata, RedisServerSettings)
 import Redis.Server.Settings.Get (getRedisPortFromSettings)
-import Redis.Utils (inverseMap, universe)
+import Redis.Utils (universe)
 
 -- https://redis.io/docs/latest/commands/info/
 
@@ -52,32 +52,32 @@ mkInfoCmdArg rawInfoCmdSections =
                 NullBulkString -> Nothing
                 BulkString s -> case T.decodeUtf8' s of
                     Left _ -> Nothing
-                    -- NOTE: It might be faster to just implement the inverse of renderInfoCmdSection. inverseMap is a convenience function. Not as efficient since it builds a Map on each call. We could make it a CAF (top-level binding) to mitigate that and allow for sharing but y'know what they say about over-optimization
-                    Right sectionText -> inverseMap renderInfoCmdSection . T.toLower $ sectionText
+                    Right sectionText -> parseInfoCmdSection . T.toLower $ sectionText
             )
         $ rawInfoCmdSections
 
-renderInfoCmdSection :: InfoCmdSection -> Text
-renderInfoCmdSection Server = "server"
-renderInfoCmdSection Clients = "clients"
-renderInfoCmdSection Memory = "memory"
-renderInfoCmdSection Persistence = "persistence"
-renderInfoCmdSection Threads = "threads"
-renderInfoCmdSection Stats = "stats"
-renderInfoCmdSection Replication = "replication"
-renderInfoCmdSection CPU = "cpu"
-renderInfoCmdSection CommandStats = "commandstats"
-renderInfoCmdSection LatencyStats = "latencystats"
-renderInfoCmdSection Sentinel = "sentinel"
-renderInfoCmdSection Cluster = "cluster"
-renderInfoCmdSection Modules = "modules"
-renderInfoCmdSection Keyspace = "keyspace"
-renderInfoCmdSection Keysizes = "keysizes"
-renderInfoCmdSection ErrorStats = "errorstats"
-renderInfoCmdSection Hotkeys = "hotkeys"
-renderInfoCmdSection All = "all"
-renderInfoCmdSection Default = "default"
-renderInfoCmdSection Everything = "everything"
+parseInfoCmdSection :: Text -> Maybe InfoCmdSection
+parseInfoCmdSection "server" = Just Server
+parseInfoCmdSection "clients" = Just Clients
+parseInfoCmdSection "memory" = Just Memory
+parseInfoCmdSection "persistence" = Just Persistence
+parseInfoCmdSection "threads" = Just Threads
+parseInfoCmdSection "stats" = Just Stats
+parseInfoCmdSection "replication" = Just Replication
+parseInfoCmdSection "cpu" = Just CPU
+parseInfoCmdSection "commandstats" = Just CommandStats
+parseInfoCmdSection "latencystats" = Just LatencyStats
+parseInfoCmdSection "sentinel" = Just Sentinel
+parseInfoCmdSection "cluster" = Just Cluster
+parseInfoCmdSection "modules" = Just Modules
+parseInfoCmdSection "keyspace" = Just Keyspace
+parseInfoCmdSection "keysizes" = Just Keysizes
+parseInfoCmdSection "errorstats" = Just ErrorStats
+parseInfoCmdSection "hotkeys" = Just Hotkeys
+parseInfoCmdSection "all" = Just All
+parseInfoCmdSection "default" = Just Default
+parseInfoCmdSection "everything" = Just Everything
+parseInfoCmdSection _ = Nothing
 
 -- As witness testing the INFO command
 defaultSectionsToShow :: [InfoCmdSection]
