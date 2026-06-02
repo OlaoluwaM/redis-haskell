@@ -79,7 +79,7 @@ parseInfoCmdSection "default" = Just Default
 parseInfoCmdSection "everything" = Just Everything
 parseInfoCmdSection _ = Nothing
 
--- As witness testing the INFO command
+-- As witnessed when testing the INFO command on an official Redis server (docker image)
 defaultSectionsToShow :: [InfoCmdSection]
 defaultSectionsToShow = [Server, Clients, Memory, Persistence, Stats, Replication, CPU, Modules, ErrorStats, Cluster, Keyspace]
 
