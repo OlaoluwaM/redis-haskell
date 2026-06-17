@@ -65,7 +65,6 @@ library
       Redis.Utils
       Rerefined.Extra
       Rerefined.Orphans
-      BuildInfo
   other-modules:
       Paths_codecrafters_redis
   hs-source-dirs:
