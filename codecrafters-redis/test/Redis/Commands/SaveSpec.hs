@@ -19,7 +19,6 @@ import Redis.RDB.Binary qualified as Binary
 import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVarIO)
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.Foldable (for_)
-import Data.String (IsString (..))
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Hedgehog (withTests)
@@ -31,6 +30,7 @@ import Redis.RDB.Load (loadRDBFile)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
 import Redis.Server.Context (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
+import Redis.Utils (genericShow)
 import System.Directory (doesFileExist, removeFile)
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog (testProperty)
@@ -69,7 +69,7 @@ genStoreEntry = do
     valueStr <-
         Gen.choice
             [ RedisStr <$> Gen.bytes (Range.linear 0 100)
-            , RedisStr . fromString . show <$> Gen.int (Range.linear (-1000000) 1000000)
+            , RedisStr . genericShow <$> Gen.int (Range.linear (-1000000) 1000000)
             ]
     timestamp <- Gen.maybe $ UnixTimestampMS <$> Gen.word (Range.linearBounded @Word)
     let storeValue = mkStoreValue (MkRedisStr valueStr) timestamp
@@ -94,6 +94,7 @@ saveCmdPropTest = withTests 75 $ H.property $ do
                 ( PassableTestContext
                     { settings = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -170,6 +171,7 @@ spec_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -178,6 +180,7 @@ spec_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -198,6 +201,7 @@ spec_save_cmd_tests = do
                     ( PassableTestContext
                         { settings = Just testSettingsForSnapshot
                         , serverState = Just initialServerState
+                        , metadata = Nothing
                         }
                     )
 

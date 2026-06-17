@@ -96,7 +96,7 @@ spec_get_cmd_tests = do
                 let cmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType Null
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
 
                 result `shouldBe` expected
 
@@ -111,9 +111,9 @@ spec_get_cmd_tests = do
                 let expected = serializeRESPDataType (mkBulkString value)
 
                 -- Run the commands in sequence
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 result `shouldBe` expected
 
@@ -125,9 +125,9 @@ spec_get_cmd_tests = do
                 let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType (mkBulkString value)
 
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 result `shouldBe` expected
 
@@ -138,16 +138,16 @@ spec_get_cmd_tests = do
                 let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                 let expected = serializeRESPDataType (mkBulkString value)
 
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 result `shouldBe` expected
 
             it "should return an error for non-string value types" $ \initialServerState -> do
                 let key = "car:1"
                 let cmdReq = mkCmdReqStr [getCmd, mkBulkString key]
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
                 result `shouldSatisfy` BS.isPrefixOf "(error)"
 
             context "Supports key expiry" $ do
@@ -158,13 +158,13 @@ spec_get_cmd_tests = do
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PXAT", mkBulkString "1715385600000"]
 
                     -- Set the key with an already expired TTL
-                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                     -- Then try to GET the key - should return NULL since it's expired
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                     let expected = serializeRESPDataType nullBulkString
 
-                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
                     result `shouldBe` expected
 
                 it "should return value for a key with a TTL that has not expired" $ \serverState -> do
@@ -172,11 +172,11 @@ spec_get_cmd_tests = do
                     let value = "some value"
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "px", mkBulkString "100"]
 
-                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState, metadata = Nothing})
 
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
 
-                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState, metadata = Nothing})
                     result `shouldBe` serializeRESPDataType (mkBulkString value)
 
                 it "should handle a key with a short TTL" $ \initialServerState -> do
@@ -186,17 +186,17 @@ spec_get_cmd_tests = do
                     let setCmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString value, mkBulkString "PX", mkBulkString "100"]
 
                     -- Set the key with short TTL
-                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                    runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                     -- Wait for the TTL to expire
-                    -- threaDelay takes time in microseconds so we must convert from milliseconds to microseconds for it to work as we want
+                    -- threadDelay takes time in microseconds so we must convert from milliseconds to microseconds for it to work as we want
                     liftIO $ threadDelay 150000 -- 150ms
 
                     -- Then try to GET the key - should return NULL since it's expired
                     let getCmdReq = mkCmdReqStr [getCmd, mkBulkString key]
                     let expected = serializeRESPDataType nullBulkString
 
-                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                    result <- runTestServer (handleCommandReq @ServerContext getCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
                     result `shouldBe` expected
 
 initializeServerState :: IO ServerState

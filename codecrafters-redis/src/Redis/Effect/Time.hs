@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
-module Effect.Time where
+module Redis.Effect.Time where
 
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX qualified as Time

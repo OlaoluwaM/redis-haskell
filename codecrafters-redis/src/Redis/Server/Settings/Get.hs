@@ -10,6 +10,7 @@ import Data.Text qualified as T
 import Path
 import Redis.RDB.Config (MkRDBConfigArg (..), RDBConfig, defaultRDBConfig, mkRDBConfig)
 import Redis.Server.Settings
+import Data.String (IsString, fromString)
 
 getRDBDumpFilePathFromSettings :: ServerSettings -> SomeBase File
 getRDBDumpFilePathFromSettings (ServerSettings settings) = fromMaybe defaultRdbDumpFilePath $ do
@@ -38,10 +39,10 @@ genRDBConfigFromSettings (ServerSettings settings) = fromMaybe defaultRDBConfig 
                         }
         _ -> Nothing
 
-getRedisPortFromSettings :: ServerSettings -> String
-getRedisPortFromSettings (ServerSettings settings) = fromMaybe (show redisDefaultPort) $ do
+getRedisPortFromSettings :: IsString a => ServerSettings -> a
+getRedisPortFromSettings (ServerSettings settings) = fromMaybe (fromString $ show redisDefaultPort) $ do
     redisPortVal <- HashMap.lookup redisPortSettingKey settings
 
     case redisPortVal of
-        (TextVal portStr) -> pure . T.unpack $ portStr
+        (TextVal portStr) -> pure . fromString $ T.unpack portStr
         _ -> Nothing

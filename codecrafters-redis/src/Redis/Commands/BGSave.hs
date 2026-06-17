@@ -18,6 +18,7 @@ import Effectful.FileSystem qualified as Eff
 import Effectful.Reader.Static qualified as ReaderEff
 import Redis.RDB.Binary qualified as RDB
 
+import Blammo.Logging (Message (..), (.=))
 import Control.Concurrent.STM (
     modifyTVar,
     putTMVar,
@@ -27,19 +28,18 @@ import Control.Exception (Exception (..), SomeException)
 import Control.Monad (void)
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
-import Effect.Communication (Communication, sendMessage)
-import Effect.Time (Time, getCurrentTime, getPosixTime)
 import Effectful (Eff, (:>))
-import Effectful.Log (Log)
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import Network.Socket (Socket)
 import Optics (set, view)
+import Redis.Effect.Communication (Communication, sendMessage)
+import Redis.Effect.Logging (Logging, logError)
+import Redis.Effect.Time (Time, getCurrentTime, getPosixTime)
 import Redis.Effects (RDBWrite)
 import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
 import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
-import Redis.Utils (logInternalServerError)
 
 -- https://redis.io/docs/latest/commands/save/
 -- https://redis.io/docs/latest/commands/bgsave/
@@ -111,7 +111,7 @@ handleBGSave _ = do
 
 performRDBSave ::
     ( HasCallStack
-    , Log :> es
+    , Logging :> es
     , Eff.FileSystem :> es
     , Eff.Concurrent :> es
     , Communication :> es
@@ -135,10 +135,10 @@ performRDBSave serverState serverSettingsRef socket onSuccess = do
             Nothing -> do
                 -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing
                 -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
-                logInternalServerError @_ @Text "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
+                logError "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
                 notifyUserOfExistingBackgroundSave
             Just mLastRDBSaveTimeM -> do
-                logInternalServerError @_ @Text "RDB save failed due to an exception"
+                logError "RDB save failed due to an exception"
                 STMEff.atomically $ putTMVar lastRDBSave.inProgress mLastRDBSaveTimeM
         )
         ( \case
@@ -158,7 +158,7 @@ performRDBSave serverState serverSettingsRef socket onSuccess = do
                 onSuccess
         )
 
-notifyOfSaveError :: (Log :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()
+notifyOfSaveError :: (Logging :> es, Communication :> es, Exception e) => Socket -> e -> Text -> Eff es ()
 notifyOfSaveError socket e returnMsg = do
-    logInternalServerError $ "Error occured while attempting to save RDB file: " <> displayException e
+    logError $ "Error occurred while attempting to save RDB file: " :# ["Error" .= displayException e]
     sendMessage socket . serializeRESPDataType $ SimpleString returnMsg

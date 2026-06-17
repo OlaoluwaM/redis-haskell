@@ -1,0 +1,51 @@
+$751
+# Server
+redis_version:7.4.8
+redis_git_sha1:<MASKED>
+redis_git_dirty:<MASKED>
+redis_build_id:<MASKED>
+redis_mode:standalone
+os:<MASKED>
+arch_bits:64
+monotonic_clock:POSIXTime getCurrentTime
+multiplexing_api:epoll
+atomicvar_api:STM
+ghc_version:<MASKED>
+process_id:<MASKED>
+process_supervised:unknown
+run_id:<MASKED>
+tcp_port:6379
+server_time_usec:<MASKED>
+uptime_in_seconds:<MASKED>
+uptime_in_days:<MASKED>
+hz:0
+configured_hz:0
+lru_clock:0
+executable:codecrafters-redis-test
+config_file:
+io_threads_active:1
+
+# Clients
+
+# Memory
+
+# Persistence
+
+# Stats
+
+# Replication
+role:master
+connected_slaves:0
+master_replid:nothing
+master_repl_offset:nothing
+
+# CPU
+
+# Modules
+
+# ErrorStats
+
+# Cluster
+
+# Keyspace
+

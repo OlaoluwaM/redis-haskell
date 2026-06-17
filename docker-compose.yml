@@ -1,0 +1,14 @@
+services:
+  # For development purposes, to experiment against a real Redis server, using the official Redis image.
+  redis:
+    image: redis:7.4-bookworm
+    command: ["redis-server", "/redis/redis.conf"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis:/redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

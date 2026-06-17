@@ -13,12 +13,12 @@ dependencies:
   - binary
   - binary-instances
   - bits-show
+  - Blammo
+  - Blammo-wai
   - bytestring # useful to send bytes over the network
   - containers
   - effectful
   - effectful-th
-  - log-base
-  - log-effectful
   - mono-traversable
   - mtl
   - network
@@ -98,14 +98,27 @@ benchmarks:
       - codecrafters-redis
       - criterion
 
+# For the custom Setup.hs script
+custom-setup:
+  dependencies:
+    - base
+    - Cabal
+    - directory
+    - process
+    - codecrafters-redis-ffi
+
 library:
-  source-dirs: src
+  source-dirs:
+    - src
+    - generated
   dependencies:
     - aeson
     - async # may help with concurrency
     - attoparsec
+    - base16
     - codecrafters-redis-ffi
     - deepseq
+    - entropy
     - envparse
     - extra
     - exceptions
@@ -125,6 +138,7 @@ library:
     - stm
     - tagged
     - template-haskell
+    - unix
     - unordered-containers
     - utf8-string
     - vector

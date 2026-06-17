@@ -10,7 +10,7 @@ import Effectful.Reader.Static qualified as ReaderEff
 
 import Control.Applicative ((<|>))
 import Control.Monad (join)
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import Optics (view)
 import Redis.RESP (RESPDataType (..), RESPInt (..), serializeRESPDataType)

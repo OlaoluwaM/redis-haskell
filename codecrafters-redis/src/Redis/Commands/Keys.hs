@@ -14,7 +14,7 @@ import Data.Aeson (ToJSON (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
-import Effect.Communication (sendMessage)
+import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import Effectful.Concurrent.STM qualified as STMEff
 import GHC.Generics (Generic)

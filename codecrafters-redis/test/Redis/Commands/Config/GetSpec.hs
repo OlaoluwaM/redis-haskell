@@ -141,7 +141,7 @@ spec_config_get_cmd_tests = do
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout"]
                 let testSettings = ServerSettings{settings = HashMap.fromList [(Setting "timeout", IntVal 300)]}
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings) Nothing)
 
                 -- Expected format: ["timeout", "300"]
                 let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "timeout", mkNonNullBulkString "300"]
@@ -150,7 +150,7 @@ spec_config_get_cmd_tests = do
             it "should retrieve multiple config parameters" $ do
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "timeout", mkBulkString "search-on-timeout"]
                 let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", IntVal 400), (Setting "search-on-timeout", BoolVal False)])
-                let testContext = PassableTestContext Nothing (Just testSettings)
+                let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
                 let expected =
@@ -182,7 +182,7 @@ spec_config_get_cmd_tests = do
                                 ]
                             )
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings) Nothing)
 
                 -- Should return an array with all configuration key-value pairs
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
@@ -225,7 +225,7 @@ spec_config_get_cmd_tests = do
                                 ]
                             )
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings) Nothing)
 
                 -- Should return an array with all configuration key-value pairs
                 let parsedResult = respArrayToList <$> parseOnly arrayParser result
@@ -272,7 +272,7 @@ spec_config_get_cmd_tests = do
                                 , (Setting "use-file-persistence", BoolVal True)
                                 ]
                             )
-                let testContext = PassableTestContext Nothing (Just testSettings)
+                let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -296,7 +296,7 @@ spec_config_get_cmd_tests = do
                 -- Pattern matching is case-sensitive per Redis semantics
                 let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "port"]
                 let testSettings = ServerSettings (HashMap.fromList [(Setting "PORT", TextVal "6379"), (Setting "port", TextVal "6380"), (Setting "timeout", IntVal 300)])
-                let testContext = PassableTestContext Nothing (Just testSettings)
+                let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -332,7 +332,7 @@ spec_config_get_cmd_tests = do
                                 , (Setting "syslog-ident", TextVal "redis")
                                 , (Setting "syslog-facility", TextVal "local0")
                                 ]
-                let testContext = PassableTestContext Nothing (Just testSettings)
+                let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
                 result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
                 -- Should match: timeout, tcp-backlog, loglevel, logfile, syslog-enabled, syslog-ident, syslog-facility
@@ -388,7 +388,7 @@ spec_config_get_cmd_tests = do
                             , (Setting "syslog-facility", TextVal "local0")
                             ]
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings))
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just testSettings) Nothing)
 
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
@@ -419,7 +419,7 @@ spec_config_get_cmd_tests = do
                             , (Setting "syslog-ident", TextVal "redis")
                             , (Setting "syslog-facility", TextVal "local0")
                             ]
-            let testContext = PassableTestContext Nothing (Just testSettings)
+            let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
             let expected = serializeRESPDataType $ mkNonNullRESPArray []
@@ -430,14 +430,14 @@ spec_config_get_cmd_tests = do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*"]
             let emptySettings = ServerSettings HashMap.empty
 
-            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just emptySettings))
+            result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext Nothing (Just emptySettings) Nothing)
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
         it "should not match when case differs (Redis semantics)" $ do
             -- Pattern matching is case-sensitive per Redis semantics
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "TIMEOUT"] -- uppercase pattern
             let testSettings = ServerSettings (HashMap.fromList [(Setting "timeout", TextVal "300")]) -- lowercase setting
-            let testContext = PassableTestContext Nothing (Just testSettings)
+            let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
             -- Case sensitive - uppercase pattern "TIMEOUT" doesn't match lowercase "timeout"
@@ -454,7 +454,7 @@ spec_config_get_cmd_tests = do
                             , (Setting "param.with.dots", TextVal "value3")
                             ]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "*"]
-            let testContext = PassableTestContext Nothing (Just specialSettings)
+            let testContext = PassableTestContext Nothing (Just specialSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -476,7 +476,7 @@ spec_config_get_cmd_tests = do
         it "should handle empty string configuration values" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "logfile"]
             let testSettings = ServerSettings (HashMap.fromList [(Setting "logfile", TextVal "")])
-            let testContext = PassableTestContext Nothing (Just testSettings)
+            let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -486,7 +486,7 @@ spec_config_get_cmd_tests = do
         it "should handle complex wildcard patterns with question marks" $ do
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "po?t"]
             let testSettings = ServerSettings (HashMap.fromList [(Setting "port", TextVal "6379"), (Setting "post", TextVal "value"), (Setting "pont", TextVal "bridge")])
-            let testContext = PassableTestContext Nothing (Just testSettings)
+            let testContext = PassableTestContext Nothing (Just testSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -509,7 +509,7 @@ spec_config_get_cmd_tests = do
         it "should handle escaped special characters in patterns" $ do
             let specialSettings = ServerSettings $ HashMap.fromList [(Setting "param*name", TextVal "special"), (Setting "param-name", TextVal "normal")]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param\\*name"]
-            let testContext = PassableTestContext Nothing (Just specialSettings)
+            let testContext = PassableTestContext Nothing (Just specialSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -524,7 +524,7 @@ spec_config_get_cmd_tests = do
                         HashMap.fromList
                             [(Setting ("param" <> T.pack (show n)), TextVal ("value" <> T.pack (show n))) | n <- [1 .. 10 :: Int]]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "param5"]
-            let testContext = PassableTestContext Nothing (Just largeSettings)
+            let testContext = PassableTestContext Nothing (Just largeSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -535,7 +535,7 @@ spec_config_get_cmd_tests = do
             let longParamName = T.pack $ "very-long-parameter-name-" <> replicate 100 'x'
             let longSettings = ServerSettings $ HashMap.fromList [(Setting longParamName, TextVal "longvalue")]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString (encodeUtf8 longParamName)]
-            let testContext = PassableTestContext Nothing (Just longSettings)
+            let testContext = PassableTestContext Nothing (Just longSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 
@@ -550,7 +550,7 @@ spec_config_get_cmd_tests = do
             let longValue = T.pack $ replicate 1000 'a'
             let longSettings = ServerSettings $ HashMap.fromList [(Setting "longparam", TextVal longValue)]
             let cmdReq = mkCmdReqStr [configCmd, getSubCmd, mkBulkString "longparam"]
-            let testContext = PassableTestContext Nothing (Just longSettings)
+            let testContext = PassableTestContext Nothing (Just longSettings) Nothing
 
             result <- runTestServer (handleCommandReq @ServerContext cmdReq) testContext
 

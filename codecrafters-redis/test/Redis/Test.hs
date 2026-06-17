@@ -6,27 +6,25 @@ module Redis.Test (
     runTestServer,
 ) where
 
+import Blammo.Logging.Logger qualified as Blammo
 import Data.List.NonEmpty qualified as NE
-import Effect.Communication qualified as Eff
-import Effect.Time qualified as Eff
 import Effectful qualified as Eff
 import Effectful.Concurrent.STM qualified as Eff
 import Effectful.FileSystem qualified as Eff
-import Effectful.Log qualified as Eff
 import Effectful.Reader.Static qualified as ReaderEff
+import Redis.Effect.Communication qualified as Eff
+import Redis.Effect.Logging qualified as Eff
+import Redis.Effect.Time qualified as Eff
 
+import Blammo.Logging (Logger)
+import Blammo.Logging.LogSettings (defaultLogSettings)
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
+import Data.Time (UTCTime, getCurrentTime)
 import Effectful (Eff)
-import Effectful.Log (
-    LogLevel (..),
-    LoggerEnv (..),
- )
 import GHC.Generics (Generic)
-import Log.Backend.StandardOutput (withStdOutLogger)
-
 import Network.Socket (
     AddrInfo (addrFamily, addrFlags, addrProtocol, addrSocketType),
     AddrInfoFlag (..),
@@ -38,47 +36,58 @@ import Network.Socket (
  )
 import Redis.Effects (ServerEffects)
 import Redis.Server.Context (ServerContext (..))
+import Redis.Server.Metadata (Environment (..), RedisConfFilePath, ServerMetadata (..))
 import Redis.Server.Settings (ServerSettings, defaultServerSettings)
 import Redis.ServerState (ServerState (..), genInitialServerStateEff)
 
 data PassableTestContext = PassableTestContext
     { serverState :: Maybe ServerState
     , settings :: Maybe ServerSettings
+    , metadata :: Maybe TestServerMetadata
     }
     deriving stock (Generic)
+
+data TestServerMetadata = TestServerMetadata
+    { testStartTime :: UTCTime
+    , testConfigFilePath :: Maybe RedisConfFilePath
+    }
 
 runTestServer :: Eff (ServerEffects ServerContext) a -> PassableTestContext -> IO ByteString
 runTestServer action testContext =
     do
         loopbackSocket <- mkLoopbackSocket
         initialServerState <- atomically $ genInitialServerStateEff Nothing
-        serverSettings <- newTVarIO $ fromMaybe defaultServerSettings testContext.settings
+        serverSettings <- newTVarIO . fromMaybe defaultServerSettings $ testContext.settings
+
+        now <- getCurrentTime
+        let defaultServerMetadata = ServerMetadata{startTime = now, configFilePath = Nothing, environment = TEST}
 
         let serverState = fromMaybe initialServerState testContext.serverState
+        let serverMetadata = maybe defaultServerMetadata fromTestServerMetadata testContext.metadata
 
-        mRes <- withStdOutLogger $ \logger -> do
-            let loggerEnv =
-                    LoggerEnv
-                        { leMaxLogLevel = LogAttention
-                        , leLogger = logger
-                        , leDomain = []
-                        , leData = []
-                        , leComponent = "redis-server-hs-test"
-                        }
-            let env = ServerContext loopbackSocket serverState serverSettings
-            runServer env loggerEnv action
+        logger <- Blammo.newTestLogger defaultLogSettings
+        let env = ServerContext loopbackSocket serverState serverSettings serverMetadata
+        mRes <- runServer env logger action
 
         pure $ fromMaybe "We got nothing bro. This probably shouldn't have happened" $ getLast mRes
   where
-    runServer :: ServerContext -> LoggerEnv -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
-    runServer env loggerEnv =
+    runServer :: ServerContext -> Logger -> Eff (ServerEffects ServerContext) a -> IO (Last ByteString)
+    runServer env logger =
         Eff.runEff
             . Eff.runCommunicationPure
-            . Eff.runLog loggerEnv.leComponent loggerEnv.leLogger loggerEnv.leMaxLogLevel
+            . Eff.runLoggingWithLogger logger
             . Eff.runGetTimeIO
             . Eff.runConcurrent
             . Eff.runFileSystem
             . ReaderEff.runReader env
+
+    fromTestServerMetadata :: TestServerMetadata -> ServerMetadata
+    fromTestServerMetadata TestServerMetadata{testStartTime, testConfigFilePath} =
+        ServerMetadata
+            { startTime = testStartTime
+            , configFilePath = testConfigFilePath
+            , environment = TEST
+            }
 
 mkLoopbackSocket :: IO Socket
 mkLoopbackSocket = do

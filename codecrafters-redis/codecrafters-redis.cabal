@@ -1,0 +1,367 @@
+cabal-version: 1.24
+
+-- This file has been generated from package.yaml by hpack version 0.39.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           codecrafters-redis
+version:        0.1.0.0
+synopsis:       Redis server implementation in Haskell
+author:         Olaoluwa Mustapha
+maintainer:     Olaoluwa Mustapha
+license:        BSD3
+build-type:     Custom
+extra-source-files:
+    README.md
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , codecrafters-redis-ffi
+    , directory
+    , process
+
+library
+  exposed-modules:
+      Redis.Commands.BGSave
+      Redis.Commands.Config.Get
+      Redis.Commands.Echo
+      Redis.Commands.Get
+      Redis.Commands.Info
+      Redis.Commands.Info.Common
+      Redis.Commands.Info.Replication
+      Redis.Commands.Info.Server
+      Redis.Commands.Keys
+      Redis.Commands.LastSave
+      Redis.Commands.Parser
+      Redis.Commands.Ping
+      Redis.Commands.Set
+      Redis.Effect.Communication
+      Redis.Effect.Logging
+      Redis.Effect.Time
+      Redis.Effects
+      Redis.Handler
+      Redis.Helpers
+      Redis.Orphans
+      Redis.RDB.Binary
+      Redis.RDB.Config
+      Redis.RDB.Data
+      Redis.RDB.Format
+      Redis.RDB.Load
+      Redis.RDB.Rerefined
+      Redis.RDB.Save
+      Redis.RESP
+      Redis.RESP.BulkString
+      Redis.Server
+      Redis.Server.Context
+      Redis.Server.Metadata
+      Redis.Server.Settings
+      Redis.Server.Settings.Get
+      Redis.Server.Version
+      Redis.ServerState
+      Redis.Store.Data
+      Redis.Store.Timestamp
+      Redis.Utils
+      Rerefined.Extra
+      Rerefined.Orphans
+      BuildInfo
+  other-modules:
+      Paths_codecrafters_redis
+  hs-source-dirs:
+      src
+      generated
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FunctionalDependencies
+      GADTs
+      ImportQualifiedPost
+      LambdaCase
+      NamedFieldPuns
+      NoFieldSelectors
+      NoStarIsType
+      OverloadedRecordDot
+      OverloadedLabels
+      OverloadedStrings
+      PackageImports
+      PatternSynonyms
+      QuasiQuotes
+      RecordWildCards
+      StrictData
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+  ghc-options: -Wall -Wmissing-export-lists -Wmissing-deriving-strategies -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-top-binds
+  build-depends:
+      Blammo
+    , Blammo-wai
+    , Glob
+    , aeson
+    , async
+    , attoparsec
+    , base >=4.7 && <5
+    , base16
+    , binary
+    , binary-instances
+    , bits-show
+    , bytestring
+    , codecrafters-redis-ffi
+    , containers
+    , deepseq
+    , effectful
+    , effectful-th
+    , entropy
+    , envparse
+    , exceptions
+    , extra
+    , filepath
+    , hashable
+    , mono-traversable
+    , mtl
+    , network
+    , optics
+    , optparse-applicative
+    , parser-combinators
+    , path
+    , pretty-simple
+    , prettyprinter
+    , rerefined
+    , safe
+    , safe-exceptions
+    , split
+    , stm
+    , string-interpolate
+    , tagged
+    , template-haskell
+    , text
+    , time
+    , transformers
+    , unix
+    , unordered-containers
+    , utf8-string
+    , vector
+  default-language: GHC2021
+
+executable codecrafters-redis-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_codecrafters_redis
+  hs-source-dirs:
+      app
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FunctionalDependencies
+      GADTs
+      ImportQualifiedPost
+      LambdaCase
+      NamedFieldPuns
+      NoFieldSelectors
+      NoStarIsType
+      OverloadedRecordDot
+      OverloadedLabels
+      OverloadedStrings
+      PackageImports
+      PatternSynonyms
+      QuasiQuotes
+      RecordWildCards
+      StrictData
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+  ghc-options: -Wall -Wmissing-export-lists -Wmissing-deriving-strategies -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-top-binds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Blammo
+    , Blammo-wai
+    , async
+    , base >=4.7 && <5
+    , binary
+    , binary-instances
+    , bits-show
+    , bytestring
+    , codecrafters-redis
+    , containers
+    , effectful
+    , effectful-th
+    , envparse
+    , mono-traversable
+    , mtl
+    , network
+    , network-run
+    , optparse-applicative
+    , pretty-simple
+    , split
+    , stm
+    , string-interpolate
+    , text
+    , time
+    , transformers
+  default-language: GHC2021
+
+test-suite codecrafters-redis-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Redis.Commands.BGSaveSpec
+      Redis.Commands.Config.GetSpec
+      Redis.Commands.EchoSpec
+      Redis.Commands.GetSpec
+      Redis.Commands.InfoSpec
+      Redis.Commands.KeysSpec
+      Redis.Commands.LastSaveSpec
+      Redis.Commands.PingSpec
+      Redis.Commands.SaveSpec
+      Redis.Commands.SetSpec
+      Redis.Helper
+      Redis.RDB.BinarySpec
+      Redis.RDB.DataSpec
+      Redis.RDB.IntegrationSpec
+      Redis.RDB.TestConfig
+      Redis.RESPSpec
+      Redis.Test
+      Paths_codecrafters_redis
+  hs-source-dirs:
+      test
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FunctionalDependencies
+      GADTs
+      ImportQualifiedPost
+      LambdaCase
+      NamedFieldPuns
+      NoFieldSelectors
+      NoStarIsType
+      OverloadedRecordDot
+      OverloadedLabels
+      OverloadedStrings
+      PackageImports
+      PatternSynonyms
+      QuasiQuotes
+      RecordWildCards
+      StrictData
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+  ghc-options: -Wall -Wmissing-export-lists -Wmissing-deriving-strategies -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-top-binds -Wno-missing-export-lists -Wno-x-unsafe-internals -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Blammo
+    , Blammo-wai
+    , attoparsec
+    , base >=4.7 && <5
+    , binary
+    , binary-instances
+    , bits-show
+    , bytestring
+    , codecrafters-redis
+    , containers
+    , directory
+    , effectful
+    , effectful-th
+    , exceptions
+    , filepath
+    , hedgehog
+    , hspec
+    , hspec-golden
+    , mono-traversable
+    , mtl
+    , network
+    , optics
+    , path
+    , pretty-simple
+    , rerefined
+    , stm
+    , string-interpolate
+    , tagged
+    , tasty
+    , tasty-discover
+    , tasty-expected-failure
+    , tasty-golden
+    , tasty-hedgehog
+    , tasty-hspec
+    , tasty-hunit
+    , text
+    , time
+    , transformers
+    , unordered-containers
+    , vector
+  default-language: GHC2021
+
+benchmark codecrafters-redis-benchmarks
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      RDBBinary
+      Paths_codecrafters_redis
+  hs-source-dirs:
+      bench
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BlockArguments
+      DataKinds
+      DeriveAnyClass
+      DerivingStrategies
+      DerivingVia
+      DuplicateRecordFields
+      FunctionalDependencies
+      GADTs
+      ImportQualifiedPost
+      LambdaCase
+      NamedFieldPuns
+      NoFieldSelectors
+      NoStarIsType
+      OverloadedRecordDot
+      OverloadedLabels
+      OverloadedStrings
+      PackageImports
+      PatternSynonyms
+      QuasiQuotes
+      RecordWildCards
+      StrictData
+      TemplateHaskell
+      TypeApplications
+      TypeFamilies
+  ghc-options: -Wall -Wmissing-export-lists -Wmissing-deriving-strategies -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-top-binds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Blammo
+    , Blammo-wai
+    , base >=4.7 && <5
+    , binary
+    , binary-instances
+    , bits-show
+    , bytestring
+    , codecrafters-redis
+    , containers
+    , criterion
+    , effectful
+    , effectful-th
+    , mono-traversable
+    , mtl
+    , network
+    , pretty-simple
+    , stm
+    , string-interpolate
+    , text
+    , time
+    , transformers
+  default-language: GHC2021

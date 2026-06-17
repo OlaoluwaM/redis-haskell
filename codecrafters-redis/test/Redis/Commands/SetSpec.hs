@@ -11,13 +11,12 @@ import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.ByteString (ByteString)
-import Data.String (fromString)
 import Data.String.Interpolate (i)
 import Data.Tagged (Tagged (..))
 import Data.Time (addUTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime, getCurrentTime)
 import Redis.Commands.Parser (Command (..), commandParser)
-import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), setupTTLCalculation, defaultSetCmdOpts)
+import Redis.Commands.Set (SetCmdArg (..), SetCmdOpts (..), SetCondition (..), TTLOption (..), defaultSetCmdOpts, setupTTLCalculation)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr, setCmd)
 import Redis.RESP (RESPDataType (..), serializeRESPDataType)
@@ -25,7 +24,7 @@ import Redis.Server (ServerContext)
 import Redis.ServerState (LastRDBSave (..), ServerState (..), StoreKey (..), StoreValue (..), getItemTTLValue, mkStoreValue)
 import Redis.Store.Data (RedisDataType (..), RedisList (RedisList), RedisStr (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
-import Redis.Utils (millisecondsToSeconds)
+import Redis.Utils (genericShow, millisecondsToSeconds)
 
 spec_set_cmd_tests :: Spec
 spec_set_cmd_tests = do
@@ -194,7 +193,7 @@ spec_set_cmd_tests = do
         describe "SET Command Handler Tests" $ do
             it "handles basic SET command with only required arguments" $ \_ -> do
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString "bike:1", mkBulkString "orange"]
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
                 result `shouldBe` defaultSetResponse
 
             it "handles overwriting an existing key" $ \initialServerState -> do
@@ -202,7 +201,7 @@ spec_set_cmd_tests = do
                 let newVal = "black"
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString newVal, mkBulkString "XX"]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
                     pure
@@ -217,7 +216,7 @@ spec_set_cmd_tests = do
                 let newVal = "turquoise"
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString newVal]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
@@ -239,7 +238,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "10"
                             , mkBulkString "NX"
                             ]
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
                 result `shouldBe` defaultSetResponse
 
             it "handles SET command with EX and NX options when target key already exists" $ \initialServerState -> do
@@ -253,7 +252,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "NX"
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
@@ -274,7 +273,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "XX"
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
 
                 result `shouldBe` serializeRESPDataType Null
 
@@ -288,7 +287,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "5000"
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
 
                 result `shouldBe` defaultSetResponse
 
@@ -301,10 +300,10 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "green"
                             , mkBulkString "EXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampS
+                            , mkBulkString . genericShow $ ttlTimestampS
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar serverState.keyValueStoreRef
@@ -325,10 +324,10 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "yellow"
                             , mkBulkString "PXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampMS
+                            , mkBulkString . genericShow $ ttlTimestampMS
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just serverState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar serverState.keyValueStoreRef
@@ -349,7 +348,7 @@ spec_set_cmd_tests = do
                             , mkBulkString key
                             , mkBulkString "zero"
                             , mkBulkString "EXAT"
-                            , mkBulkString . fromString . show $ ttlTimestampS
+                            , mkBulkString . genericShow $ ttlTimestampS
                             ]
                 let setCmdReq2 =
                         mkCmdReqStr
@@ -359,9 +358,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "KEEPTTL"
                             ]
 
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
@@ -382,7 +381,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "GET"
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
                 result `shouldBe` serializeRESPDataType Null
 
             it "handles SET with GET option on existing key to retrieve the previous value" $ \initialServerState -> do
@@ -401,9 +400,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "GET"
                             ]
 
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 result `shouldBe` serializeRESPDataType (mkBulkString "purple")
 
@@ -421,7 +420,7 @@ spec_set_cmd_tests = do
                             , mkBulkString "GET"
                             ]
 
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
@@ -452,9 +451,9 @@ spec_set_cmd_tests = do
                             , mkBulkString "fervor"
                             ]
 
-                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                runTestServer (handleCommandReq @ServerContext setCmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
-                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext setCmdReq2) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
 
                 atomically $ do
                     storeItems <- readTVar initialServerState.keyValueStoreRef
@@ -471,7 +470,7 @@ spec_set_cmd_tests = do
                 let expectedNewVal = "string-value"
 
                 let cmdReq = mkCmdReqStr [setCmd, mkBulkString key, mkBulkString expectedNewVal]
-                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState})
+                result <- runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
                 result `shouldSatisfy` BS.isPrefixOf "(error)"
 
 initializeStoreState :: IO ServerState

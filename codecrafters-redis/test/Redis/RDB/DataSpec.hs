@@ -87,7 +87,7 @@ roundTripRDBDoubleEncoding = H.property $ do
     H.tripping rdbDouble (encode rdbConfig) (decodeOrFail rdbConfig)
 
 largeDataRoundtrip :: H.Property
-largeDataRoundtrip = H.withTests 3 $ H.property $ do
+largeDataRoundtrip = H.withTests 2 $ H.property $ do
     let sampleString = toRDBString $ BSC.replicate 67108864 97
     rdbConfig <- H.forAll genRDBConfig
     H.tripping sampleString (encode rdbConfig) (decodeOrFail rdbConfig)

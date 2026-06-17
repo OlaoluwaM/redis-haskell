@@ -95,6 +95,7 @@ spec_last_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -103,6 +104,7 @@ spec_last_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Nothing
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -121,6 +123,7 @@ spec_last_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -130,6 +133,7 @@ spec_last_save_cmd_tests = do
                     ( PassableTestContext
                         { settings = Just testSettingsForSnapshot
                         , serverState = Just initialServerState
+                        , metadata = Nothing
                         }
                     )
 
@@ -141,6 +145,7 @@ spec_last_save_cmd_tests = do
             let timeDiffTolerance = 100 -- in milliseconds
             timeDiff `shouldSatisfy` (<= timeDiffTolerance)
 
+            -- TODO: Everything after this point seems flaky
             let bgSaveCmdReq = mkCmdReqStr [bgSaveCmd]
 
             runTestServer
@@ -148,6 +153,7 @@ spec_last_save_cmd_tests = do
                 ( PassableTestContext
                     { settings = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
+                    , metadata = Nothing
                     }
                 )
 
@@ -157,6 +163,7 @@ spec_last_save_cmd_tests = do
                     ( PassableTestContext
                         { settings = Just testSettingsForSnapshot
                         , serverState = Just initialServerState
+                        , metadata = Nothing
                         }
                     )
 

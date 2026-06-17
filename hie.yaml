@@ -3,6 +3,9 @@ cradle:
     - path: "codecrafters-redis/src"
       component: "codecrafters-redis:lib"
 
+    - path: "codecrafters-redis/generated"
+      component: "codecrafters-redis:lib"
+
     - path: "codecrafters-redis/app/Main.hs"
       component: "codecrafters-redis:exe:codecrafters-redis-exe"
 
