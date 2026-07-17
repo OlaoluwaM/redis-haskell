@@ -14,16 +14,22 @@ module Redis.Utils (
     genericShow,
     inverseMap,
     universe,
+    runReadM,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
 
+import Control.Monad.Except (runExcept)
+import Control.Monad.Reader (runReaderT)
 import Data.ByteString (ByteString)
 import Data.Char (intToDigit, toUpper)
+import Data.Either (fromRight)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.String (IsString (..))
 import Debug.Pretty.Simple (pTrace, pTraceM)
+import Options.Applicative (ParseError (..), ReadM)
+import Options.Applicative.Types (ReadM (..))
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -84,3 +90,16 @@ fmapToFst = fmap . toFst
 -- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#toFst
 toFst :: (a -> b) -> a -> (b, a)
 toFst f a = (f a, a)
+
+-- | Based on https://www.stackage.org/haddock/lts-24.46/optparse-applicative-0.18.1.0/src/Options.Applicative.Internal.html#runReadM for pure execution of the optparse-applicative parsers outside of the optparse-applicative framework
+runReadM :: forall b c. (IsString b) => ReadM c -> String -> Either b c
+runReadM (ReadM r) s = mapLeft renderParseError $ runExcept $ runReaderT r s
+  where
+    renderParseError :: ParseError -> b
+    renderParseError (ErrorMsg err) = fromString err
+    renderParseError (InfoMsg msg) = fromString msg
+    renderParseError UnknownError = "Unknown Error"
+    renderParseError (UnexpectedError str _) = fromString $ "An error occurred: " <> str
+    renderParseError (ExpectsArgError err) = fromString err
+    renderParseError (MissingError _ _) = "Something is missing"
+    renderParseError (ShowHelpText _) = "Error"
