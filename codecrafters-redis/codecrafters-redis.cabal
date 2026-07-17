@@ -54,6 +54,12 @@ library
       Redis.RESP
       Redis.RESP.BulkString
       Redis.Server
+      Redis.Server.Config.CommandLine
+      Redis.Server.Config.Conf
+      Redis.Server.Config.Conf.Lexer
+      Redis.Server.Config.Defaults
+      Redis.Server.Config.Readers
+      Redis.Server.Config.Types
       Redis.Server.Context
       Redis.Server.Metadata
       Redis.Server.Settings
