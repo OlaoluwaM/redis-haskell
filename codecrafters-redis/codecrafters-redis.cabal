@@ -237,6 +237,8 @@ test-suite codecrafters-redis-test
       Redis.RDB.IntegrationSpec
       Redis.RDB.TestConfig
       Redis.RESPSpec
+      Redis.Server.Config.Conf.LexerSpec
+      Redis.Server.Config.ConfSpec
       Redis.Test
       Paths_codecrafters_redis
   hs-source-dirs:
