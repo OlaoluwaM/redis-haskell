@@ -10,20 +10,23 @@ import Test.Hspec
 
 import Data.HashMap.Strict qualified as HashMap
 
-import Control.Concurrent.STM (atomically, newTMVar, newTVar, readTVarIO)
+import Control.Concurrent.STM (atomically, check, modifyTVar, newTMVar, newTVar, putTMVar, readTVar, readTVarIO, takeTMVar)
+import Control.Exception (finally)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.Foldable (for_)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
-import Data.Time (getCurrentTime)
+import Data.Time (UTCTime, getCurrentTime)
+import Optics (set)
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (bgSaveCmd, isInvalidCommand, mkBulkString, mkCmdReqStr, saveCmd)
 import Redis.RESP (RESPDataType (..), RESPInt (..), respIntegerParser)
 import Redis.Server.Context (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
-import System.Directory (removeFile)
+import System.Directory (doesFileExist, removeFile)
 
 isLastSaveCommand :: Command -> Bool
 isLastSaveCommand LastSave = True
@@ -117,62 +120,70 @@ spec_last_save_cmd_tests = do
                         , rdbFilename
                         }
             let testSettingsForSnapshot = mkTestSettings testSettingsArgs
+            let rdbOutputPath = toFilePath (testRdbOutputDir </> rdbFilename)
+            let testContext = PassableTestContext{settings = Just testSettingsForSnapshot, serverState = Just initialServerState, metadata = Nothing}
 
-            runTestServer
-                (handleCommandReq @ServerContext saveCmdReq)
-                ( PassableTestContext
-                    { settings = Just testSettingsForSnapshot
-                    , serverState = Just initialServerState
-                    , metadata = Nothing
-                    }
-                )
+            (`finally` removeFileIfExists rdbOutputPath) $ do
+                runTestServer (handleCommandReq @ServerContext saveCmdReq) testContext
 
-            resultAfterSyncSaveOp <-
+                resultAfterSyncSaveOp <- runTestServer (handleCommandReq @ServerContext lastSaveCmdReq) testContext
+
+                unixTimestampMSNow <- fromIntegral . (.timestamp) . mkUnixTimestampMSFromUTCTime <$> liftIO getCurrentTime
+
+                (RESPInt lastSaveTimestampAfterSyncSaveOp) <- either (fail . ("Server did not return with expected response of a timestamp: " <>)) pure $ parseOnly respIntegerParser resultAfterSyncSaveOp
+
+                let timeDiff = unixTimestampMSNow - lastSaveTimestampAfterSyncSaveOp
+                let timeDiffTolerance = 100 -- in milliseconds
+                timeDiff `shouldSatisfy` (<= timeDiffTolerance)
+
+                LastRDBSave{lastCompleted = lastCompletedBeforeBgSave} <- readTVarIO initialServerState.lastRDBSaveRef
+
+                let bgSaveCmdReq = mkCmdReqStr [bgSaveCmd]
+                runTestServer (handleCommandReq @ServerContext bgSaveCmdReq) testContext
+
+                -- BGSAVE forks the actual save onto a background thread and returns immediately, so
+                -- rather than racing it with the next LASTSAVE, wait for it to genuinely finish.
+                -- `lastCompleted` only changes once, on the save's success path, so watching it for a
+                -- transition away from its pre-BGSAVE value is a deterministic "wait for the save to
+                -- complete" rather than hoping the background thread hasn't been scheduled yet. (Peeking
+                -- `saveLock` instead doesn't work: it's already full from the earlier synchronous SAVE,
+                -- so reading it can race ahead of the new BGSAVE's own take/put and return stale data.)
+                atomically $ do
+                    currentLastRDBSave <- readTVar initialServerState.lastRDBSaveRef
+                    check (currentLastRDBSave.lastCompleted /= lastCompletedBeforeBgSave)
+
+                resultAfterAsyncSaveOp <- runTestServer (handleCommandReq @ServerContext lastSaveCmdReq) testContext
+
+                (RESPInt lastSaveTimestampAfterAsyncSaveOp) <-
+                    either (fail . ("Server did not return with expected response of a timestamp: " <>)) pure $ parseOnly respIntegerParser resultAfterAsyncSaveOp
+
+                -- The background save has now genuinely completed, so LASTSAVE should reflect it
+                -- rather than the earlier synchronous save's timestamp.
+                lastSaveTimestampAfterAsyncSaveOp `shouldSatisfy` (>= lastSaveTimestampAfterSyncSaveOp)
+
+        it "returns the last completed save time without blocking while a save is in progress" $ do
+            initialServerState <- initializeServerState HashMap.empty
+
+            let baselineSaveTime = read "2024-01-02 00:00:00 UTC" :: UTCTime
+            atomically $ modifyTVar initialServerState.lastRDBSaveRef (set #lastCompleted (Just baselineSaveTime))
+
+            LastRDBSave{saveLock} <- readTVarIO initialServerState.lastRDBSaveRef
+            atomically $ takeTMVar saveLock -- Simulate a save currently in progress, without actually running one
+
+            result <-
                 runTestServer
-                    (handleCommandReq @ServerContext lastSaveCmdReq)
-                    ( PassableTestContext
-                        { settings = Just testSettingsForSnapshot
-                        , serverState = Just initialServerState
-                        , metadata = Nothing
-                        }
-                    )
+                    (handleCommandReq @ServerContext (mkCmdReqStr [lastSaveCmd]))
+                    (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
+                    `finally` atomically (putTMVar saveLock ())
 
-            unixTimestampMSNow <- fromIntegral . (.timestamp) . mkUnixTimestampMSFromUTCTime <$> liftIO getCurrentTime
+            (RESPInt lastSaveTimestampWhileInProgress) <-
+                either (fail . ("Server did not return with expected response of a timestamp: " <>)) pure $ parseOnly respIntegerParser result
 
-            (RESPInt lastSaveTimestampAfterSyncSaveOp) <- either (fail . ("Server did not return with expected response of a timestamp: " <>)) pure $ parseOnly respIntegerParser resultAfterSyncSaveOp
+            let expectedTimestamp = fromIntegral . (.timestamp) . mkUnixTimestampMSFromUTCTime $ baselineSaveTime
 
-            let timeDiff = unixTimestampMSNow - lastSaveTimestampAfterSyncSaveOp
-            let timeDiffTolerance = 100 -- in milliseconds
-            timeDiff `shouldSatisfy` (<= timeDiffTolerance)
-
-            -- TODO: Everything after this point seems flaky
-            let bgSaveCmdReq = mkCmdReqStr [bgSaveCmd]
-
-            runTestServer
-                (handleCommandReq @ServerContext bgSaveCmdReq)
-                ( PassableTestContext
-                    { settings = Just testSettingsForSnapshot
-                    , serverState = Just initialServerState
-                    , metadata = Nothing
-                    }
-                )
-
-            resultDuringAsyncSaveOp <-
-                runTestServer
-                    (handleCommandReq @ServerContext lastSaveCmdReq)
-                    ( PassableTestContext
-                        { settings = Just testSettingsForSnapshot
-                        , serverState = Just initialServerState
-                        , metadata = Nothing
-                        }
-                    )
-
-            (RESPInt lastSaveTimestampDuringAsyncSaveOp) <-
-                either (fail . ("Server did not return with expected response of a timestamp: " <>)) pure $ parseOnly respIntegerParser resultDuringAsyncSaveOp
-
-            lastSaveTimestampDuringAsyncSaveOp `shouldBe` lastSaveTimestampAfterSyncSaveOp
-            removeFile . toFilePath $ (testRdbOutputDir </> rdbFilename) -- For some reason the RDB files change with each test run, probably because of the out of order nature of the snapshotting implementation
-            pure () -- This is necessary to avoid some odd type errors, not sure why tho
+            -- LASTSAVE only ever reads `lastCompleted`, which a save-in-progress never touches until it
+            -- finishes, so this should return the baseline unchanged rather than block on the held lock.
+            lastSaveTimestampWhileInProgress `shouldBe` expectedTimestamp
 
 data MkTestSettingsArg = MkTestSettingsArg
     { useCompression :: Bool
@@ -202,10 +213,15 @@ mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =
 initializeServerState :: Store -> IO ServerState
 initializeServerState store = do
     atomically $ do
-        lastRDBSaveCurrent <- newTMVar Nothing
+        saveLock <- newTMVar ()
         kvStore <- newTVar store
-        lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
+        lastRDBSave <- newTVar $ LastRDBSave saveLock Nothing
         pure $ ServerState kvStore lastRDBSave
 
 getStoreFromServerState :: ServerState -> IO Store
 getStoreFromServerState serverState = readTVarIO serverState.keyValueStoreRef
+
+removeFileIfExists :: FilePath -> IO ()
+removeFileIfExists path = do
+    exists <- doesFileExist path
+    when exists (removeFile path)

@@ -245,7 +245,7 @@ mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =
 initializeServerState :: Store -> IO ServerState
 initializeServerState store = do
     atomically $ do
-        lastRDBSaveCurrent <- newTMVar Nothing
+        lastRDBSaveCurrent <- newTMVar ()
         kvStore <- newTVar store
         lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
         pure $ ServerState kvStore lastRDBSave

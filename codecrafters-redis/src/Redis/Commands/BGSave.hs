@@ -130,21 +130,21 @@ performRDBSave serverState serverSettingsRef socket onSuccess = do
 
     -- We need to do all this to protect against an asynchronous exception occurring after we've potentially taken a lock on our TMVar but before we've put it back as such an interruption could lead us to a deadlock
     Eff.bracketOnError
-        (STMEff.atomically $ tryTakeTMVar lastRDBSave.inProgress)
+        (STMEff.atomically $ tryTakeTMVar lastRDBSave.saveLock)
         ( \case
             Nothing -> do
-                -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing
-                -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally
-                logError "Impossible exception: bracketOnError should always succeed if tryTakeTMVar fails with a Nothing. If not then something has gone very or wrong, or maybe the act of sending data to the user's socket failed or was interrupted somehow?"
+                -- Rather than throwing a user exception here with error regarding how this state should be impossible, we log it out as an error and send a message to the user's socket. This way we can be made aware of a critical failure without crashing.
+                -- Specializing to Text because I think the ToJSON instance for Text is more performant than that of String, since Aeson's Value type uses Text for strings internally.
+                -- This branch should only be reached if an exception occurs while an RDB save is in progress and an exception occurs while notifying the user of that fact as we do on line 146 below.
+                logError "Unreachable: this cleanup branch should only run if notifying the client of an existing save threw an exception, which it shouldn't."
                 notifyUserOfExistingBackgroundSave
-            Just mLastRDBSaveTimeM -> do
+            Just () -> do
                 logError "RDB save failed due to an exception"
-                STMEff.atomically $ putTMVar lastRDBSave.inProgress mLastRDBSaveTimeM
+                STMEff.atomically $ putTMVar lastRDBSave.saveLock ()
         )
         ( \case
-            Nothing -> do
-                notifyUserOfExistingBackgroundSave
-            Just _ -> do
+            Nothing -> notifyUserOfExistingBackgroundSave
+            Just () -> do
                 currentTime <- getPosixTime
                 let rdbFile = saveRedisStoreToRDB currentTime kvStore
 
@@ -152,7 +152,7 @@ performRDBSave serverState serverSettingsRef socket onSuccess = do
 
                 saveTime <- getCurrentTime
                 STMEff.atomically $ do
-                    putTMVar lastRDBSave.inProgress (Just saveTime)
+                    putTMVar lastRDBSave.saveLock ()
                     modifyTVar serverState.lastRDBSaveRef (set #lastCompleted (Just saveTime))
 
                 onSuccess

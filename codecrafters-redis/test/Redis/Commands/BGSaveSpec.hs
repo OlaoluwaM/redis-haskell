@@ -18,8 +18,11 @@ import Control.Concurrent.STM (
     atomically,
     newTMVar,
     newTVar,
+    putTMVar,
     readTVarIO,
+    takeTMVar,
  )
+import Control.Exception (finally)
 import Data.Attoparsec.ByteString (parseOnly)
 import Data.Foldable (for_)
 import Data.String.Interpolate (i)
@@ -27,9 +30,10 @@ import Data.Text (Text)
 import Redis.Commands.BGSave (BGSaveCmdArg (BGSaveCmdArg))
 import Redis.Commands.Parser (Command (..), commandParser)
 import Redis.Handler (handleCommandReq)
-import Redis.Helper (bgSaveCmd, isInvalidCommand, mkBulkString, mkCmdReqStr)
+import Redis.Helper (bgSaveCmd, isInvalidCommand, mkBulkString, mkCmdReqStr, saveCmd)
 import Redis.RDB.Format (RDBFile)
 import Redis.RDB.Load (loadRDBFile)
+import Redis.RESP (RESPDataType (SimpleString), serializeRESPDataType)
 import Redis.Server (ServerContext)
 import Redis.Store.Timestamp (mkUnixTimestampMSFromUTCTime)
 import System.Directory (doesFileExist, removeFile)
@@ -146,6 +150,28 @@ spec_bg_save_cmd_tests = do
             snapshotExists `shouldBe` True
             removeFile . toFilePath $ (testRdbOutputDir </> rdbFilename)
 
+        it "rejects a new save while another is already in progress, leaving the last completed save time untouched" $ do
+            initialServerState <- initializeServerState HashMap.empty
+
+            LastRDBSave{saveLock} <- readTVarIO initialServerState.lastRDBSaveRef
+            atomically $ takeTMVar saveLock -- Simulate a save currently in progress, without actually running one
+
+            let saveCmdReq = mkCmdReqStr [saveCmd]
+            let testContext = PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing}
+
+            -- BGSAVE's rejection path runs inside a forked, unjoined thread (see handleBGSave in
+            -- BGSave.hs), so it can't be observed deterministically here. SAVE hits the exact same
+            -- exclusivity check in `performRDBSave` synchronously, so we drive the rejection through
+            -- it instead, without racing a background thread.
+            result <-
+                runTestServer (handleCommandReq @ServerContext saveCmdReq) testContext
+                    `finally` atomically (putTMVar saveLock ())
+
+            result `shouldBe` serializeRESPDataType (SimpleString "A background save is already in progress")
+
+            LastRDBSave{lastCompleted} <- readTVarIO initialServerState.lastRDBSaveRef
+            lastCompleted `shouldBe` Nothing
+
 data MkTestSettingsArg = MkTestSettingsArg
     { useCompression :: Bool
     , generateChecksum :: Bool
@@ -174,7 +200,7 @@ mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =
 initializeServerState :: Store -> IO ServerState
 initializeServerState store = do
     atomically $ do
-        lastRDBSaveCurrent <- newTMVar Nothing
+        lastRDBSaveCurrent <- newTMVar ()
         kvStore <- newTVar store
         lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
         pure $ ServerState kvStore lastRDBSave

@@ -214,7 +214,7 @@ initializeServerState = do
                 , (StoreKey "counter", mkStoreValue (MkRedisStr . RedisStr $ "42") Nothing)
                 , (StoreKey "colors", mkStoreValue (MkRedisList . RedisList . Seq.fromList $ ["red", "blue", "green"]) Nothing)
                 ]
-        lastRDBSaveCurrent <- newTMVar Nothing
+        lastRDBSaveCurrent <- newTMVar ()
         kvStore <- newTVar $ HashMap.fromList storeItems
         lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
         pure $ ServerState kvStore lastRDBSave
