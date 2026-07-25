@@ -15,6 +15,8 @@ module Redis.Utils (
     inverseMap,
     universe,
     runReadM,
+    catEithers,
+    toLowerCaseString,
 ) where
 
 import Data.ByteString.Char8 qualified as BS
@@ -22,8 +24,8 @@ import Data.ByteString.Char8 qualified as BS
 import Control.Monad.Except (runExcept)
 import Control.Monad.Reader (runReaderT)
 import Data.ByteString (ByteString)
-import Data.Char (intToDigit, toUpper)
-import Data.Either (fromRight)
+import Data.Char (intToDigit, toLower, toUpper)
+import Data.Either (lefts, rights)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.String (IsString (..))
@@ -103,3 +105,15 @@ runReadM (ReadM r) s = mapLeft renderParseError $ runExcept $ runReaderT r s
     renderParseError (ExpectsArgError err) = fromString err
     renderParseError (MissingError _ _) = "Something is missing"
     renderParseError (ShowHelpText _) = "Error"
+
+-- | From https://www.stackage.org/haddock/lts-24.51/liquidhaskell-boot-0.9.10.1.2/Language-Haskell-Liquid-Misc.html#v:catEithers
+catEithers :: [Either a b] -> Either [a] [b]
+catEithers zs = case ls of
+    [] -> Right rs
+    _ -> Left ls
+  where
+    ls = lefts zs
+    rs = rights zs
+
+toLowerCaseString :: String -> String
+toLowerCaseString = map toLower

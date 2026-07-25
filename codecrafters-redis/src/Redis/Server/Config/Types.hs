@@ -18,17 +18,25 @@ module Redis.Server.Config.Types (
 
     -- * Field Type Accessors
     ConfigFieldType,
+    collectFieldSpecs,
     getConfigFieldName,
 ) where
 
 import Path
 
+import Control.Applicative (Const (..))
 import Control.Monad.Identity (Identity)
 import Data.Data (Proxy (..))
 import Data.Monoid (Last)
 import Data.String (IsString (fromString))
 import GHC.Base (Symbol, Type)
-import GHC.Generics (Generic, Generically (..))
+import GHC.Generics (
+    Generic (..),
+    Generically (..),
+    K1 (..),
+    M1 (..),
+    (:*:) (..),
+ )
 import GHC.TypeLits (KnownSymbol, symbolVal)
 
 -- TODO: Before we carry one, refine the notes we've made in our Obsidian vault on HKD and Data kinds with regards to this project
@@ -82,6 +90,15 @@ deriving stock instance
     ) =>
     Show (RedisConfigF f)
 
+deriving stock instance
+    ( Eq (HKD f RDBFileDir)
+    , Eq (HKD f RDBFilename)
+    , Eq (HKD f UseRDBCompression)
+    , Eq (HKD f GenRDBChecksum)
+    , Eq (HKD f RedisPort)
+    ) =>
+    Eq (RedisConfigF f)
+
 -- We technically don't need this, but it is interesting to see how one can derive semigroup for record type without having to manually (<>) each field. We only really need this for the PartialRedisConfig instance
 deriving via
     Generically (RedisConfigF f)
@@ -93,6 +110,33 @@ deriving via
         , Semigroup (HKD f RedisPort)
         ) =>
         Semigroup (RedisConfigF f)
+
+deriving via
+    Generically (RedisConfigF f)
+    instance
+        ( Monoid (HKD f RDBFileDir)
+        , Monoid (HKD f RDBFilename)
+        , Monoid (HKD f UseRDBCompression)
+        , Monoid (HKD f GenRDBChecksum)
+        , Monoid (HKD f RedisPort)
+        ) =>
+        Monoid (RedisConfigF f)
+
+class GFieldSpecs a rep where
+    gFieldSpecs :: rep p -> [a]
+
+-- With this instance, we can traverse past the M1s
+instance (GFieldSpecs a f) => GFieldSpecs a (M1 i c f) where
+    gFieldSpecs (M1 x) = gFieldSpecs x
+
+instance (GFieldSpecs a f, GFieldSpecs a g) => GFieldSpecs a (f :*: g) where
+    gFieldSpecs (f :*: g) = gFieldSpecs f <> gFieldSpecs g
+
+instance GFieldSpecs a (K1 i (Const a b)) where
+    gFieldSpecs (K1 (Const x)) = [x]
+
+collectFieldSpecs :: (Generic (RedisConfigF f), GFieldSpecs a (Rep (RedisConfigF f))) => RedisConfigF f -> [a]
+collectFieldSpecs = gFieldSpecs . from
 
 getConfigFieldName :: forall (b :: ConfigField) a. (KnownSymbol (ConfigFieldName b), IsString a) => a
 getConfigFieldName = fromString $ symbolVal $ Proxy @(ConfigFieldName b)

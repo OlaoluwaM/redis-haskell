@@ -1,8 +1,12 @@
-module Redis.Server.Config.Defaults (defaultRedisConfig) where
+module Redis.Server.Config.Defaults (
+    defaultRedisConfig,
+    emptyPartialRedisConfig,
+) where
 
 import Path
 
-import Redis.Server.Config.Types (RedisConfig, RedisConfigF (..))
+import Data.Monoid (Last (..))
+import Redis.Server.Config.Types (PartialRedisConfig, RedisConfig, RedisConfigF (..))
 
 newtype DefaultRedisConfig = DefaultRedisConfig {redisConf :: RedisConfig}
     deriving newtype (Show)
@@ -17,3 +21,13 @@ defaultRedisConfig =
             , port = 6379
             , rdbFileDirPath = Rel [reldir|./|]
             }
+
+emptyPartialRedisConfig :: PartialRedisConfig
+emptyPartialRedisConfig =
+    RedisConfigF
+        { rdbFilenamePath = Last Nothing
+        , useRDBCompression = Last Nothing
+        , genRdbChecksum = Last Nothing
+        , port = Last Nothing
+        , rdbFileDirPath = Last Nothing
+        }
