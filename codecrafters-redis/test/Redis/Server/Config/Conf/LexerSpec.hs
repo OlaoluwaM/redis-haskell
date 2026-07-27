@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-x-unsafe-internals #-}
+
 module Redis.Server.Config.Conf.LexerSpec where
 
 import Test.Hspec

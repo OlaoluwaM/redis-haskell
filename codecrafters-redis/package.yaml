@@ -149,6 +149,9 @@ tests:
     source-dirs: test
     ghc-options:
       - -Wno-missing-export-lists
+      # This option suppresses the test-only-export warnings for *normal* builds, but does NOT survive
+      # `stack --pedantic` since it forces our project to be built with -Wall and -Werror, which in turn re-enables custom warnings like our 'x-unsafe-internals' option even though we have it disabled here.
+      # Therefore, spec/test modules that use test-only exports must also carry an file level OPTIONS_GHC pragma — see AGENTS.md.
       - -Wno-x-unsafe-internals
       - -threaded
       - -rtsopts
