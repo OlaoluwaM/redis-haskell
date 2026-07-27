@@ -1,6 +1,7 @@
 module Redis.Server.Config.Defaults (
     defaultRedisConfig,
     emptyPartialRedisConfig,
+    DefaultRedisConfig (..),
 ) where
 
 import Path

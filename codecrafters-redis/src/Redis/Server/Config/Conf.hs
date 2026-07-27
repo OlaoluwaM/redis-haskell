@@ -1,4 +1,10 @@
-module Redis.Server.Config.Conf where
+module Redis.Server.Config.Conf (
+    loadRedisConfFile,
+    RedisConfigFromConfigFile (..),
+    LoadConfigFileError (..)
+) where
+
+import Prettyprinter
 
 import Effectful.FileSystem qualified as Eff
 import Effectful.FileSystem.IO.ByteString qualified as Eff
@@ -7,7 +13,6 @@ import Redis.Server.Config.Conf.Lexer qualified as Lexer
 import Redis.Server.Config.Readers qualified as Readers
 import Redis.Server.Config.Types qualified as Config
 
-import Blammo.Logging (Message (..), (.=))
 import Control.Applicative (Const (..))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Except (liftEither, runExceptT)
@@ -15,7 +20,6 @@ import Data.Attoparsec.Text (parseOnly)
 import Data.Bifunctor (second)
 import Data.Maybe (mapMaybe)
 import Data.Monoid (Last (..))
-import Data.String (IsString (fromString))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8')
@@ -24,38 +28,39 @@ import Effectful (Eff, (:>))
 import Options.Applicative (
     ReadM,
  )
-import Redis.Effect.Logging (logError, logInfo)
-import Redis.Effects (Logging)
 import Redis.Server.Config.Conf.Lexer (RawRedisConfEntry (..))
 import Redis.Server.Config.Defaults (emptyPartialRedisConfig)
 import Redis.Server.Config.Types (RedisConfigF (..), getConfigFieldName)
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Redis.Utils (catEithers, mapLeft, runReadM)
 
-newtype RedisConfDocument = RedisConfDocument Config.PartialRedisConfig
+newtype RedisConfigFromConfigFile = RedisConfigFromConfigFile Config.PartialRedisConfig
     deriving newtype (Eq, Show)
-
-type ConfigFieldSpecTable = Config.RedisConfigF (Const (Text, ReadM Config.PartialRedisConfig))
 
 newtype FieldValue = FieldValue {fieldValue :: String}
 
-data LoadConfigDocumentError = UTF8DecodeError UnicodeException | LexerError String | ParserErrors [String]
+data ConfigFileParseError = UTF8DecodeError UnicodeException | LexerError String | ParserErrors [String]
 
-loadRedisConfDocument ::
+data LoadConfigFileError = LoadConfigFileError {
+    errMsg :: String,
+    errMetadata :: [String]
+}
+    deriving stock (Show)
+
+instance Pretty LoadConfigFileError where
+    pretty LoadConfigFileError {errMsg, errMetadata} = vsep ["Error while loading config:", indent 4 . vsep . map pretty $ [errMsg] <> errMetadata]
+
+loadRedisConfFile ::
     forall es.
-    ( Eff.FileSystem :> es
-    , Logging :> es
-    ) =>
-    RedisConfFilePath -> Eff es (Either String RedisConfDocument)
-loadRedisConfDocument (RedisConfFilePath confFilePath) = do
+    (Eff.FileSystem :> es) =>
+    Maybe RedisConfFilePath -> Eff es (Either LoadConfigFileError RedisConfigFromConfigFile)
+loadRedisConfFile Nothing = pure . Right . RedisConfigFromConfigFile $ emptyPartialRedisConfig
+loadRedisConfFile (Just (RedisConfFilePath confFilePath)) = do
     let redisConfPath = Path.toFilePath confFilePath
 
     confFileExists <- Eff.doesFileExist redisConfPath
     if not confFileExists
-        then do
-            let msg = "No configuration file found at " <> redisConfPath <> "; falling back to default settings."
-            logInfo (fromString msg)
-            pure . Right . RedisConfDocument $ emptyPartialRedisConfig
+        then pure . Right . RedisConfigFromConfigFile $ emptyPartialRedisConfig
         else do
             decodedConfFileContentsResult <- mapLeft UTF8DecodeError . decodeUtf8' <$> Eff.readFile redisConfPath
             confDocumentParseResult <- runExceptT $ do
@@ -70,19 +75,16 @@ loadRedisConfDocument (RedisConfFilePath confFilePath) = do
             case confDocumentParseResult of
                 Left (UTF8DecodeError err) -> do
                     let msg = "Could not decode config file at path " <> redisConfPath <> ". It seems to contain some non-UTF8 encoded text? "
-                    logError $ fromString msg :# ["Error" .= displayException err]
-                    returnErrMsg msg
+                    returnErr $ LoadConfigFileError msg [displayException err]
                 Left (LexerError err) -> do
                     let msg = "An error occured while attempting to parse the config at " <> redisConfPath
-                    logError $ fromString msg :# ["Error" .= err]
-                    returnErrMsg msg
+                    returnErr $ LoadConfigFileError msg [err]
                 Left (ParserErrors errs) -> do
                     let msg = "Failed to parse configuration values in the config file at " <> redisConfPath
-                    logError $ fromString msg :# ["Errors" .= errs]
-                    returnErrMsg msg
-                Right conf -> pure . Right . RedisConfDocument $ conf
+                    returnErr $ LoadConfigFileError msg errs
+                Right conf -> pure . Right . RedisConfigFromConfigFile $ conf
   where
-    returnErrMsg = pure . Left
+    returnErr = pure . Left
 
 configFieldSpecs :: RedisConfigF (Const (Text, ReadM Config.PartialRedisConfig))
 configFieldSpecs =

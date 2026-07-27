@@ -51,7 +51,7 @@ import Options.Applicative (
  )
 import Options.Applicative.Types (ReadM, readerAsk)
 import Redis.Server.Metadata (RedisConfFilePath (..))
-import Redis.Utils (genericShow, runReadM)
+import Redis.Utils (genericShow)
 import System.FilePath (dropTrailingPathSeparator)
 
 -- Redis configurations as defined https://redis.io/docs/latest/operate/oss_and_stack/management/config/

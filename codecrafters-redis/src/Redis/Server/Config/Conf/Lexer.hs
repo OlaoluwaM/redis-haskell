@@ -64,9 +64,6 @@ parseConfEntry = do
 comment :: Parser ()
 comment = void $ AT.char '#' *> AT.takeWhile (anyCharExceptFn "\n")
 
-noneExcept :: [Char] -> Parser Char
-noneExcept chars = AT.satisfy (`elem` chars)
-
 noneExceptFn :: [Char] -> (Char -> Bool)
 noneExceptFn chars c = c `elem` chars
 

@@ -54,6 +54,7 @@ library
       Redis.RESP
       Redis.RESP.BulkString
       Redis.Server
+      Redis.Server.Config
       Redis.Server.Config.CommandLine
       Redis.Server.Config.Conf
       Redis.Server.Config.Conf.Lexer
@@ -296,6 +297,7 @@ test-suite codecrafters-redis-test
     , optics
     , path
     , pretty-simple
+    , prettyprinter
     , rerefined
     , stm
     , string-interpolate

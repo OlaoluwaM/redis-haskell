@@ -164,6 +164,7 @@ tests:
       - hedgehog
       - optics
       - path
+      - prettyprinter
       - rerefined
       - tagged
       - tasty

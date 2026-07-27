@@ -1,6 +1,6 @@
 module Redis.Server.Config.CommandLine (
     parserForCommandLineConfig,
-    RedisConfigCli (..),
+    RedisConfigFromCommandLine (..),
 ) where
 
 import Redis.Server.Config.Readers qualified as Readers
@@ -18,11 +18,11 @@ import Options.Applicative (
  )
 import Redis.Server.Config.Types (ConfigFieldType, RedisConfigF (..), getConfigFieldName)
 
-newtype RedisConfigCli = RedisConfigCli Config.PartialRedisConfig
+newtype RedisConfigFromCommandLine = RedisConfigFromCommandLine Config.PartialRedisConfig
 
-parserForCommandLineConfig :: Parser RedisConfigCli
+parserForCommandLineConfig :: Parser RedisConfigFromCommandLine
 parserForCommandLineConfig =
-    RedisConfigCli
+    RedisConfigFromCommandLine
         <$> (RedisConfigF <$> rdbFileDirectoryParser <*> rdbFilenameParser <*> rdbCompressionParser <*> rdbChecksumParser <*> redisPortParser)
 
 {- | Parser for RDB directory setting

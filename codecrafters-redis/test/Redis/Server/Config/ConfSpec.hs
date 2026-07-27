@@ -2,13 +2,11 @@ module Redis.Server.Config.ConfSpec where
 
 import Test.Hspec
 
-import Blammo.Logging.Logger qualified as Blammo
 import Effectful qualified as Eff
 import Effectful.FileSystem qualified as Eff
-import Redis.Effect.Logging qualified as Eff
 import Redis.Server.Config.Conf qualified as Conf
 
-import Blammo.Logging.LogSettings (defaultLogSettings)
+import Prettyprinter (pretty)
 import Data.Foldable (for_)
 import Data.Monoid (Last (..))
 import Path (
@@ -20,14 +18,14 @@ import Path (
     relfile,
     (</>),
  )
-import Redis.Server.Config.Conf (RedisConfDocument (..))
+import Redis.Server.Config.Conf (RedisConfigFromConfigFile (..), LoadConfigFileError (..))
 import Redis.Server.Config.Defaults (emptyPartialRedisConfig)
 import Redis.Server.Config.Types (PartialRedisConfig, RedisConfigF (..))
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import System.Directory (getCurrentDirectory)
 
 {- | Sample redis.conf files under test/Redis/Server/Config/Conf/input, paired with the
-'PartialRedisConfig' we expect 'Conf.loadRedisConfDocument' to produce from each.
+'PartialRedisConfig' we expect 'Conf.loadRedisConfFile' to produce from each.
 -}
 exampleConfFiles :: [(String, PartialRedisConfig)]
 exampleConfFiles =
@@ -71,22 +69,20 @@ exampleConfFiles =
 
 spec_redis_conf_document_loading :: Spec
 spec_redis_conf_document_loading = do
-    describe "loadRedisConfDocument against sample redis.conf files" $ do
+    describe "loadRedisConfFile against sample redis.conf files" $ do
         for_ exampleConfFiles $ \(sampleName, expectedConfig) ->
             it ("Parses " <> sampleName <> ".conf into the expected PartialRedisConfig") $ do
                 confFilePath <- mkSampleConfFilePath sampleName
-                result <- runLoadRedisConfDocument confFilePath
+                result <- runloadRedisConfFile confFilePath
                 case result of
-                    Left err -> expectationFailure ("loadRedisConfDocument failed for " <> sampleName <> ", with error: " <> err)
-                    Right (RedisConfDocument actualConfig) -> actualConfig `shouldBe` expectedConfig
+                    Left err -> expectationFailure ("loadRedisConfFile failed for " <> sampleName <> ", with error: " <> (show . pretty $ err))
+                    Right (RedisConfigFromConfigFile actualConfig) -> actualConfig `shouldBe` expectedConfig
 
-mkSampleConfFilePath :: String -> IO RedisConfFilePath
+mkSampleConfFilePath :: String -> IO (Maybe RedisConfFilePath)
 mkSampleConfFilePath sampleName = do
     projectRoot <- parseAbsDir =<< getCurrentDirectory
     relativeSamplePath <- parseRelFile ("test/Redis/Server/Config/Conf/input/" <> sampleName <> ".conf")
-    pure . RedisConfFilePath $ projectRoot </> relativeSamplePath
+    pure . Just . RedisConfFilePath $ projectRoot </> relativeSamplePath
 
-runLoadRedisConfDocument :: RedisConfFilePath -> IO (Either String RedisConfDocument)
-runLoadRedisConfDocument confFilePath = do
-    logger <- Blammo.newTestLogger defaultLogSettings
-    Eff.runEff . Eff.runLoggingWithLogger logger . Eff.runFileSystem $ Conf.loadRedisConfDocument confFilePath
+runloadRedisConfFile :: Maybe RedisConfFilePath -> IO (Either LoadConfigFileError RedisConfigFromConfigFile)
+runloadRedisConfFile = Eff.runEff . Eff.runFileSystem . Conf.loadRedisConfFile

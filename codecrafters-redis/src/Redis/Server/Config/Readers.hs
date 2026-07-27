@@ -1,4 +1,10 @@
-module Redis.Server.Config.Readers where
+module Redis.Server.Config.Readers (
+  rdbFileDirReader,
+  rdbFilenameReader,
+  rdbCompressionReader,
+  rdbChecksumReader,
+  portReader
+) where
 
 import Path
 

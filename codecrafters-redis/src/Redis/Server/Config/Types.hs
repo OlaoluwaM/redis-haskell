@@ -18,8 +18,9 @@ module Redis.Server.Config.Types (
 
     -- * Field Type Accessors
     ConfigFieldType,
-    collectFieldSpecs,
     getConfigFieldName,
+    collectFieldSpecs,
+    gZipWith,
 ) where
 
 import Path
@@ -134,6 +135,18 @@ instance (GFieldSpecs a f, GFieldSpecs a g) => GFieldSpecs a (f :*: g) where
 
 instance GFieldSpecs a (K1 i (Const a b)) where
     gFieldSpecs (K1 (Const x)) = [x]
+
+class GZipWith repA repB repC where
+    gZipWith :: (forall x. x -> Last x -> x) -> repA a -> repB b -> repC c
+
+instance (GZipWith f g h) => GZipWith (M1 i c f) (M1 i c g) (M1 i c h) where
+    gZipWith fn (M1 x) (M1 y) = M1 (gZipWith fn x y)
+
+instance (GZipWith f h l, GZipWith g i m) => GZipWith (f :*: g) (h :*: i) (l :*: m) where
+    gZipWith fn (f :*: g) (h :*: i) = gZipWith fn f h :*: gZipWith fn g i
+
+instance GZipWith (K1 i x) (K1 i (Last x)) (K1 i x) where
+    gZipWith fn (K1 x) (K1 y) = K1 (fn x y)
 
 collectFieldSpecs :: (Generic (RedisConfigF f), GFieldSpecs a (Rep (RedisConfigF f))) => RedisConfigF f -> [a]
 collectFieldSpecs = gFieldSpecs . from
