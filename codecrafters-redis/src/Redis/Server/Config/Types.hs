@@ -1,8 +1,6 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE UndecidableInstances #-}
 
--- {-# OPTIONS_GHC -Wno-missing-methods #-}
-
 -- | The types here should be used qualified
 module Redis.Server.Config.Types (
     RedisConfigF (..),
@@ -39,8 +37,6 @@ import GHC.Generics (
     (:*:) (..),
  )
 import GHC.TypeLits (KnownSymbol, symbolVal)
-
--- TODO: Before we carry one, refine the notes we've made in our Obsidian vault on HKD and Data kinds with regards to this project
 
 data ConfigField = ConfigField Symbol Type
 
@@ -100,7 +96,6 @@ deriving stock instance
     ) =>
     Eq (RedisConfigF f)
 
--- We technically don't need this, but it is interesting to see how one can derive semigroup for record type without having to manually (<>) each field. We only really need this for the PartialRedisConfig instance
 deriving via
     Generically (RedisConfigF f)
     instance
@@ -123,10 +118,16 @@ deriving via
         ) =>
         Monoid (RedisConfigF f)
 
+{-
+    The purpose of this Generic typeclass is to extract the field values of a record. Specifically, like GZipWith it is coupled to our use case. The purpose of GFieldSpecs is to extract Const values out of a record. It works by recursively traversing the typical shape of the generic representation of a record -- something like (M1 (M1 (K1 _) :*: M1 (K1 _))) at the term level -- to extract and combine the field values of each record field into a list.
+
+    The instances guide our recursive traversal: how to go from the top-level (M1 _) root to the (K1 _) leaf.
+
+    We implemented this to have a type-safe way of filtering through lexer tokens gotten from parsing a raw redis config file. If we did things the usual way, then we'd have a case expression pattern matching on config fields we support. This is not type-safe because there's nothing to warn us if we misspell a field name or omit it. With this approach, any changes to RedisConfigF must be propagated to our config specs instantiation of RedisConfigF, so the type system helps us ensure that everything remains consistent.
+-}
 class GFieldSpecs a rep where
     gFieldSpecs :: rep p -> [a]
 
--- With this instance, we can traverse past the M1s
 instance (GFieldSpecs a f) => GFieldSpecs a (M1 i c f) where
     gFieldSpecs (M1 x) = gFieldSpecs x
 
@@ -135,6 +136,26 @@ instance (GFieldSpecs a f, GFieldSpecs a g) => GFieldSpecs a (f :*: g) where
 
 instance GFieldSpecs a (K1 i (Const a b)) where
     gFieldSpecs (K1 (Const x)) = [x]
+
+{-
+    This typeclass is for implementing a generic way to zip two records together using some function `fn`, like we do with lists using `zipWith` from Prelude. However, the zipper function in this case is a bit specialized to our use case of falling back to a default value of type `x` if `Last x` is `Nothing`. Before I got here, I tried a couple of things:
+
+    First I tried putting `a`, `b`, and `c` in the head of the typeclass with the zipper fn being of type `(a -> b -> c)`. However, that didn't work because with gZipWith, we're dealing with records, which are often heterogeneous, not one set of type `a` and another set of type `b`.
+    Thus, by including `a`, `b`, and `c` in the head of the typeclass, I added them to the "composite key" used to index/identify a GZipWith instance.
+    I didn't write a GZipWith instance for every desired permutation of (`a`, `b`, `c`); this is because I didn't need to. I had a single parametrically polymorphic GZipWith instance, which meant the types for `a`, `b`, and `c` could vary, but the implementation remained the same. The compiler could then unify/"fill in" the type params with whatever types to get a fully qualified instance.
+
+    The problem, well, problems — there are two:
+        1. Whatever types the compiler resolves the type params (`a`, `b`, and `c`) to are fixed for the entirety of a given call site. So with gZipWith, once we reach the first set of record fields to zip, the compiler fixes the type params on our polymorphic instances to those record field types. This makes it so that no other instances with different instantiated type params may be leveraged at *that* call site.
+        2. The zipper function type parameters also get fixed at the call site and can never change because gZipWith is a rank-1 function.
+
+    Problem #1 is the reason why I do not want our GZipWith instances to be indexable using `a`, `b`, and `c`, so I opted to remove them from the class head.
+
+    Next, I tried making the zipper function a rank-2 type with the signature `(forall a b c. a -> b -> c)`. This way the zipper function would remain polymorphic at the call site of gZipWith, but could be specialized to different types when being called on the actual heterogeneous record fields. This type checked, but the type is uninhabited (except by `undefined`) because `c` could be anything and is completely unrelated to `a` and `b`. At the call site for gZipWith we'd need an implementation that accounts for all potential instantiations of `c` (so any type) and that isn't possible since we have no `c` to work with at the term level. Constraints may help, but which ones? A useful one here would be something that allows us to create a value of type `c` out of nothing, the way `Monoid c` hands us `mempty` or `Bounded c` hands us `minBound`. None of those would be relevant for a zipper, though. Moreover, because it's a rank-2 signature, the call site of gZipWith cannot make any claims about, or pick, what types `a`, `b`, or `c` are. They must remain polymorphic/abstract there. It is for these reasons that I decided to do away with having `(forall a b c. a -> b -> c)` as the zipper's signature.
+
+    From there, I massaged the zipper function's signature to align more closely with the signature of the zipper I wanted to use: `(forall x. x -> Last x -> x)`. Yes, it makes the entire thing less generally useful, but it type checks and works. We could also have parameterized on `Last`, that is, made it abstract, but since it never changes that gives us nothing, so I'm keeping it as `Last`.
+
+    When all is said and done, we could have written this manually, but I wanted to take a stab at defining something like this using Generics.
+-}
 
 class GZipWith repA repB repC where
     gZipWith :: (forall x. x -> Last x -> x) -> repA a -> repB b -> repC c
