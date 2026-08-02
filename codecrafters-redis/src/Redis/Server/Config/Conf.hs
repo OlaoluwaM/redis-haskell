@@ -1,7 +1,7 @@
 module Redis.Server.Config.Conf (
     loadRedisConfFile,
     RedisConfigFromConfigFile (..),
-    LoadConfigFileError (..)
+    LoadConfigFileError (..),
 ) where
 
 import Prettyprinter
@@ -41,14 +41,14 @@ newtype FieldValue = FieldValue {fieldValue :: String}
 
 data ConfigFileParseError = UTF8DecodeError UnicodeException | LexerError String | ParserErrors [String]
 
-data LoadConfigFileError = LoadConfigFileError {
-    errMsg :: String,
-    errMetadata :: [String]
-}
+data LoadConfigFileError = LoadConfigFileError
+    { errMsg :: String
+    , errMetadata :: [String]
+    }
     deriving stock (Show)
 
 instance Pretty LoadConfigFileError where
-    pretty LoadConfigFileError {errMsg, errMetadata} = vsep ["Error while loading config:", indent 4 . vsep . map pretty $ [errMsg] <> errMetadata]
+    pretty LoadConfigFileError{errMsg, errMetadata} = vsep ["Error while loading config:", indent 4 . vsep . map pretty $ [errMsg] <> errMetadata]
 
 loadRedisConfFile ::
     forall es.
@@ -101,5 +101,11 @@ configFieldSpecs =
             Const (getConfigFieldName @Config.RedisPort, (\v -> emptyPartialRedisConfig{port = Last (Just v)}) <$> Readers.portReader)
         }
 
+{-
+    We could have just written a filter function that would have pattern matched on the RawRedisConfEntry key value, but the problem with that is it would have not been type safe. For instance, if I was to incorrectly spell one of the field names, I wouldn't know unless I wrote a test to catch that. If I were to add or remove a config field, I could easily forget to update such a function if no tests existed to warn me about the need to extend the pattern match.
+
+    With this approach, field names, types, adding or removing fields is all backed by the type system, specifically through the configFieldSpecs binding above. Any change to RedisConfigF would need to be reflected here and this function would automatically be up to date
+
+-}
 lookupFieldReader :: RawRedisConfEntry -> Maybe (ReadM Config.PartialRedisConfig, FieldValue)
 lookupFieldReader RawRedisConfEntry{key, value} = (,FieldValue . T.unpack $ value) <$> lookup key (Config.collectFieldSpecs configFieldSpecs)
