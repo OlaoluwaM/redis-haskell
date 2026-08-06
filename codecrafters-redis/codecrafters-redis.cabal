@@ -64,8 +64,6 @@ library
       Redis.Server.Config.Types
       Redis.Server.Context
       Redis.Server.Metadata
-      Redis.Server.Settings
-      Redis.Server.Settings.Get
       Redis.Server.Version
       Redis.ServerState
       Redis.Store.Data
