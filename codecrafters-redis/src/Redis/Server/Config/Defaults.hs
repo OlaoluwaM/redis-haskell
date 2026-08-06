@@ -7,10 +7,11 @@ module Redis.Server.Config.Defaults (
 import Path
 
 import Data.Monoid (Last (..))
+import GHC.Generics (Generic)
 import Redis.Server.Config.Types (PartialRedisConfig, RedisConfig, RedisConfigF (..))
 
 newtype DefaultRedisConfig = DefaultRedisConfig {redisConf :: RedisConfig}
-    deriving newtype (Show)
+    deriving stock (Show, Generic)
 
 defaultRedisConfig :: DefaultRedisConfig
 defaultRedisConfig =

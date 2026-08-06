@@ -1,6 +1,10 @@
 module Redis.Server.Config (
     loadRedisConfig,
     commandlineConfigParser,
+    CommandLineConfig,
+    commandLineConfigFilePath,
+    RedisConfig,
+    RedisConfigF (..),
 
     -- ** For testing
     mkCompleteRedisConfig,
@@ -8,17 +12,17 @@ module Redis.Server.Config (
 
 import Path
 
+import Effectful qualified as Eff
+import Effectful.Error.Static qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Redis.Server.Config.Conf qualified as Conf
 import Redis.Server.Config.Defaults qualified as Defaults
+
 import Redis.Server.Config.Types qualified as Config
 
-import Blammo.Logging (Message (..), (.=))
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
-import Data.String (fromString)
 import Effectful (Eff, (:>))
-import Effectful.Fail (Fail)
 import GHC.Generics (Generic (..))
 import Options.Applicative (
     Parser,
@@ -37,37 +41,35 @@ import Options.Applicative (
     (<**>),
  )
 import Options.Applicative.Types (readerAsk)
-import Redis.Effect.Logging (Logging, logError)
 import Redis.Server.Config.CommandLine (
     RedisConfigFromCommandLine (..),
     parserForCommandLineConfig,
  )
 import Redis.Server.Config.Conf (LoadConfigFileError (..), RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (DefaultRedisConfig (..))
-import Redis.Server.Config.Types (gZipWith)
+import Redis.Server.Config.Types (RedisConfig, RedisConfigF (..), gZipWith)
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Redis.Server.Version (redisVersion)
 
 data CommandLineConfig = CommandLineConfig (Maybe RedisConfFilePath) RedisConfigFromCommandLine
 
-loadRedisConfig ::
+commandLineConfigFilePath :: CommandLineConfig -> Maybe RedisConfFilePath
+commandLineConfigFilePath (CommandLineConfig confFilePath _) = confFilePath
+
+loadRedisConfig :: CommandLineConfig -> IO (Either LoadConfigFileError RedisConfig)
+loadRedisConfig commandlineConfig = Eff.runEff . Eff.runErrorNoCallStack . Eff.runFileSystem $ loadRedisConfig_ commandlineConfig
+
+loadRedisConfig_ ::
     forall es.
     ( Eff.FileSystem :> es
-    , Logging :> es
-    , Fail :> es
+    , Eff.Error LoadConfigFileError :> es
     ) =>
     CommandLineConfig -> Eff es Config.RedisConfig
-loadRedisConfig (CommandLineConfig confFilePath cliConfig) = do
-    redisConfFileLoadResultE <- Conf.loadRedisConfFile confFilePath
-    case redisConfFileLoadResultE of
-        Left err -> do
-            logError $ fromString err.errMsg :# ["Error" .= err.errMetadata]
-            fail "Error occurred while attempting to load redis config file"
-        Right redisConfigFromConfigFile -> pure $ mkCompleteRedisConfig redisConfigFromConfigFile cliConfig
+loadRedisConfig_ (CommandLineConfig confFilePath cliConfig) = mkCompleteRedisConfig cliConfig <$> Conf.loadRedisConfFile confFilePath
 
 {-# WARNING in "x-unsafe-internals" mkCompleteRedisConfig "This value is exported for testing purposes only" #-}
-mkCompleteRedisConfig :: RedisConfigFromConfigFile -> RedisConfigFromCommandLine -> Config.RedisConfig
-mkCompleteRedisConfig (RedisConfigFromConfigFile configFromFile) (RedisConfigFromCommandLine configFromCli) =
+mkCompleteRedisConfig :: RedisConfigFromCommandLine -> RedisConfigFromConfigFile -> Config.RedisConfig
+mkCompleteRedisConfig (RedisConfigFromCommandLine configFromCli) (RedisConfigFromConfigFile configFromFile) =
     let (DefaultRedisConfig defaults) = Defaults.defaultRedisConfig
         partiallyMergedConfig = configFromFile <> configFromCli
      in to (gZipWith fromLast (from defaults) (from partiallyMergedConfig))

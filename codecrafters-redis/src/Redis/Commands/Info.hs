@@ -26,9 +26,9 @@ import Redis.Commands.Info.Replication (genReplicationInfoSectionStr)
 import Redis.Commands.Info.Server (MkServerInfoArgs (..), genServerInfoSectionStr)
 import Redis.Effect.Communication (sendMessage)
 import Redis.Effect.Time (Time)
-import Redis.Effects (RedisClientCommunication, RedisServerMetadata, RedisServerSettings)
-import Redis.Server.Settings.Get (getRedisPortFromSettings)
-import Redis.Utils (universe)
+import Redis.Effects (RedisClientCommunication, RedisServerConfig, RedisServerMetadata)
+import Redis.Server.Config (RedisConfigF (..))
+import Redis.Utils (universe, genericShow)
 
 -- https://redis.io/docs/latest/commands/info/
 
@@ -89,16 +89,16 @@ allSectionsThatCanBeShown = filter (\section -> not (section == All || section =
 genEmptyInfoSectionStr :: InfoCmdSection -> Text
 genEmptyInfoSectionStr sectionTitle = "# " <> (fromString . show $ sectionTitle) <> "\r\n"
 
-handleInfo :: forall r es. (Time :> es, RedisClientCommunication r es, RedisServerSettings r es, RedisServerMetadata r es) => InfoCmdArg -> Eff es ()
+handleInfo :: forall r es. (Time :> es, RedisClientCommunication r es, RedisServerConfig r es, RedisServerMetadata r es) => InfoCmdArg -> Eff es ()
 handleInfo infoCmdArg = do
     env <- ReaderEff.ask @r
     let socket = view #clientSocket env
-    let serverSettingsRef = view #serverSettingsRef env
+    let serverConfigRef = view #serverConfigRef env
     let serverMetadata = view #serverMetadata env
 
-    serverSettings <- STMEff.readTVarIO serverSettingsRef
+    redisConfig <- STMEff.readTVarIO serverConfigRef
 
-    let serverPort = getRedisPortFromSettings serverSettings
+    let serverPort = genericShow redisConfig.port
     let configFilePath = maybe "" (Path.toFilePath . (.redisConfFilePath)) serverMetadata.configFilePath
     let startupTime = serverMetadata.startTime
     let serverEnv = serverMetadata.environment

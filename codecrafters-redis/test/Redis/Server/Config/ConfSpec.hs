@@ -3,6 +3,7 @@ module Redis.Server.Config.ConfSpec where
 import Test.Hspec
 
 import Effectful qualified as Eff
+import Effectful.Error.Static qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Redis.Server.Config.Conf qualified as Conf
 
@@ -85,4 +86,4 @@ mkSampleConfFilePath sampleName = do
     pure . Just . RedisConfFilePath $ projectRoot </> relativeSamplePath
 
 runloadRedisConfFile :: Maybe RedisConfFilePath -> IO (Either LoadConfigFileError RedisConfigFromConfigFile)
-runloadRedisConfFile = Eff.runEff . Eff.runFileSystem . Conf.loadRedisConfFile
+runloadRedisConfFile = Eff.runEff . Eff.runErrorNoCallStack . Eff.runFileSystem . Conf.loadRedisConfFile

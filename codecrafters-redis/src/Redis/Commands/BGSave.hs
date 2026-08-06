@@ -8,7 +8,6 @@ module Redis.Commands.BGSave (
 ) where
 
 import Path
-import Redis.Server.Settings
 import Redis.ServerState
 
 import Effectful.Concurrent qualified as Eff
@@ -39,7 +38,8 @@ import Redis.Effect.Time (Time, getCurrentTime, getPosixTime)
 import Redis.Effects (RDBWrite)
 import Redis.RDB.Save (saveRedisStoreToRDB)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
-import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
+import Redis.Server.Config.Get (genRDBConfigFromConfig, getRDBDumpFilePathFromConfig)
+import Redis.Server.Context (ServerConfigRef)
 
 -- https://redis.io/docs/latest/commands/save/
 -- https://redis.io/docs/latest/commands/bgsave/
@@ -72,14 +72,14 @@ handleSave = do
 
     let socket = view #clientSocket env
     let serverState = view #serverState env
-    let serverSettingsRef = view #serverSettingsRef env
+    let serverConfigRef = view #serverConfigRef env
 
     let onSuccess = sendMessage socket . serializeRESPDataType $ SimpleString "OK"
 
     -- We are using handleSync here because should an asynchronous exception occur during the save process, we want to ensure that such an exception is propagated to the parent thread from which the thread that will end up performing this `handleSave` operation will be spawned. However, though, it looks like the distinction between `handle` and `handleSync` doesn't truly matter in practice here because unless we throw an asynchronous exception to the thread executing the `handleSave` operation, no asynchronous exceptions *can* be received here. If we start up the redis server and kill it that only affects the main thread, as in, the asynchronous exception that is raised from killing the process is sent to the main thread, not to any of the child threads spawned from it tasked with handling client connections and requests. Using `handleSync` here would ensure that if we were ever to throw an asynchronous exception to the child thread executing the save process, the async exception is not swallowed silently but rather propagated appropriately to the parent thread to be handled, cleaning up the child thread appropriately (at least, that would be ideal). Another thing to note is that we can't even easily gain access to the threadId of the relevant child thread either for a `throwTo` async exception. In any case, I'd like for an asynchronous exception to interrupt the save process in a similar manner as a synchronous exception would, so perhaps `handle` would be more appropriate after all.
     Eff.handle @SomeException
         (\e -> notifyOfSaveError socket e "Saving failed")
-        (performRDBSave serverState serverSettingsRef socket onSuccess)
+        (performRDBSave serverState serverConfigRef socket onSuccess)
 
 handleBGSave ::
     forall r es.
@@ -90,22 +90,22 @@ handleBGSave _ = do
 
     let socket = view #clientSocket env
     let serverState = view #serverState env
-    let serverSettingsRef = view #serverSettingsRef env
+    let serverConfigRef = view #serverConfigRef env
 
     sendMessage socket . serializeRESPDataType $ SimpleString "Starting"
 
     void $
         Eff.forkFinally
-            (performRDBBackgroundSave socket serverState serverSettingsRef)
+            (performRDBBackgroundSave socket serverState serverConfigRef)
             ( \case
                 Left err -> notifyOfSaveError socket err "Background saving failed"
                 Right _ -> sendMessage socket . serializeRESPDataType $ SimpleString "Background saving finished"
             )
   where
-    performRDBBackgroundSave socket serverState serverSettingsRef =
+    performRDBBackgroundSave socket serverState serverConfigRef =
         Eff.handle @SomeException
             Eff.throwIO -- If an error is thrown by performRDBSave, we handle it by rethrowing so we can satisfy/pop off the Error effect constraint and have the outer forkFinally handle it correctly
-            (performRDBSave serverState serverSettingsRef socket (onSuccess socket))
+            (performRDBSave serverState serverConfigRef socket (onSuccess socket))
 
     onSuccess socket = sendMessage socket . serializeRESPDataType $ SimpleString "Background saving completed"
 
@@ -117,11 +117,11 @@ performRDBSave ::
     , Communication :> es
     , Time :> es
     ) =>
-    ServerState -> ServerSettingsRef -> Socket -> Eff es () -> Eff es ()
-performRDBSave serverState serverSettingsRef socket onSuccess = do
-    settings <- STMEff.readTVarIO serverSettingsRef
-    let rdbDirPath = getRDBDumpFilePathFromSettings settings
-    let rdbConfig = genRDBConfigFromSettings settings
+    ServerState -> ServerConfigRef -> Socket -> Eff es () -> Eff es ()
+performRDBSave serverState serverConfigRef socket onSuccess = do
+    redisConfig <- STMEff.readTVarIO serverConfigRef
+    let rdbDirPath = getRDBDumpFilePathFromConfig redisConfig
+    let rdbConfig = genRDBConfigFromConfig redisConfig
 
     kvStore <- STMEff.readTVarIO serverState.keyValueStoreRef
     lastRDBSave <- STMEff.readTVarIO serverState.lastRDBSaveRef

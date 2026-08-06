@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures #-}
 -- This is for the pTrace calls
 {-# OPTIONS_GHC -Wno-warnings-deprecations #-}
 
@@ -17,6 +18,7 @@ module Redis.Utils (
     runReadM,
     catEithers,
     toLowerCaseString,
+    ShowBS (..),
 ) where
 
 import Data.ByteString.Char8 qualified as BS
@@ -32,6 +34,8 @@ import Data.String (IsString (..))
 import Debug.Pretty.Simple (pTrace, pTraceM)
 import Options.Applicative (ParseError (..), ReadM)
 import Options.Applicative.Types (ReadM (..))
+import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -46,8 +50,8 @@ mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f = either (Left . f) Right
 
 -- Using fractional division to avoid losing precision.
--- Integer division would round 0.1 to 0 which we do not want, we want to have division results as is with little to no rounding
--- For example, converting 100 milliseconds to seconds should give us 0.1 seconds but with integer division, because of the rounding, we'd get 0 seconds
+-- Integer division would round 0.1 to 0 which we do not want, we want to have division results as is with little to no rounding.
+-- For example, converting 100 milliseconds to seconds should give us 0.1 seconds but with integer division, because of the rounding, we'd get 0 seconds.
 millisecondsToSeconds :: (Fractional a) => a -> a
 millisecondsToSeconds = (/ 1000)
 
@@ -70,7 +74,7 @@ showUsingBase base num = go num ""
 genericShow :: (IsString s, Show a) => a -> s
 genericShow = fromString . show
 
--- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#inverseMap
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#inverseMap.
 inverseMap ::
     forall a k.
     (Bounded a, Enum a, Ord k) =>
@@ -81,19 +85,19 @@ inverseMap f = (`M.lookup` dict)
     dict :: Map k a
     dict = M.fromList (fmapToFst f (universe @a))
 
--- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#universe
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Enum.html#universe.
 universe :: (Bounded a, Enum a) => [a]
 universe = [minBound .. maxBound]
 
--- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#fmapToFst
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#fmapToFst.
 fmapToFst :: (Functor f) => (a -> b) -> f a -> f (b, a)
 fmapToFst = fmap . toFst
 
--- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#toFst
+-- | From https://www.stackage.org/haddock/lts-24.38/relude-1.2.2.2/src/Relude.Extra.Tuple.html#toFst.
 toFst :: (a -> b) -> a -> (b, a)
 toFst f a = (f a, a)
 
--- | Based on https://www.stackage.org/haddock/lts-24.46/optparse-applicative-0.18.1.0/src/Options.Applicative.Internal.html#runReadM for pure execution of the optparse-applicative parsers outside of the optparse-applicative framework
+-- | Based on https://www.stackage.org/haddock/lts-24.46/optparse-applicative-0.18.1.0/src/Options.Applicative.Internal.html#runReadM for pure execution of the optparse-applicative parsers outside of the optparse-applicative framework.
 runReadM :: forall b c. (IsString b) => ReadM c -> String -> Either b c
 runReadM (ReadM r) s = mapLeft renderParseError $ runExcept $ runReaderT r s
   where
@@ -106,7 +110,7 @@ runReadM (ReadM r) s = mapLeft renderParseError $ runExcept $ runReaderT r s
     renderParseError (MissingError _ _) = "Something is missing"
     renderParseError (ShowHelpText _) = "Error"
 
--- | From https://www.stackage.org/haddock/lts-24.51/liquidhaskell-boot-0.9.10.1.2/Language-Haskell-Liquid-Misc.html#v:catEithers
+-- | From https://www.stackage.org/haddock/lts-24.51/liquidhaskell-boot-0.9.10.1.2/Language-Haskell-Liquid-Misc.html#v:catEithers.
 catEithers :: [Either a b] -> Either [a] [b]
 catEithers zs = case ls of
     [] -> Right rs
@@ -117,3 +121,15 @@ catEithers zs = case ls of
 
 toLowerCaseString :: String -> String
 toLowerCaseString = map toLower
+
+class ShowBS a where
+    showBs :: a -> ByteString -- Strict Bytestring
+    default showBs :: (Show a) => a -> ByteString
+    showBs = genericShow
+
+deriving anyclass instance ShowBS Bool
+deriving anyclass instance ShowBS Int
+deriving anyclass instance ShowBS String
+
+instance ShowBS Text where
+  showBs = encodeUtf8

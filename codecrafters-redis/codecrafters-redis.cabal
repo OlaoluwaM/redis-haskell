@@ -1,6 +1,6 @@
 cabal-version: 1.24
 
--- This file has been generated from package.yaml by hpack version 0.39.1.
+-- This file has been generated from package.yaml by hpack version 0.39.6.
 --
 -- see: https://github.com/sol/hpack
 
@@ -59,6 +59,7 @@ library
       Redis.Server.Config.Conf
       Redis.Server.Config.Conf.Lexer
       Redis.Server.Config.Defaults
+      Redis.Server.Config.Get
       Redis.Server.Config.Readers
       Redis.Server.Config.Types
       Redis.Server.Context

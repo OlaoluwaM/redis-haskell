@@ -2,7 +2,8 @@ module Redis.Commands.BGSaveSpec where
 
 import Path
 import Redis.RDB.Config
-import Redis.Server.Settings
+import Redis.Server.Config (RedisConfig, RedisConfigF (..))
+import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
 import Redis.ServerState
 import Redis.Store.Data
 import Redis.Test
@@ -103,7 +104,7 @@ spec_bg_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq1)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -112,7 +113,7 @@ spec_bg_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq2)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -131,7 +132,7 @@ spec_bg_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext bgSaveCmdReq)
                 ( PassableTestContext
-                    { settings = Just testSettingsForSnapshot
+                    { config = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -157,7 +158,7 @@ spec_bg_save_cmd_tests = do
             atomically $ takeTMVar saveLock -- Simulate a save currently in progress, without actually running one
 
             let saveCmdReq = mkCmdReqStr [saveCmd]
-            let testContext = PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing}
+            let testContext = PassableTestContext{config = Nothing, serverState = Just initialServerState, metadata = Nothing}
 
             -- BGSAVE's rejection path runs inside a forked, unjoined thread (see handleBGSave in
             -- BGSave.hs), so it can't be observed deterministically here. SAVE hits the exact same
@@ -179,15 +180,16 @@ data MkTestSettingsArg = MkTestSettingsArg
     }
     deriving stock (Eq, Show)
 
-mkTestSettings :: MkTestSettingsArg -> ServerSettings
+mkTestSettings :: MkTestSettingsArg -> RedisConfig
 mkTestSettings MkTestSettingsArg{..} =
-    ServerSettings $
-        HashMap.fromList
-            [ (rdbFileDirectorySettingKey, DirPathVal . Rel $ testRdbOutputDir)
-            , (rdbFilenameSettingKey, FilePathVal . Rel $ rdbFilename)
-            , (rdbCompressionSettingKey, BoolVal useCompression)
-            , (rdbChecksumSettingKey, BoolVal generateChecksum)
-            ]
+    defaults
+        { rdbFileDirPath = Rel testRdbOutputDir
+        , rdbFilenamePath = rdbFilename
+        , useRDBCompression = useCompression
+        , genRdbChecksum = generateChecksum
+        }
+  where
+    defaults = defaultRedisConfig.redisConf
 
 mkRDBConfigFromTestSettingsArgs :: MkTestSettingsArg -> RDBConfig
 mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =

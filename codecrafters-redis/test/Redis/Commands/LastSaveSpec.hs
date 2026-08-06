@@ -2,7 +2,8 @@ module Redis.Commands.LastSaveSpec where
 
 import Path
 import Redis.RDB.Config
-import Redis.Server.Settings
+import Redis.Server.Config (RedisConfig, RedisConfigF (..))
+import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
 import Redis.ServerState
 import Redis.Store.Data
 import Redis.Store.Timestamp
@@ -96,7 +97,7 @@ spec_last_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq1)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -105,7 +106,7 @@ spec_last_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq2)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -121,7 +122,7 @@ spec_last_save_cmd_tests = do
                         }
             let testSettingsForSnapshot = mkTestSettings testSettingsArgs
             let rdbOutputPath = toFilePath (testRdbOutputDir </> rdbFilename)
-            let testContext = PassableTestContext{settings = Just testSettingsForSnapshot, serverState = Just initialServerState, metadata = Nothing}
+            let testContext = PassableTestContext{config = Just testSettingsForSnapshot, serverState = Just initialServerState, metadata = Nothing}
 
             (`finally` removeFileIfExists rdbOutputPath) $ do
                 runTestServer (handleCommandReq @ServerContext saveCmdReq) testContext
@@ -173,7 +174,7 @@ spec_last_save_cmd_tests = do
             result <-
                 runTestServer
                     (handleCommandReq @ServerContext (mkCmdReqStr [lastSaveCmd]))
-                    (PassableTestContext{settings = Nothing, serverState = Just initialServerState, metadata = Nothing})
+                    (PassableTestContext{config = Nothing, serverState = Just initialServerState, metadata = Nothing})
                     `finally` atomically (putTMVar saveLock ())
 
             (RESPInt lastSaveTimestampWhileInProgress) <-
@@ -192,15 +193,16 @@ data MkTestSettingsArg = MkTestSettingsArg
     }
     deriving stock (Eq, Show)
 
-mkTestSettings :: MkTestSettingsArg -> ServerSettings
+mkTestSettings :: MkTestSettingsArg -> RedisConfig
 mkTestSettings MkTestSettingsArg{..} =
-    ServerSettings $
-        HashMap.fromList
-            [ (rdbFileDirectorySettingKey, DirPathVal . Rel $ testRdbOutputDir)
-            , (rdbFilenameSettingKey, FilePathVal . Rel $ rdbFilename)
-            , (rdbCompressionSettingKey, BoolVal useCompression)
-            , (rdbChecksumSettingKey, BoolVal generateChecksum)
-            ]
+    defaults
+        { rdbFileDirPath = Rel testRdbOutputDir
+        , rdbFilenamePath = rdbFilename
+        , useRDBCompression = useCompression
+        , genRdbChecksum = generateChecksum
+        }
+  where
+    defaults = defaultRedisConfig.redisConf
 
 mkRDBConfigFromTestSettingsArgs :: MkTestSettingsArg -> RDBConfig
 mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =

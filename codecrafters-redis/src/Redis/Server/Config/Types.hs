@@ -1,11 +1,16 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | The types here should be used qualified
 module Redis.Server.Config.Types (
     RedisConfigF (..),
     RedisConfig,
     PartialRedisConfig,
+    collectFieldSpecs,
+    gZipWith,
+    collectNamedFields,
+    NamedField (..),
 
     -- * Field Types
     RDBFileDir,
@@ -17,8 +22,6 @@ module Redis.Server.Config.Types (
     -- * Field Type Accessors
     ConfigFieldType,
     getConfigFieldName,
-    collectFieldSpecs,
-    gZipWith,
 ) where
 
 import Path
@@ -28,15 +31,19 @@ import Control.Monad.Identity (Identity)
 import Data.Data (Proxy (..))
 import Data.Monoid (Last)
 import Data.String (IsString (fromString))
+import Data.Text (Text)
 import GHC.Base (Symbol, Type)
 import GHC.Generics (
     Generic (..),
     Generically (..),
     K1 (..),
     M1 (..),
+    Selector (selName),
     (:*:) (..),
  )
 import GHC.TypeLits (KnownSymbol, symbolVal)
+import Redis.Utils (ShowBS (..))
+import System.FilePath.Posix (dropTrailingPathSeparator)
 
 data ConfigField = ConfigField Symbol Type
 
@@ -50,9 +57,17 @@ type family ConfigFieldType (k :: ConfigField) :: Type where
 --                         Config Field Types & Names                         --
 -- -------------------------------------------------------------------------- --
 
-type RDBFileDir = 'ConfigField "dir" (SomeBase Dir)
+type RDBFileDir = 'ConfigField "dir" RDBFileDirType
+type RDBFileDirType = SomeBase Dir
 
-type RDBFilename = 'ConfigField "dbfilename" (Path Rel File)
+instance ShowBS RDBFileDirType where
+    showBs = fromString . dropTrailingPathSeparator . fromSomeDir
+
+type RDBFilename = 'ConfigField "dbfilename" RDBFilenameType
+type RDBFilenameType = Path Rel File
+
+instance ShowBS RDBFilenameType where
+    showBs = fromString . toFilePath
 
 type UseRDBCompression = 'ConfigField "rdbcompression" Bool
 
@@ -169,8 +184,42 @@ instance (GZipWith f h l, GZipWith g i m) => GZipWith (f :*: g) (h :*: i) (l :*:
 instance GZipWith (K1 i x) (K1 i (Last x)) (K1 i x) where
     gZipWith fn (K1 x) (K1 y) = K1 (fn x y)
 
-collectFieldSpecs :: (Generic (RedisConfigF f), GFieldSpecs a (Rep (RedisConfigF f))) => RedisConfigF f -> [a]
+-- We're defining an existential type because named fields are going to be of different types. Basically we'd need a heterogeneous list which can only achieved using existentials
+data NamedField = forall a. (ShowBS a, Show a) => NamedField
+    { name :: Text
+    , val :: a
+    }
+
+deriving stock instance Show NamedField
+
+{-
+    Similar to GFieldSpecs, the purpose of GNamedFields is to traverse through the generic representation of a record and collect, in a list, field values with their corresponding field names.
+-}
+class GNamedFields rep where
+    gNamedFields :: rep p -> [NamedField]
+
+-- This instance is for traversing down into Metadata nodes that aren't parents to a leaf with record field value info (K1 node). Such nodes are usually ancestor nodes or the root node of a generic rep
+instance (GNamedFields f) => GNamedFields (M1 i c f) where
+    gNamedFields (M1 x) = gNamedFields x
+
+instance (GNamedFields f, GNamedFields g) => GNamedFields (f :*: g) where
+    gNamedFields (f :*: g) = gNamedFields f <> gNamedFields g
+
+{-
+    This instance is a more specific version of the one we have above. We've marked it as overlapping to tell the compiler to prefer it over the more generic M1 instance where applicable.
+
+    Whilst inspecting the generic rep of our RedisConfigF type, I noticed that some M1 nodes in the tree contained the field name of a record field in their `Meta` param slot. These M1 nodes were also all direct parents to leaf K1 nodes that contained the record field type information. Therefore, to get both the field name and the value we needed to match on that specific sub-tree of M1 node directly followed by a K1 leaf so we could access both info at once.
+
+    selName comes from the Selector type class to actually access the record field name
+-}
+instance {-# OVERLAPPING #-} (Selector c, ShowBS x, Show x) => GNamedFields (M1 i c (K1 r x)) where
+    gNamedFields selectorMeta@(M1 (K1 x)) = [NamedField (fromString $ selName selectorMeta) x]
+
+collectFieldSpecs :: (GFieldSpecs a (Rep (RedisConfigF f))) => RedisConfigF f -> [a]
 collectFieldSpecs = gFieldSpecs . from
 
 getConfigFieldName :: forall (b :: ConfigField) a. (KnownSymbol (ConfigFieldName b), IsString a) => a
 getConfigFieldName = fromString $ symbolVal $ Proxy @(ConfigFieldName b)
+
+collectNamedFields :: (GNamedFields (Rep (RedisConfigF f))) => RedisConfigF f -> [NamedField]
+collectNamedFields = gNamedFields . from

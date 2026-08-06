@@ -30,7 +30,7 @@ test_info_cmd_golden_test_without_section_list :: IO TestTree
 test_info_cmd_golden_test_without_section_list = do
     let cmdReq = mkCmdReqStr [infoCmd]
 
-    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
     let goldenPath = [relfile|test/Redis/Commands/Info/golden/default-info.txt|]
 
@@ -40,7 +40,7 @@ test_info_cmd_golden_test_with_invalid_sections :: IO TestTree
 test_info_cmd_golden_test_with_invalid_sections = do
     let cmdReq = mkCmdReqStr [infoCmd, mkBulkString "fwfw", mkBulkString "9482bd", mkBulkString "wmwownf"]
 
-    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
     let goldenPath = [relfile|test/Redis/Commands/Info/golden/invalid-sections-info.txt|]
 
@@ -63,7 +63,7 @@ test_info_cmd_golden_test_filtered_by_single_section =
         $ \(sectionName, sectionArg, goldenPath) -> do
             let cmdReq = mkCmdReqStr [infoCmd, sectionArg]
 
-            let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+            let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
             pure $ goldenVsString ("Golden test for INFO command filtered to just the " <> sectionName <> " section") (toFilePath goldenPath) (fromStrict <$> runInfoCmd)
 
@@ -71,7 +71,7 @@ test_info_cmd_golden_test_filtered_by_multiple_sections :: IO TestTree
 test_info_cmd_golden_test_filtered_by_multiple_sections = do
     let cmdReq = mkCmdReqStr [infoCmd, mkBulkString "memory", mkBulkString "clients", mkBulkString "Server", mkBulkString "Keyspace"]
 
-    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
     let goldenPath = [relfile|test/Redis/Commands/Info/golden/filtered-by-multiple-sections-info.txt|]
 
@@ -82,7 +82,7 @@ test_info_cmd_golden_test_filtered_by_special_section_keywords = for ["all" :: S
     let specialSectionKeywordBS = fromString specialSectionKeywordS
     let cmdReq = mkCmdReqStr [infoCmd, mkBulkString "memory", mkBulkString "clients", mkBulkString specialSectionKeywordBS, mkBulkString "Keyspace"]
 
-    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+    let runInfoCmd = runTestServer (handleCommandReq @ServerContext cmdReq) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
     let rawGoldenPathFilename = "info-with-multiple-sections-and-" <> specialSectionKeywordS <> "-keyword.txt"
     goldenPathFilename <- parseRelFile rawGoldenPathFilename
@@ -98,8 +98,8 @@ spec_info_cmd_golden_default_equivalency = describe "INFO command invocation equ
         let cmdReq1 = mkCmdReqStr [infoCmd]
         let cmdReq2 = mkCmdReqStr [infoCmd, mkBulkString "default"]
 
-        res1 <- runTestServer (handleCommandReq @ServerContext cmdReq1) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
-        res2 <- runTestServer (handleCommandReq @ServerContext cmdReq2) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+        res1 <- runTestServer (handleCommandReq @ServerContext cmdReq1) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
+        res2 <- runTestServer (handleCommandReq @ServerContext cmdReq2) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
         res1 `shouldBe` res2
 
@@ -108,7 +108,7 @@ spec_info_cmd_golden_default_equivalency = describe "INFO command invocation equ
         let cmdReq1 = mkCmdReqStr [infoCmd, mkBulkString "all"]
         let cmdReq2 = mkCmdReqStr [infoCmd, mkBulkString "everything"]
 
-        res1 <- runTestServer (handleCommandReq @ServerContext cmdReq1) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
-        res2 <- runTestServer (handleCommandReq @ServerContext cmdReq2) (PassableTestContext{settings = Nothing, serverState = Nothing, metadata = Nothing})
+        res1 <- runTestServer (handleCommandReq @ServerContext cmdReq1) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
+        res2 <- runTestServer (handleCommandReq @ServerContext cmdReq2) (PassableTestContext{config = Nothing, serverState = Nothing, metadata = Nothing})
 
         res1 `shouldBe` res2
