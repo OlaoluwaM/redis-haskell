@@ -49,6 +49,7 @@ import Redis.Server.Config (
  )
 import Redis.Server.Context (ServerConfigRef, ServerContext (..))
 import Redis.Server.Metadata (ServerMetadata (..))
+import System.Directory (getCurrentDirectory)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
@@ -57,19 +58,22 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
-    commandlineConfig <- execParser commandlineConfigParser
-    redisConfig <- loadRedisConfig commandlineConfig >>= either throwIO pure
-    redisServerConfigRef <- newTVarIO redisConfig
-
+    cwd <- getCurrentDirectory
     environment <- Metadata.loadEnvironment
-    let port = show redisConfig.port
-    let configFilePathM = commandLineConfigFilePath commandlineConfig
+    commandlineConfig <- execParser (commandlineConfigParser cwd)
 
     Blammo.withLoggerEnv $ \logger -> do
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo "Loading redis config..."
+        redisConfig <- loadRedisConfig commandlineConfig >>= either throwIO pure
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo "Loaded redis config"
+
+        redisServerConfigRef <- newTVarIO redisConfig
+
+        let port = show redisConfig.port
+        let configFilePathM = commandLineConfigFilePath commandlineConfig
+
         Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Loading initial store from RDB dump file..."
-
         mInitialStore <- fmap fst <$> loadStoreFromRDBDump logger redisConfig
-
         initialServerStateRef <- atomically $ genInitialServerStateEff mInitialStore
 
         maybe

@@ -8,6 +8,7 @@ module Redis.Server.Config (
 
     -- ** For testing
     mkCompleteRedisConfig,
+    parseRedisConfFilePath,
 ) where
 
 import Path
@@ -20,6 +21,8 @@ import Redis.Server.Config.Defaults qualified as Defaults
 
 import Redis.Server.Config.Types qualified as Config
 
+import Data.Bifunctor (Bifunctor (bimap))
+import Data.Bool (bool)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (..))
 import Effectful (Eff, (:>))
@@ -77,29 +80,49 @@ mkCompleteRedisConfig (RedisConfigFromCommandLine configFromCli) (RedisConfigFro
     fromLast :: a -> Last a -> a
     fromLast defaultVal = fromMaybe defaultVal . (.getLast)
 
-commandlineConfigParser :: ParserInfo CommandLineConfig
-commandlineConfigParser =
+commandlineConfigParser :: FilePath -> ParserInfo CommandLineConfig
+commandlineConfigParser cwd =
     info
         (parser <**> helper <**> simpleVersioner redisVersion)
         (fullDesc <> progDesc "Redis server built in Haskell" <> header "A haskell redis server")
   where
-    parser = CommandLineConfig <$> optional parserForRedisConfigFromConfigFilePathArgument <*> parserForCommandLineConfig
+    parser =
+        CommandLineConfig
+            <$> optional (parserForRedisConfigFromConfigFilePathArgument cwd)
+            <*> parserForCommandLineConfig
 
-parserForRedisConfigFromConfigFilePathArgument :: Parser RedisConfFilePath
-parserForRedisConfigFromConfigFilePathArgument =
+parserForRedisConfigFromConfigFilePathArgument :: FilePath -> Parser RedisConfFilePath
+parserForRedisConfigFromConfigFilePathArgument cwd =
     argument
-        parseRedisConfFilePath
+        (parseRedisConfFilePath cwd)
         (metavar "REDIS_CONFIG_FILE" <> help "Path to redis config file")
 
-parseRedisConfFilePath :: ReadM RedisConfFilePath
-parseRedisConfFilePath = do
+{-# WARNING in "x-unsafe-internals" parseRedisConfFilePath "This value is exported for testing purposes only" #-}
+parseRedisConfFilePath :: FilePath -> ReadM RedisConfFilePath
+parseRedisConfFilePath cwd = do
     rawPath <- readerAsk
-    path <-
+    parseResult <-
         maybe
             (fail "Path provided for redis config file is not an absolute file path")
             pure
-            $ parseAbsFile @Maybe rawPath
+            $ parseSomeFile @Maybe rawPath
 
-    if filename path == [relfile|redis.conf|]
-        then pure (RedisConfFilePath path)
-        else fail "The file provided is not named redis.conf"
+    either fail (pure . RedisConfFilePath) $ resolveRedisConfFilePath cwd parseResult
+
+resolveRedisConfFilePath :: FilePath -> SomeBase File -> Either String (Path Abs File)
+resolveRedisConfFilePath cwd parseResult = case parseResult of
+    (Abs absPath) ->
+        bool
+            (Left "The file provided is not named redis.conf")
+            (Right absPath)
+            (hasValidConfigFilename absPath)
+    (Rel relativePath) -> do
+        relPath <-
+            bool
+                (Left "The file provided is not named redis.conf")
+                (Right relativePath)
+                (hasValidConfigFilename relativePath)
+        bimap (const @String $ "Invalid cwd: " <> cwd) (</> relPath) $ parseAbsDir cwd
+  where
+    hasValidConfigFilename = (== [relfile|redis.conf|]) . filename
+

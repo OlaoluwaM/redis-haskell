@@ -4,8 +4,8 @@ module Redis.Server.ConfigSpec where
 
 import Test.Hspec
 
-import Path (SomeBase (..), absdir, relfile)
-import Redis.Server.Config (mkCompleteRedisConfig)
+import Path (SomeBase (..), absdir, absfile, relfile)
+import Redis.Server.Config (mkCompleteRedisConfig, parseRedisConfFilePath)
 import Redis.Server.Config.CommandLine (RedisConfigFromCommandLine (..))
 import Redis.Server.Config.Conf (RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (
@@ -14,6 +14,8 @@ import Redis.Server.Config.Defaults (
     emptyPartialRedisConfig,
  )
 import Redis.Server.Config.Types (RedisConfig, RedisConfigF (..))
+import Redis.Server.Metadata (RedisConfFilePath (..))
+import Redis.Utils (runReadM)
 
 defaults :: RedisConfig
 defaults = defaultRedisConfig.redisConf
@@ -97,3 +99,24 @@ spec_mk_complete_redis_config = do
                     , genRdbChecksum = False
                     , port = 9999
                     }
+
+spec_parse_redis_conf_file_path :: Spec
+spec_parse_redis_conf_file_path = do
+    describe "parseRedisConfFilePath" $ do
+        it "accepts an absolute redis.conf path as-is" $
+            runReadM @String (parseRedisConfFilePath "/tmp/redis") "/etc/redis/redis.conf" `shouldBe` Right (RedisConfFilePath [absfile|/etc/redis/redis.conf|])
+
+        it "rejects an absolute config path that is not named redis.conf" $
+            runReadM @String (parseRedisConfFilePath "/tmp/redis") "/etc/redis/not-redis.conf" `shouldBe` Left "The file provided is not named redis.conf"
+
+        it "resolves a relative redis.conf path against the provided cwd" $
+            runReadM @String (parseRedisConfFilePath "/tmp/redis") "redis.conf" `shouldBe` Right (RedisConfFilePath [absfile|/tmp/redis/redis.conf|])
+
+        it "resolves a nested relative redis.conf path against the provided cwd" $
+            runReadM @String (parseRedisConfFilePath "/tmp/redis") "conf/redis.conf" `shouldBe` Right (RedisConfFilePath [absfile|/tmp/redis/conf/redis.conf|])
+
+        it "rejects a relative config path that is not named redis.conf" $
+            runReadM @String (parseRedisConfFilePath "/tmp/redis") "not-redis.conf" `shouldBe` Left "The file provided is not named redis.conf"
+
+        it "rejects a relative redis.conf path when the cwd is not an absolute directory" $
+            runReadM @String (parseRedisConfFilePath "not-an-absolute-dir") "redis.conf" `shouldBe` Left "Invalid cwd: not-an-absolute-dir"

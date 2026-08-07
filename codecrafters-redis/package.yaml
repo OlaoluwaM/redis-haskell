@@ -81,6 +81,7 @@ executables:
     dependencies:
       - async
       - codecrafters-redis
+      - directory
       - envparse
       - network-run
       - optparse-applicative

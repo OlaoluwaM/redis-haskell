@@ -200,6 +200,7 @@ executable codecrafters-redis-exe
     , bytestring
     , codecrafters-redis
     , containers
+    , directory
     , effectful
     , effectful-th
     , envparse
