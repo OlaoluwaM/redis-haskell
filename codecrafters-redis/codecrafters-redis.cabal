@@ -1,6 +1,6 @@
 cabal-version: 1.24
 
--- This file has been generated from package.yaml by hpack version 0.39.6.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -71,7 +71,6 @@ library
       Redis.Utils
       Rerefined.Extra
       Rerefined.Orphans
-      BuildInfo
   other-modules:
       Paths_codecrafters_redis
   hs-source-dirs:
