@@ -8,8 +8,6 @@ import Redis.Effects
 import Effectful.Concurrent.STM qualified as STMEff
 import Effectful.Reader.Static qualified as ReaderEff
 
-import Control.Applicative ((<|>))
-import Control.Monad (join)
 import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import Optics (view)
@@ -29,10 +27,7 @@ handleLastSave = do
     let socket = view #clientSocket env
     let serverState = view #serverState env
 
-    mLastSaveTime <- STMEff.atomically $ do
-        lastRDBSaveState <- STMEff.readTVar serverState.lastRDBSaveRef
-        inProgressTimestamp <- STMEff.tryReadTMVar lastRDBSaveState.inProgress
-        pure $ join inProgressTimestamp <|> lastRDBSaveState.lastCompleted
+    mLastSaveTime <- (.lastCompleted) <$> STMEff.readTVarIO serverState.lastRDBSaveRef
 
     case mLastSaveTime of
         Just lastSaveTime ->

@@ -2,16 +2,12 @@
 
 module Main (main) where
 
-import Redis.Server.Settings
 import Redis.ServerState
 
 import Blammo.Logging qualified as Blammo
 import Blammo.Logging.Setup qualified as Blammo
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty qualified as NE
-import Effectful qualified as Eff
-import Effectful.FileSystem qualified as Eff
-import Redis.Effect.Logging qualified as Eff
 import Redis.Server.Metadata qualified as Metadata
 
 import Blammo.Logging (Logger, Message (..), (.=))
@@ -30,25 +26,30 @@ import Data.String (IsString (fromString))
 import Data.Time (getCurrentTime)
 import GHC.Conc (labelThread)
 import Network.Run.TCP (openTCPServerSocket, resolve)
-import Network.Socket (AddrInfoFlag (..), HostName, ServiceName, Socket, SocketType (..), accept, close, gracefulClose)
-import Network.Socket.ByteString (recv)
-import Options.Applicative (
-    execParser,
-    fullDesc,
-    header,
-    helper,
-    info,
-    progDesc,
-    simpleVersioner,
-    (<**>),
+import Network.Socket (
+    AddrInfoFlag (..),
+    HostName,
+    ServiceName,
+    Socket,
+    SocketType (..),
+    accept,
+    close,
+    gracefulClose,
  )
+import Network.Socket.ByteString (recv)
+import Options.Applicative (execParser)
 import Redis.Handler (handleCommandReq)
 import Redis.RDB.Load (loadStoreFromRDBDump)
 import Redis.Server (runServer)
-import Redis.Server.Context (ServerContext (..))
+import Redis.Server.Config (
+    RedisConfigF (..),
+    commandLineConfigFilePath,
+    commandlineConfigParser,
+    loadRedisConfig,
+ )
+import Redis.Server.Context (ServerConfigRef, ServerContext (..))
 import Redis.Server.Metadata (ServerMetadata (..))
-import Redis.Server.Settings.Get (getRedisPortFromSettings)
-import Redis.Server.Version (redisVersion)
+import System.Directory (getCurrentDirectory)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
 main :: IO ()
@@ -57,21 +58,22 @@ main = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
 
-    settings <- execParser serverSettingsParser
+    cwd <- getCurrentDirectory
     environment <- Metadata.loadEnvironment
-    let port = getRedisPortFromSettings settings.settingsFromCommandLine
-    let configFilePathM = settings.settingsConfigFilePath
+    commandlineConfig <- execParser (commandlineConfigParser cwd)
 
     Blammo.withLoggerEnv $ \logger -> do
-        Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Loading initial store from RDB dump file..."
-        mInitialStore <-
-            (fmap . fmap) fst
-                . Eff.runEff
-                . Eff.runLoggingWithLogger logger
-                . Eff.runFileSystem
-                $ loadStoreFromRDBDump settings.settingsFromCommandLine
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo "Loading redis config..."
+        redisConfig <- loadRedisConfig commandlineConfig >>= either throwIO pure
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo "Loaded redis config"
 
-        serverSettingsRef <- newTVarIO settings.settingsFromCommandLine
+        redisServerConfigRef <- newTVarIO redisConfig
+
+        let port = show redisConfig.port
+        let configFilePathM = commandLineConfigFilePath commandlineConfig
+
+        Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Loading initial store from RDB dump file..."
+        mInitialStore <- fmap fst <$> loadStoreFromRDBDump logger redisConfig
         initialServerStateRef <- atomically $ genInitialServerStateEff mInitialStore
 
         maybe
@@ -79,7 +81,7 @@ main = do
             (const . Blammo.runLoggerLoggingT logger $ Blammo.logDebug "Initial store loaded from RDB dump file.")
             mInitialStore
 
-        Blammo.runLoggerLoggingT logger $ Blammo.logInfo (fromString $ "Redis server listening on port " <> fromString port)
+        Blammo.runLoggerLoggingT logger $ Blammo.logInfo (fromString $ "Redis server listening on port " <> port)
 
         startupTime <- getCurrentTime
 
@@ -90,20 +92,15 @@ main = do
                     , environment = environment
                     }
 
-        runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef serverSettingsRef logger serverMetadata)
-  where
-    serverSettingsParser =
-        info
-            (serverSettings <**> helper <**> simpleVersioner redisVersion)
-            (fullDesc <> progDesc "Redis server build in Haskell per CodeCrafters" <> header "A haskell redis server")
+        runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef redisServerConfigRef logger serverMetadata)
 
-handleRedisClientConnection :: ServerState -> ServerSettingsRef -> Logger -> ServerMetadata -> Socket -> IO ()
-handleRedisClientConnection serverState settingsRef logger metadata socket = do
+handleRedisClientConnection :: ServerState -> ServerConfigRef -> Logger -> ServerMetadata -> Socket -> IO ()
+handleRedisClientConnection serverState serverConfigRef logger metadata socket = do
     req <- recv socket 1024
     unless (BS.null req) $ do
         catch @SomeException
             ( runServer
-                (ServerContext socket serverState settingsRef metadata)
+                (ServerContext socket serverState serverConfigRef metadata)
                 logger
                 (handleCommandReq @ServerContext req)
             )
@@ -111,7 +108,7 @@ handleRedisClientConnection serverState settingsRef logger metadata socket = do
                 Blammo.runLoggerLoggingT logger $ Blammo.logError $ "An error occurred while handling client request" :# ["Error" .= displayException e]
                 throwIO e -- Rethrow after logging so that the connection can be closed properly
             )
-        handleRedisClientConnection serverState settingsRef logger metadata socket
+        handleRedisClientConnection serverState serverConfigRef logger metadata socket
 
 -- | Running a TCP server with an accepted socket and its peer name. Lifted from https://www.stackage.org/haddock/lts-24.25/network-run-0.4.4/src/Network.Run.TCP.html#runTCPServer
 runTCPServer :: Maybe HostName -> ServiceName -> Logger -> (Socket -> IO a) -> IO a

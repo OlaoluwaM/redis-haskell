@@ -12,16 +12,16 @@ import Effectful.Reader.Static qualified as ReaderEff
 
 import Control.Exception (Exception (displayException))
 import Data.Aeson (ToJSON (..))
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (Bifunctor (first))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding (encodeUtf8)
-import Redis.Effect.Communication (sendMessage)
 import Effectful (Eff)
 import GHC.Generics (Generic)
 import Optics (view)
-import Redis.Effects (RedisClientCommunication, RedisServerSettings)
-import Redis.Server.Settings (ServerSettings (..), Setting (..), serializeSettingsValue)
+import Redis.Effect.Communication (sendMessage)
+import Redis.Effects (RedisClientCommunication, RedisServerConfig)
+import Redis.Server.Config.Types (NamedField (..), collectNamedFields)
+import Redis.Utils (ShowBS (showBs))
 import System.FilePath.Glob (compile, match)
 
 -- https://redis.io/docs/latest/commands/config-get/
@@ -36,20 +36,22 @@ mkConfigGetCmdArg configsToGet = either (fail . displayException) (pure . Config
 
 handleConfigGet ::
     forall r es.
-    (RedisClientCommunication r es, RedisServerSettings r es) =>
+    (RedisClientCommunication r es, RedisServerConfig r es) =>
     ConfigGetCmdArg -> Eff es ()
 handleConfigGet (ConfigGetCmdArg configOptionPatternsToGet) = do
     env <- ReaderEff.ask @r
 
     let socket = view #clientSocket env
-    let serverSettingsStateRef = view #serverSettingsRef env
+    let serverConfigRef = view #serverConfigRef env
 
-    serverSettings <- (.settings) <$> STMEff.readTVarIO serverSettingsStateRef
+    serverConfig <- STMEff.readTVarIO serverConfigRef
+
+    let serverConfigMap = HashMap.fromList $ map (\(NamedField k v) -> (k, showBs v)) $ collectNamedFields serverConfig
     let normalizedConfigGetOptionPatternsToGet = map (compile . T.unpack) configOptionPatternsToGet
 
-    let filteredMap = HashMap.filterWithKey (\(Setting settingKey) _ -> let settingKeyStr = T.unpack settingKey in any (`match` settingKeyStr) normalizedConfigGetOptionPatternsToGet) serverSettings
+    let filteredMap = HashMap.filterWithKey (\settingKey _ -> let settingKeyStr = T.unpack settingKey in any (`match` settingKeyStr) normalizedConfigGetOptionPatternsToGet) serverConfigMap
 
-    let result = concatMap (fromTuple . bimap (encodeUtf8 . (.setting)) serializeSettingsValue) . HashMap.toList $ filteredMap
+    let result = concatMap (fromTuple . first showBs) . HashMap.toList $ filteredMap
 
     sendMessage socket . serializeRESPDataType . mkNonNullRESPArray . map mkNonNullBulkString $ result
 

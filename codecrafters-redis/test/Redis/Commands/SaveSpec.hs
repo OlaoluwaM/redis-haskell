@@ -2,7 +2,8 @@ module Redis.Commands.SaveSpec where
 
 import Path
 import Redis.RDB.Config
-import Redis.Server.Settings
+import Redis.Server.Config (RedisConfig, RedisConfigF (..))
+import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
 import Redis.ServerState
 import Redis.Store.Data
 import Redis.Store.Timestamp
@@ -92,7 +93,7 @@ saveCmdPropTest = withTests 75 $ H.property $ do
             runTestServer
                 (handleCommandReq @ServerContext saveCmdReq)
                 ( PassableTestContext
-                    { settings = Just testSettingsForSnapshot
+                    { config = Just testSettingsForSnapshot
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -169,7 +170,7 @@ spec_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq1)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -178,7 +179,7 @@ spec_save_cmd_tests = do
             runTestServer
                 (handleCommandReq @ServerContext setCmdReq2)
                 ( PassableTestContext
-                    { settings = Nothing
+                    { config = Nothing
                     , serverState = Just initialServerState
                     , metadata = Nothing
                     }
@@ -199,7 +200,7 @@ spec_save_cmd_tests = do
                 runTestServer
                     (handleCommandReq @ServerContext saveCmdReq)
                     ( PassableTestContext
-                        { settings = Just testSettingsForSnapshot
+                        { config = Just testSettingsForSnapshot
                         , serverState = Just initialServerState
                         , metadata = Nothing
                         }
@@ -224,15 +225,16 @@ data MkTestSettingsArg = MkTestSettingsArg
     }
     deriving stock (Eq, Show)
 
-mkTestSettings :: MkTestSettingsArg -> ServerSettings
+mkTestSettings :: MkTestSettingsArg -> RedisConfig
 mkTestSettings MkTestSettingsArg{..} =
-    ServerSettings $
-        HashMap.fromList
-            [ (rdbFileDirectorySettingKey, DirPathVal . Rel $ testRdbOutputDir)
-            , (rdbFilenameSettingKey, FilePathVal . Rel $ rdbFilename)
-            , (rdbCompressionSettingKey, BoolVal useCompression)
-            , (rdbChecksumSettingKey, BoolVal generateChecksum)
-            ]
+    defaults
+        { rdbFileDirPath = Rel testRdbOutputDir
+        , rdbFilenamePath = rdbFilename
+        , useRDBCompression = useCompression
+        , genRdbChecksum = generateChecksum
+        }
+  where
+    defaults = defaultRedisConfig.redisConf
 
 mkRDBConfigFromTestSettingsArgs :: MkTestSettingsArg -> RDBConfig
 mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =
@@ -245,7 +247,7 @@ mkRDBConfigFromTestSettingsArgs MkTestSettingsArg{..} =
 initializeServerState :: Store -> IO ServerState
 initializeServerState store = do
     atomically $ do
-        lastRDBSaveCurrent <- newTMVar Nothing
+        lastRDBSaveCurrent <- newTMVar ()
         kvStore <- newTVar store
         lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
         pure $ ServerState kvStore lastRDBSave

@@ -39,7 +39,7 @@ handleCommandReq ::
     forall r es.
     ( RedisClientCommunication r es
     , RedisServerState r es
-    , RedisServerSettings r es
+    , RedisServerConfig r es
     , RedisServerMetadata r es
     , Eff.FileSystem :> es
     , Logging :> es
@@ -54,7 +54,7 @@ dispatchCmd ::
     forall r es.
     ( RedisClientCommunication r es
     , RedisServerState r es
-    , RedisServerSettings r es
+    , RedisServerConfig r es
     , RedisServerMetadata r es
     , Eff.FileSystem :> es
     , Logging :> es

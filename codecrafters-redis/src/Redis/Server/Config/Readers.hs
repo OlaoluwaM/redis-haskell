@@ -1,0 +1,42 @@
+module Redis.Server.Config.Readers (
+  rdbFileDirReader,
+  rdbFilenameReader,
+  rdbCompressionReader,
+  rdbChecksumReader,
+  portReader
+) where
+
+import Path
+
+import Redis.Server.Config.Types qualified as Config
+
+import Control.Applicative ((<|>))
+import Options.Applicative (ReadM, auto, maybeReader)
+import Options.Applicative.Types (readerAsk)
+import Redis.Utils (toLowerCaseString)
+
+rdbFileDirReader :: ReadM (Config.ConfigFieldType Config.RDBFileDir)
+rdbFileDirReader = maybeReader (fmap Abs . parseAbsDir) <|> maybeReader (fmap Rel . parseRelDir)
+
+rdbFilenameReader :: ReadM (Config.ConfigFieldType Config.RDBFilename)
+rdbFilenameReader = maybeReader parseRelFile
+
+rdbCompressionReader :: ReadM (Config.ConfigFieldType Config.UseRDBCompression)
+rdbCompressionReader = modifiedBoolReader
+
+rdbChecksumReader :: ReadM (Config.ConfigFieldType Config.GenRDBChecksum)
+rdbChecksumReader = modifiedBoolReader
+
+portReader :: ReadM (Config.ConfigFieldType Config.RedisPort)
+portReader = auto
+
+modifiedBoolReader :: ReadM Bool
+modifiedBoolReader = auto @Bool <|> yesNoReader
+  where
+    yesNoReader :: ReadM Bool
+    yesNoReader = do
+        rawBool <- toLowerCaseString <$> readerAsk
+        case rawBool of
+            "yes" -> pure True
+            "no" -> pure False
+            _ -> fail $ "Expected 'yes' or 'no' but got " <> rawBool

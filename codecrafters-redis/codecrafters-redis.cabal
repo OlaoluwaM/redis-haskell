@@ -54,10 +54,16 @@ library
       Redis.RESP
       Redis.RESP.BulkString
       Redis.Server
+      Redis.Server.Config
+      Redis.Server.Config.CommandLine
+      Redis.Server.Config.Conf
+      Redis.Server.Config.Conf.Lexer
+      Redis.Server.Config.Defaults
+      Redis.Server.Config.Get
+      Redis.Server.Config.Readers
+      Redis.Server.Config.Types
       Redis.Server.Context
       Redis.Server.Metadata
-      Redis.Server.Settings
-      Redis.Server.Settings.Get
       Redis.Server.Version
       Redis.ServerState
       Redis.Store.Data
@@ -65,7 +71,6 @@ library
       Redis.Utils
       Rerefined.Extra
       Rerefined.Orphans
-      BuildInfo
   other-modules:
       Paths_codecrafters_redis
   hs-source-dirs:
@@ -194,6 +199,7 @@ executable codecrafters-redis-exe
     , bytestring
     , codecrafters-redis
     , containers
+    , directory
     , effectful
     , effectful-th
     , envparse
@@ -231,6 +237,9 @@ test-suite codecrafters-redis-test
       Redis.RDB.IntegrationSpec
       Redis.RDB.TestConfig
       Redis.RESPSpec
+      Redis.Server.Config.Conf.LexerSpec
+      Redis.Server.Config.ConfSpec
+      Redis.Server.ConfigSpec
       Redis.Test
       Paths_codecrafters_redis
   hs-source-dirs:
@@ -288,6 +297,7 @@ test-suite codecrafters-redis-test
     , optics
     , path
     , pretty-simple
+    , prettyprinter
     , rerefined
     , stm
     , string-interpolate

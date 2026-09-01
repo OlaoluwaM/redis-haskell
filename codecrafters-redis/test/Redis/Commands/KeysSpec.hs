@@ -34,7 +34,7 @@ keysCmd = mkBulkString "KEYS"
 -- | Initialize server state with a given store
 initializeServerState :: Store -> IO ServerState
 initializeServerState store = atomically $ do
-    lastRDBSaveCurrent <- newTMVar Nothing
+    lastRDBSaveCurrent <- newTMVar ()
     kvStore <- newTVar store
     lastRDBSave <- newTVar $ LastRDBSave lastRDBSaveCurrent Nothing
     pure $ ServerState kvStore lastRDBSave
@@ -125,7 +125,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -156,7 +156,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -188,7 +188,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -218,7 +218,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -248,7 +248,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -279,7 +279,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -310,7 +310,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -338,7 +338,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -362,7 +362,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -391,7 +391,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -422,7 +422,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -446,7 +446,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -470,7 +470,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -494,7 +494,7 @@ spec_keys_cmd_tests = do
                         (handleCommandReq @ServerContext cmdReq)
                         ( PassableTestContext
                             { serverState = Just initialServerState
-                            , settings = Nothing
+                            , config = Nothing
                             , metadata = Nothing
                             }
                         )
@@ -523,7 +523,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -544,7 +544,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -561,7 +561,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -582,7 +582,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -606,7 +606,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -642,7 +642,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -669,7 +669,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -692,7 +692,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -715,7 +715,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -741,7 +741,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
@@ -771,7 +771,7 @@ spec_keys_cmd_tests = do
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
                         { serverState = Just initialServerState
-                        , settings = Nothing
+                        , config = Nothing
                         , metadata = Nothing
                         }
                     )
