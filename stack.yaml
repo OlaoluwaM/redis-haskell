@@ -17,3 +17,5 @@ extra-deps:
     commit: b96614a3a361156e39441190d8d9fe7cbd8ff29a
     subdirs:
       - bits-show
+
+notify-if-nix-on-path: false
