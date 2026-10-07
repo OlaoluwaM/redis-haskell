@@ -36,7 +36,7 @@ import Redis.Effect.Communication (Communication, sendMessage)
 import Redis.Effect.Logging (Logging, logError)
 import Redis.Effect.Time (Time, getCurrentTime, getPosixTime)
 import Redis.Effects (RDBWrite)
-import Redis.RDB.Save (saveRedisStoreToRDB)
+import Redis.RDB.Save (genRDBFileContentsFromRedisStore)
 import Redis.RESP (BulkString (..), RESPDataType (SimpleString), serializeRESPDataType)
 import Redis.Server.Config.Get (genRDBConfigFromConfig, getRDBDumpFilePathFromConfig)
 import Redis.Server.Context (ServerConfigRef)
@@ -84,7 +84,8 @@ handleSave = do
 handleBGSave ::
     forall r es.
     (RDBWrite r es) =>
-    BGSaveCmdArg -> Eff es ()
+    BGSaveCmdArg ->
+    Eff es ()
 handleBGSave _ = do
     env <- ReaderEff.ask @r
 
@@ -117,7 +118,11 @@ performRDBSave ::
     , Communication :> es
     , Time :> es
     ) =>
-    ServerState -> ServerConfigRef -> Socket -> Eff es () -> Eff es ()
+    ServerState ->
+    ServerConfigRef ->
+    Socket ->
+    Eff es () ->
+    Eff es ()
 performRDBSave serverState serverConfigRef socket onSuccess = do
     redisConfig <- STMEff.readTVarIO serverConfigRef
     let rdbDirPath = getRDBDumpFilePathFromConfig redisConfig
@@ -146,7 +151,7 @@ performRDBSave serverState serverConfigRef socket onSuccess = do
             Nothing -> notifyUserOfExistingBackgroundSave
             Just () -> do
                 currentTime <- getPosixTime
-                let rdbFile = saveRedisStoreToRDB currentTime kvStore
+                let rdbFile = genRDBFileContentsFromRedisStore currentTime kvStore
 
                 RDB.encodeFile rdbConfig (fromSomeFile rdbDirPath) rdbFile
 
