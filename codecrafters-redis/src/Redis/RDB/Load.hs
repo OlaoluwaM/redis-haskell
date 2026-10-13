@@ -7,7 +7,6 @@ module Redis.RDB.Load (
 import Path
 import Redis.RDB.Data
 import Redis.RDB.Format
-import Redis.Server.Settings
 import Redis.Store.Data
 
 import Data.HashMap.Strict qualified as HashMap
@@ -20,10 +19,14 @@ import Control.Exception (SomeException, displayException)
 import Data.Foldable (foldl')
 import Data.String (IsString (fromString))
 import Effectful (Eff, (:>))
+import Effectful qualified as Eff
 import Prettyprinter (Pretty (pretty), line, (<+>))
 import Redis.Effect.Logging (Logging, logDebug)
-import Redis.Server.Settings.Get (genRDBConfigFromSettings, getRDBDumpFilePathFromSettings)
+import Redis.Effect.Logging qualified as Eff
+import Redis.Server.Config (RedisConfig)
+import Redis.Server.Config.Get (genRDBConfigFromConfig, getRDBDumpFilePathFromConfig)
 import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
+import Blammo.Logging (Logger)
 
 data RDBStateInfo = RDBStateInfo
     { redisVer :: Maybe RedisVersion
@@ -33,10 +36,13 @@ data RDBStateInfo = RDBStateInfo
     }
     deriving stock (Eq, Show)
 
-loadStoreFromRDBDump :: (Eff.FileSystem :> es, Logging :> es) => ServerSettings -> Eff es (Maybe (Store, RDBStateInfo))
-loadStoreFromRDBDump settings = do
-    let rdbFilePath = getRDBDumpFilePathFromSettings settings
-    let rdbConfig = genRDBConfigFromSettings settings
+loadStoreFromRDBDump :: Logger -> RedisConfig -> IO (Maybe (Store, RDBStateInfo))
+loadStoreFromRDBDump logger conf = Eff.runEff . Eff.runLoggingWithLogger logger . Eff.runFileSystem $ loadStoreFromRDBDump_ conf
+
+loadStoreFromRDBDump_ :: (Eff.FileSystem :> es, Logging :> es) => RedisConfig -> Eff es (Maybe (Store, RDBStateInfo))
+loadStoreFromRDBDump_ redisConfig = do
+    let rdbFilePath = getRDBDumpFilePathFromConfig redisConfig
+    let rdbConfig = genRDBConfigFromConfig redisConfig
     rdbFileE <-
         Eff.catch @SomeException (Binary.decodeFileOrFail @_ @RDBFile rdbConfig (fromSomeFile rdbFilePath)) $ \err -> pure . Left $ (0, displayException err)
 

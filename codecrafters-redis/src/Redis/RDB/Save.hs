@@ -1,5 +1,5 @@
 module Redis.RDB.Save (
-    saveRedisStoreToRDB,
+    genRDBFileContentsFromRedisStore,
 ) where
 
 import Redis.RDB.Data
@@ -15,8 +15,8 @@ import Redis.Server.Version (redisVersion)
 import Redis.ServerState (Store, StoreKey (..), StoreValue (..))
 import Rerefined (unsafeRefine)
 
-saveRedisStoreToRDB :: POSIXTime -> Store -> RDBFile
-saveRedisStoreToRDB creationTime store =
+genRDBFileContentsFromRedisStore :: POSIXTime -> Store -> RDBFile
+genRDBFileContentsFromRedisStore creationTime store =
     let totalNumOfKeys = calcNumOfKeysInStore store
         numOfKeysWithTTL = calculateNumOfKeysWithTTLInStore store
         keyValEntries = saveKeyValueEntries store

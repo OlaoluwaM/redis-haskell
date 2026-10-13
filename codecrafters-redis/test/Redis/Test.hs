@@ -17,6 +17,8 @@ import Redis.Effect.Logging qualified as Eff
 import Redis.Effect.Time qualified as Eff
 
 import Blammo.Logging (Logger)
+import Redis.Server.Config (RedisConfig)
+import Redis.Server.Config.Defaults (defaultRedisConfig, DefaultRedisConfig (..))
 import Blammo.Logging.LogSettings (defaultLogSettings)
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
@@ -37,13 +39,12 @@ import Network.Socket (
 import Redis.Effects (ServerEffects)
 import Redis.Server.Context (ServerContext (..))
 import Redis.Server.Metadata (Environment (..), RedisConfFilePath, ServerMetadata (..))
-import Redis.Server.Settings (ServerSettings, defaultServerSettings)
 import Redis.ServerState (ServerState (..), genInitialServerStateEff)
 
 data PassableTestContext = PassableTestContext
     { serverState :: Maybe ServerState
-    , settings :: Maybe ServerSettings
     , metadata :: Maybe TestServerMetadata
+    , config :: Maybe RedisConfig
     }
     deriving stock (Generic)
 
@@ -57,7 +58,7 @@ runTestServer action testContext =
     do
         loopbackSocket <- mkLoopbackSocket
         initialServerState <- atomically $ genInitialServerStateEff Nothing
-        serverSettings <- newTVarIO . fromMaybe defaultServerSettings $ testContext.settings
+        serverConfig <- newTVarIO . fromMaybe defaultRedisConfig.redisConf $ testContext.config
 
         now <- getCurrentTime
         let defaultServerMetadata = ServerMetadata{startTime = now, configFilePath = Nothing, environment = TEST}
@@ -66,7 +67,7 @@ runTestServer action testContext =
         let serverMetadata = maybe defaultServerMetadata fromTestServerMetadata testContext.metadata
 
         logger <- Blammo.newTestLogger defaultLogSettings
-        let env = ServerContext loopbackSocket serverState serverSettings serverMetadata
+        let env = ServerContext loopbackSocket serverState serverConfig serverMetadata
         mRes <- runServer env logger action
 
         pure $ fromMaybe "We got nothing bro. This probably shouldn't have happened" $ getLast mRes

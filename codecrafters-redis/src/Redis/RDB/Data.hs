@@ -813,8 +813,7 @@ attemptLzfSerializationWithFallback fallbackSerialization refinedByteStr =
             | Just lzfCompressedData <- mCompressedData -> rdbEncodeLzfCompressedData lzfCompressedData
             | otherwise -> fallbackSerialization refinedByteStr
 
--- The type signature is this way because we want `f` to only have the "ability" of MonadFail from RDBGet, not anything else
-attemptLzfDeserializationWithFallback :: (MonadRDBError m, m a ~ RDBGet a) => (BS.ByteString -> m a) -> RDBGet a -> RDBGet a
+attemptLzfDeserializationWithFallback :: (BS.ByteString -> RDBGet a) -> RDBGet a -> RDBGet a
 attemptLzfDeserializationWithFallback f fallbackDeserialization = do
     config <- ask
     if config.useLzfCompression

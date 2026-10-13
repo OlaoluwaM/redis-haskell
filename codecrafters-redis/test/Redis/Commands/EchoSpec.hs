@@ -63,7 +63,7 @@ spec_echo_cmd_tests = do
                 runTestServer
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
-                        { settings = Nothing
+                        { config = Nothing
                         , serverState = Nothing
                         , metadata = Nothing
                         }
@@ -80,7 +80,7 @@ spec_echo_cmd_tests = do
                 runTestServer
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
-                        { settings = Nothing
+                        { config = Nothing
                         , serverState = Nothing
                         , metadata = Nothing
                         }
@@ -97,7 +97,7 @@ spec_echo_cmd_tests = do
                 runTestServer
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
-                        { settings = Nothing
+                        { config = Nothing
                         , serverState = Nothing
                         , metadata = Nothing
                         }
@@ -114,7 +114,7 @@ spec_echo_cmd_tests = do
                 runTestServer
                     (handleCommandReq @ServerContext cmdReq)
                     ( PassableTestContext
-                        { settings = Nothing
+                        { config = Nothing
                         , serverState = Nothing
                         , metadata = Nothing
                         }

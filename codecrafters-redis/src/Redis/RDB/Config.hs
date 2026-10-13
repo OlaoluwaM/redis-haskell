@@ -8,7 +8,8 @@ module Redis.RDB.Config (
 ) where
 
 import GHC.Generics (Generic)
-import Redis.Server.Settings (defaultGenerateChecksumWithRDB, defaultUseCompressionWithRDB)
+import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
+import Redis.Server.Config.Types (RedisConfigF (..))
 
 data RDBConfig = RDBConfig
     { useLzfCompression :: Bool
@@ -18,7 +19,14 @@ data RDBConfig = RDBConfig
     deriving stock (Eq, Show, Generic)
 
 defaultRDBConfig :: RDBConfig
-defaultRDBConfig = mkRDBConfig $ MkRDBConfigArg{useCompression = defaultUseCompressionWithRDB, generateChecksum = defaultGenerateChecksumWithRDB}
+defaultRDBConfig =
+    mkRDBConfig
+        MkRDBConfigArg
+            { useCompression = redisConf.useRDBCompression
+            , generateChecksum = redisConf.genRdbChecksum
+            }
+  where
+    redisConf = defaultRedisConfig.redisConf
 
 data MkRDBConfigArg = MkRDBConfigArg
     { useCompression :: Bool
