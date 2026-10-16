@@ -46,6 +46,7 @@
             pkgs.hlint
             stack-wrapped
             pkgs.zlib
+            pkgs.codecrafters-cli
           ];
         };
       }
