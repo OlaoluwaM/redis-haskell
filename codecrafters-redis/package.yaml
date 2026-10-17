@@ -112,6 +112,8 @@ library:
   source-dirs:
     - src
     - generated
+  generated-exposed-modules:
+    - BuildInfo
   dependencies:
     - aeson
     - async # may help with concurrency

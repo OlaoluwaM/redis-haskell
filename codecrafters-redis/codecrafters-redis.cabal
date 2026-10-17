@@ -1,4 +1,4 @@
-cabal-version: 1.24
+cabal-version: 2.0
 
 -- This file has been generated from package.yaml by hpack version 0.39.1.
 --
@@ -74,6 +74,9 @@ library
       BuildInfo
   other-modules:
       Paths_codecrafters_redis
+  autogen-modules:
+      Paths_codecrafters_redis
+      BuildInfo
   hs-source-dirs:
       src
       generated
@@ -159,6 +162,8 @@ executable codecrafters-redis-exe
   main-is: Main.hs
   other-modules:
       Paths_codecrafters_redis
+  autogen-modules:
+      Paths_codecrafters_redis
   hs-source-dirs:
       app
   default-extensions:
@@ -243,6 +248,8 @@ test-suite codecrafters-redis-test
       Redis.Server.ConfigSpec
       Redis.Test
       Paths_codecrafters_redis
+  autogen-modules:
+      Paths_codecrafters_redis
   hs-source-dirs:
       test
   default-extensions:
@@ -322,6 +329,8 @@ benchmark codecrafters-redis-benchmarks
   main-is: Main.hs
   other-modules:
       RDBBinary
+      Paths_codecrafters_redis
+  autogen-modules:
       Paths_codecrafters_redis
   hs-source-dirs:
       bench
