@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+    # Skip CI when a PR only touches files that can't affect the build or tests
+    paths-ignore:
+      - "**.md"
+      - ".vscode/**"
+      - ".codecrafters/**"
+      - "codecrafters.yml"
+      - "your_program.sh"
+      - "redis/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "flake.nix"
+      - "flake.lock"
+      - ".envrc"
+      - "hie.yaml"
+      - "opencode.json"
+
+# This way each PR runs in its own group and a later commit will cancel only an in-progress run within that group
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: freckle/stack-action@v5
