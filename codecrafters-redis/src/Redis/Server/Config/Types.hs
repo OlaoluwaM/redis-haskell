@@ -1,4 +1,5 @@
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE TypeData #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -45,35 +46,36 @@ import GHC.TypeLits (KnownSymbol, symbolVal)
 import Redis.Utils (ShowBS (..))
 import System.FilePath.Posix (dropTrailingPathSeparator)
 
-data ConfigField = ConfigField Symbol Type
+type data ConfigField = MkConfigField Symbol Type
 
 type family ConfigFieldName (k :: ConfigField) :: Symbol where
-    ConfigFieldName ('ConfigField name _) = name
+    ConfigFieldName (MkConfigField name _) = name
 
 type family ConfigFieldType (k :: ConfigField) :: Type where
-    ConfigFieldType ('ConfigField _ fieldType) = fieldType
+    ConfigFieldType (MkConfigField _ fieldType) = fieldType
 
 -- -------------------------------------------------------------------------- --
 --                         Config Field Types & Names                         --
 -- -------------------------------------------------------------------------- --
 
-type RDBFileDir = 'ConfigField "dir" RDBFileDirType
+type RDBFileDir = MkConfigField "dir" RDBFileDirType
 type RDBFileDirType = SomeBase Dir
 
 instance ShowBS RDBFileDirType where
     showBs = fromString . dropTrailingPathSeparator . fromSomeDir
 
-type RDBFilename = 'ConfigField "dbfilename" RDBFilenameType
+type RDBFilename = MkConfigField "dbfilename" RDBFilenameType
 type RDBFilenameType = Path Rel File
 
 instance ShowBS RDBFilenameType where
     showBs = fromString . toFilePath
 
-type UseRDBCompression = 'ConfigField "rdbcompression" Bool
+type UseRDBCompression = MkConfigField "rdbcompression" Bool
 
-type GenRDBChecksum = 'ConfigField "rdbchecksum" Bool
+type GenRDBChecksum = MkConfigField "rdbchecksum" Bool
 
-type RedisPort = 'ConfigField "port" Int
+type RedisPort = MkConfigField "port" Int
+
 
 -- -------------------------------------------------------------------------- --
 
