@@ -12,6 +12,9 @@ module Redis.Server.Config.Types (
     gZipWith,
     collectNamedFields,
     NamedField (..),
+    HostPortRec (..),
+    ReplicaOfType (..),
+    Port,
 
     -- * Field Types
     RDBFileDir,
@@ -19,6 +22,7 @@ module Redis.Server.Config.Types (
     UseRDBCompression,
     GenRDBChecksum,
     RedisPort,
+    ReplicaOf,
 
     -- * Field Type Accessors
     ConfigFieldType,
@@ -26,6 +30,9 @@ module Redis.Server.Config.Types (
 ) where
 
 import Path
+import Rerefined
+import Rerefined.Predicate.Relational
+import Rerefined.Predicates.Operators
 
 import Control.Applicative (Const (..))
 import Control.Monad.Identity (Identity)
@@ -33,6 +40,8 @@ import Data.Data (Proxy (..))
 import Data.Monoid (Last)
 import Data.String (IsString (fromString))
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
+import Data.Word (Word16)
 import GHC.Base (Symbol, Type)
 import GHC.Generics (
     Generic (..),
@@ -44,6 +53,7 @@ import GHC.Generics (
  )
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Redis.Utils (ShowBS (..))
+import Rerefined.Predicate.Logical (And)
 import System.FilePath.Posix (dropTrailingPathSeparator)
 
 type data ConfigField = MkConfigField Symbol Type
@@ -59,23 +69,47 @@ type family ConfigFieldType (k :: ConfigField) :: Type where
 -- -------------------------------------------------------------------------- --
 
 type RDBFileDir = MkConfigField "dir" RDBFileDirType
-type RDBFileDirType = SomeBase Dir
-
-instance ShowBS RDBFileDirType where
-    showBs = fromString . dropTrailingPathSeparator . fromSomeDir
 
 type RDBFilename = MkConfigField "dbfilename" RDBFilenameType
-type RDBFilenameType = Path Rel File
-
-instance ShowBS RDBFilenameType where
-    showBs = fromString . toFilePath
 
 type UseRDBCompression = MkConfigField "rdbcompression" Bool
 
 type GenRDBChecksum = MkConfigField "rdbchecksum" Bool
 
-type RedisPort = MkConfigField "port" Int
+type RedisPort = MkConfigField "port" Port
 
+type ReplicaOf = MkConfigField "replicaof" ReplicaOfType
+
+-- -------------------------------------------------------------------------- --
+data ReplicaOfType = NO_ONE | HostPort HostPortRec
+    deriving stock (Show, Eq, Generic)
+
+data HostPortRec = HostPortRec {host :: Text, port :: Port}
+    deriving stock (Show, Eq, Generic)
+
+type RDBFileDirType = SomeBase Dir
+
+{- | TCP port number. 'Word16' covers the upper bound (65535); port 0 can't be connected to, so it's excluded by our refinement.
+| We include the upper bound to avoid wraparound
+-}
+type Port = Refined PortRange Word16
+
+type PortRange = (And (CompareValue (.>=) Pos 1) (CompareValue (.<=) Pos 65535))
+
+instance ShowBS RDBFileDirType where
+    showBs = fromString . dropTrailingPathSeparator . fromSomeDir
+
+type RDBFilenameType = Path Rel File
+
+instance ShowBS RDBFilenameType where
+    showBs = fromString . toFilePath
+
+instance ShowBS ReplicaOfType where
+    showBs NO_ONE = "NO ONE"
+    showBs (HostPort x) = showBs x
+
+instance ShowBS HostPortRec where
+    showBs (HostPortRec host port) = encodeUtf8 host <> ":" <> fromString (show (unrefine port))
 
 -- -------------------------------------------------------------------------- --
 
@@ -89,6 +123,7 @@ data RedisConfigF (f :: Type -> Type) = RedisConfigF
     , useRDBCompression :: HKD f UseRDBCompression
     , genRdbChecksum :: HKD f GenRDBChecksum
     , port :: HKD f RedisPort
+    , replicaOf :: HKD f ReplicaOf
     }
     deriving stock (Generic)
 
@@ -101,6 +136,7 @@ deriving stock instance
     , Show (HKD f UseRDBCompression)
     , Show (HKD f GenRDBChecksum)
     , Show (HKD f RedisPort)
+    , Show (HKD f ReplicaOf)
     ) =>
     Show (RedisConfigF f)
 
@@ -110,6 +146,7 @@ deriving stock instance
     , Eq (HKD f UseRDBCompression)
     , Eq (HKD f GenRDBChecksum)
     , Eq (HKD f RedisPort)
+    , Eq (HKD f ReplicaOf)
     ) =>
     Eq (RedisConfigF f)
 
@@ -121,6 +158,7 @@ deriving via
         , Semigroup (HKD f UseRDBCompression)
         , Semigroup (HKD f GenRDBChecksum)
         , Semigroup (HKD f RedisPort)
+        , Semigroup (HKD f ReplicaOf)
         ) =>
         Semigroup (RedisConfigF f)
 
@@ -132,6 +170,7 @@ deriving via
         , Monoid (HKD f UseRDBCompression)
         , Monoid (HKD f GenRDBChecksum)
         , Monoid (HKD f RedisPort)
+        , Monoid (HKD f ReplicaOf)
         ) =>
         Monoid (RedisConfigF f)
 
