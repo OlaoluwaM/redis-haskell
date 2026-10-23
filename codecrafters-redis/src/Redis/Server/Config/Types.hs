@@ -84,7 +84,8 @@ type ReplicaOf = MkConfigField "replicaof" ReplicaOfType
 data ReplicaOfType = NO_ONE | HostPort HostPortRec
     deriving stock (Show, Eq, Generic)
 
-data HostPortRec = HostPortRec {host :: Text, port :: Port}
+-- `portNum` instead of `port` to avoid name collision with the `port` field in `RedisConfigF`
+data HostPortRec = HostPortRec {host :: Text, portNum :: Port}
     deriving stock (Show, Eq, Generic)
 
 type RDBFileDirType = SomeBase Dir
@@ -109,7 +110,14 @@ instance ShowBS ReplicaOfType where
     showBs (HostPort x) = showBs x
 
 instance ShowBS HostPortRec where
-    showBs (HostPortRec host port) = encodeUtf8 host <> ":" <> fromString (show (unrefine port))
+    showBs (HostPortRec host portNum) = encodeUtf8 host <> ":" <> showBs portNum
+
+--- These more specific instances should be selected over the more generic `ShowBS (Refined p a)` and `Show (Refined p a)` instances. We use the `{-# OVERLAPPING #-}` pragma to ensure this.
+instance {-# OVERLAPPING #-} ShowBS Port where
+    showBs = fromString . show . unrefine
+
+instance {-# OVERLAPPING #-} Show Port where
+    show = show . unrefine
 
 -- -------------------------------------------------------------------------- --
 

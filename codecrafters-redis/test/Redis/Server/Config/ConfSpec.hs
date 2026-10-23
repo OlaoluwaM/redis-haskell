@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Redis.Server.Config.ConfSpec where
 
 import Test.Hspec
@@ -7,7 +9,6 @@ import Effectful.Error.Static qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Redis.Server.Config.Conf qualified as Conf
 
-import Prettyprinter (pretty)
 import Data.Foldable (for_)
 import Data.Monoid (Last (..))
 import Path (
@@ -19,10 +20,12 @@ import Path (
     relfile,
     (</>),
  )
-import Redis.Server.Config.Conf (RedisConfigFromConfigFile (..), LoadConfigFileError (..))
+import Prettyprinter (pretty)
+import Redis.Server.Config.Conf (LoadConfigFileError (..), RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (emptyPartialRedisConfig)
-import Redis.Server.Config.Types (PartialRedisConfig, RedisConfigF (..))
+import Redis.Server.Config.Types (HostPortRec (HostPortRec), PartialRedisConfig, Port, RedisConfigF (..), ReplicaOfType (..))
 import Redis.Server.Metadata (RedisConfFilePath (..))
+import Rerefined.Refine.TH (refineTH)
 import System.Directory (getCurrentDirectory)
 
 {- | Sample redis.conf files under test/Redis/Server/Config/Conf/input, paired with the
@@ -30,7 +33,13 @@ import System.Directory (getCurrentDirectory)
 -}
 exampleConfFiles :: [(String, PartialRedisConfig)]
 exampleConfFiles =
-    [ ("minimal_port", emptyPartialRedisConfig{port = Last (Just 7000)})
+    [
+        ( "minimal_port"
+        , emptyPartialRedisConfig
+            { port = Last (Just ($$(refineTH 7000) :: Port))
+            , replicaOf = Last (Just NO_ONE)
+            }
+        )
     ,
         ( "rdb_persistence"
         , emptyPartialRedisConfig
@@ -44,11 +53,12 @@ exampleConfFiles =
     ,
         ( "mixed_full"
         , emptyPartialRedisConfig
-            { port = Last (Just 6380)
+            { port = Last (Just ($$(refineTH 6380) :: Port))
             , rdbFileDirPath = Last (Just (Rel [reldir|data|]))
             , rdbFilenamePath = Last (Just [relfile|custom.rdb|])
             , useRDBCompression = Last (Just False)
             , genRdbChecksum = Last (Just False)
+            , replicaOf = Last (Just (HostPort $ HostPortRec "localhost" ($$(refineTH 6381) :: Port)))
             }
         )
     ,
@@ -72,7 +82,7 @@ spec_redis_conf_document_loading :: Spec
 spec_redis_conf_document_loading = do
     describe "loadRedisConfFile against sample redis.conf files" $ do
         for_ exampleConfFiles $ \(sampleName, expectedConfig) ->
-            it ("Parses " <> sampleName <> ".conf into the expected PartialRedisConfig") $ do
+            it ("Can Parse " <> sampleName <> ".conf into the expected PartialRedisConfig") $ do
                 confFilePath <- mkSampleConfFilePath sampleName
                 result <- runloadRedisConfFile confFilePath
                 case result of

@@ -100,6 +100,7 @@ configFieldSpecs =
             Const (getConfigFieldName @Config.GenRDBChecksum, (\v -> emptyPartialRedisConfig{genRdbChecksum = Last (Just v)}) <$> Readers.rdbChecksumReader)
         , port =
             Const (getConfigFieldName @Config.RedisPort, (\v -> emptyPartialRedisConfig{port = Last (Just v)}) <$> Readers.portReader)
+        , replicaOf = Const (getConfigFieldName @Config.ReplicaOf, (\v -> emptyPartialRedisConfig{replicaOf = Last (Just v)}) <$> Readers.replicaOfReader)
         }
 
 {-

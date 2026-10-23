@@ -15,9 +15,11 @@ import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr)
 import Redis.Server.Config (RedisConfig, RedisConfigF (..))
 import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
+import Redis.Server.Config.Types (Port)
 import Redis.Server.Context (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
 import Redis.Utils (ShowBS (showBs))
+import Rerefined.Refine.TH (refineTH)
 
 -- Helper function to check if a parsed command is a ConfigGet command
 isConfigGetCommand :: Command -> Bool
@@ -133,7 +135,7 @@ spec_config_get_cmd_tests = do
     describe "Integration Tests - CONFIG GET Handler" $ do
         context "Happy Path Scenarios" $ do
             it "should retrieve a specific config field by exact name" $ do
-                result <- runConfigGet [mkBulkString "port"] defaultTestConfig{port = 7000}
+                result <- runConfigGet [mkBulkString "port"] defaultTestConfig{port = $$(refineTH 7000) :: Port}
                 result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "7000"])
 
             it "should retrieve multiple config fields by exact name" $ do
@@ -169,6 +171,8 @@ spec_config_get_cmd_tests = do
                         , mkNonNullBulkString "True"
                         , mkNonNullBulkString "port"
                         , mkNonNullBulkString "6379"
+                        , mkNonNullBulkString "replicaOf"
+                        , mkNonNullBulkString "NO ONE"
                         ]
                 either expectationFailure (`shouldMatchList` expected) (parseConfigGetResult result)
 

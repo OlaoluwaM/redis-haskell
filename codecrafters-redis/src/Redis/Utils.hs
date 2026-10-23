@@ -31,11 +31,12 @@ import Data.Either (lefts, rights)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.String (IsString (..))
+import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 import Debug.Pretty.Simple (pTrace, pTraceM)
 import Options.Applicative (ParseError (..), ReadM)
 import Options.Applicative.Types (ReadM (..))
-import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8)
+import Rerefined (Refined)
 
 myTracePretty :: (Show a) => String -> a -> a
 myTracePretty str' a = pTrace (str' <> show a) a
@@ -130,6 +131,7 @@ class ShowBS a where
 deriving anyclass instance ShowBS Bool
 deriving anyclass instance ShowBS Int
 deriving anyclass instance ShowBS String
+deriving anyclass instance (Show p) => ShowBS (Refined a p)
 
 instance ShowBS Text where
-  showBs = encodeUtf8
+    showBs = encodeUtf8

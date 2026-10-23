@@ -1,7 +1,9 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-x-unsafe-internals #-}
 
 module Redis.Server.ConfigSpec where
 
+import Redis.Server.Config.Types
 import Test.Hspec
 
 import Path (SomeBase (..), absdir, absfile, relfile)
@@ -13,9 +15,9 @@ import Redis.Server.Config.Defaults (
     defaultRedisConfig,
     emptyPartialRedisConfig,
  )
-import Redis.Server.Config.Types (RedisConfig, RedisConfigF (..))
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Redis.Utils (runReadM)
+import Rerefined.Refine.TH (refineTH)
 
 defaults :: RedisConfig
 defaults = defaultRedisConfig.redisConf
@@ -27,12 +29,12 @@ spec_mk_complete_redis_config = do
             mkCompleteRedisConfig (RedisConfigFromCommandLine emptyPartialRedisConfig) (RedisConfigFromConfigFile emptyPartialRedisConfig) `shouldBe` defaults
 
         it "Takes a config value from the config file if there is no corresponding command line override" $
-            let expectedPort = 7000
+            let expectedPort = $$(refineTH 7000) :: Port
              in mkCompleteRedisConfig (RedisConfigFromCommandLine emptyPartialRedisConfig) (RedisConfigFromConfigFile emptyPartialRedisConfig{port = pure expectedPort})
                     `shouldBe` defaults{port = expectedPort}
 
         it "Takes a config value from the command line if the config file leaves it unset" $
-            let expectedPort = 6380
+            let expectedPort = $$(refineTH 6380) :: Port
              in mkCompleteRedisConfig (RedisConfigFromCommandLine emptyPartialRedisConfig{port = pure expectedPort}) (RedisConfigFromConfigFile emptyPartialRedisConfig)
                     `shouldBe` defaults{port = expectedPort}
 
@@ -43,7 +45,8 @@ spec_mk_complete_redis_config = do
                         , rdbFilenamePath = pure [relfile|from-file.rdb|]
                         , useRDBCompression = pure False
                         , genRdbChecksum = pure True
-                        , port = pure 7000
+                        , port = pure ($$(refineTH 7000) :: Port)
+                        , replicaOf = pure NO_ONE
                         }
                 fromCommandLine =
                     RedisConfigF
@@ -51,7 +54,8 @@ spec_mk_complete_redis_config = do
                         , rdbFilenamePath = pure [relfile|from-cli.rdb|]
                         , useRDBCompression = pure True
                         , genRdbChecksum = pure False
-                        , port = pure 6380
+                        , port = pure ($$(refineTH 6380) :: Port)
+                        , replicaOf = pure NO_ONE
                         }
             mkCompleteRedisConfig (RedisConfigFromCommandLine fromCommandLine) (RedisConfigFromConfigFile fromConfigFile)
                 `shouldBe` RedisConfigF
@@ -59,7 +63,8 @@ spec_mk_complete_redis_config = do
                     , rdbFilenamePath = [relfile|from-cli.rdb|]
                     , useRDBCompression = True
                     , genRdbChecksum = False
-                    , port = 6380
+                    , port = $$(refineTH 6380) :: Port
+                    , replicaOf = NO_ONE
                     }
 
         it "Resolves each field independently across all three sources" $ do
@@ -67,18 +72,18 @@ spec_mk_complete_redis_config = do
                     emptyPartialRedisConfig
                         { rdbFileDirPath = pure (Abs [absdir|/var/lib/redis|])
                         , rdbFilenamePath = pure [relfile|from-file.rdb|]
-                        , port = pure 7000
+                        , port = pure ($$(refineTH 7000) :: Port)
                         }
                 fromCommandLine =
                     emptyPartialRedisConfig
-                        { port = pure 6380
+                        { port = pure ($$(refineTH 6380) :: Port)
                         , useRDBCompression = pure True
                         }
             mkCompleteRedisConfig (RedisConfigFromCommandLine fromCommandLine) (RedisConfigFromConfigFile fromConfigFile)
                 `shouldBe` defaults
                     { rdbFileDirPath = Abs [absdir|/var/lib/redis|]
                     , rdbFilenamePath = [relfile|from-file.rdb|]
-                    , port = 6380
+                    , port = $$(refineTH 6380) :: Port
                     , useRDBCompression = True
                     }
 
@@ -89,7 +94,7 @@ spec_mk_complete_redis_config = do
                         , rdbFilenamePath = pure [relfile|override.rdb|]
                         , useRDBCompression = pure True
                         , genRdbChecksum = pure False
-                        , port = pure 9999
+                        , port = pure ($$(refineTH 9999) :: Port)
                         }
             mkCompleteRedisConfig (RedisConfigFromCommandLine fromCommandLine) (RedisConfigFromConfigFile emptyPartialRedisConfig)
                 `shouldBe` RedisConfigF
@@ -97,7 +102,8 @@ spec_mk_complete_redis_config = do
                     , rdbFilenamePath = [relfile|override.rdb|]
                     , useRDBCompression = True
                     , genRdbChecksum = False
-                    , port = 9999
+                    , port = ($$(refineTH 9999) :: Port)
+                    , replicaOf = NO_ONE
                     }
 
 spec_parse_redis_conf_file_path :: Spec

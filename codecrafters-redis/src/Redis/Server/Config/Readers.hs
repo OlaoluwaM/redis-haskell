@@ -37,7 +37,7 @@ rdbChecksumReader :: ReadM (Config.ConfigFieldType Config.GenRDBChecksum)
 rdbChecksumReader = modifiedBoolReader
 
 portReader :: ReadM (Config.ConfigFieldType Config.RedisPort)
-portReader = eitherReader (ATT.parseOnly portParser . fromString)
+portReader = eitherReader (ATT.parseOnly (portParser <* ATT.endOfInput) . fromString)
 
 {- | Parses a TCP port number (1-65535).
 
