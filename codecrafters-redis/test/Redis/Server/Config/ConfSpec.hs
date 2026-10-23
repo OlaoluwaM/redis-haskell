@@ -76,6 +76,18 @@ exampleConfFiles =
             , genRdbChecksum = Last (Just False)
             }
         )
+    ,
+        -- Every directive is repeated; the last occurrence in the file must win
+        ( "duplicate_keys"
+        , emptyPartialRedisConfig
+            { port = Last (Just ($$(refineTH 6381) :: Port))
+            , rdbFileDirPath = Last (Just (Abs [absdir|/data/redis|]))
+            , rdbFilenamePath = Last (Just [relfile|dump.rdb|])
+            , useRDBCompression = Last (Just False)
+            , genRdbChecksum = Last (Just True)
+            , replicaOf = Last (Just (HostPort $ HostPortRec "10.0.0.2" ($$(refineTH 6379) :: Port)))
+            }
+        )
     ]
 
 spec_redis_conf_document_loading :: Spec
