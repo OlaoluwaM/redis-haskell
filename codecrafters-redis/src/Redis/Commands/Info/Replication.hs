@@ -6,11 +6,17 @@ module Redis.Commands.Info.Replication (
 ) where
 
 import Data.Text qualified as T
+import Effectful.Concurrent.STM qualified as STMEff
+import Effectful.Reader.Static qualified as ReaderEff
 
 import Data.String (fromString)
 import Data.Text (Text)
 import Data.Word (Word8)
+import Effectful (Eff)
+import Optics (view)
 import Redis.Commands.Info.Common (formatToInfoSectionField)
+import Redis.Effects (RedisServerConfig)
+import Redis.Server.Config (RedisConfigF (..), ReplicaOfType (NO_ONE))
 
 data ReplicationInfo = ReplicationInfo
     { role :: ReplicationRole -- "master" or "slave"
@@ -22,16 +28,26 @@ data ReplicationInfo = ReplicationInfo
 data ReplicationRole = Master | Slave
     deriving stock (Eq, Show)
 
-mkReplicationInfo :: ReplicationInfo
+mkReplicationInfo ::
+    forall r es. (RedisServerConfig r es) => Eff es ReplicationInfo
 mkReplicationInfo =
-    let role = Master
-        connectedSlaves = if role == Slave then 0 else 0 -- TODO: Implement slave support and populate this field correctly for both master and slave roles.
-     in ReplicationInfo
-            { role = role
-            , connectedSlaves = connectedSlaves
-            , masterReplId = Nothing
-            , masterReplOffset = Nothing
-            }
+    do
+        env <- ReaderEff.ask @r
+
+        let serverConfigRef = view #serverConfigRef env
+        redisConfig <- STMEff.readTVarIO serverConfigRef
+
+        let role = if redisConfig.replicaOf == NO_ONE then Master else Slave
+
+        -- Always 0 if role is Slave
+        let connectedSlaves = 0
+        pure $
+            ReplicationInfo
+                { role = role
+                , connectedSlaves = connectedSlaves
+                , masterReplId = Nothing
+                , masterReplOffset = Nothing
+                }
 
 mkReplicationInfoText :: ReplicationInfo -> Text
 mkReplicationInfoText info =
@@ -43,5 +59,5 @@ mkReplicationInfoText info =
             , formatToInfoSectionField "master_repl_offset" (T.toLower . fromString . show $ info.masterReplOffset)
             ]
 
-genReplicationInfoSectionStr :: Text
-genReplicationInfoSectionStr = mkReplicationInfoText mkReplicationInfo
+genReplicationInfoSectionStr :: forall r es. (RedisServerConfig r es) => Eff es Text
+genReplicationInfoSectionStr = mkReplicationInfoText <$> mkReplicationInfo @r

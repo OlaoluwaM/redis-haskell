@@ -28,7 +28,7 @@ import Redis.Effect.Communication (sendMessage)
 import Redis.Effect.Time (Time)
 import Redis.Effects (RedisClientCommunication, RedisServerConfig, RedisServerMetadata)
 import Redis.Server.Config (RedisConfigF (..))
-import Redis.Utils (universe, genericShow)
+import Redis.Utils (genericShow, universe)
 
 -- https://redis.io/docs/latest/commands/info/
 
@@ -108,7 +108,7 @@ handleInfo infoCmdArg = do
     -- NOTE: We are note extracting this out because it will have a lot of parameter envy. We'd need to pass the parameter of every sectionStr gen function to `genInfoSectionStr` if we made it a standalone function
     let genInfoSectionStr = \case
             Server -> genServerInfoSectionStr MkServerInfoArgs{startupTime, tcpPort = serverPort, configFilePath} serverEnv
-            Replication -> pure genReplicationInfoSectionStr
+            Replication -> genReplicationInfoSectionStr @r
             section -> pure . genEmptyInfoSectionStr $ section
 
     let addNewlineAfterEachSection = T.intercalate "\r\n"
