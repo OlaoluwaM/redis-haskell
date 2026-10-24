@@ -1,4 +1,5 @@
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE TypeData #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -11,6 +12,9 @@ module Redis.Server.Config.Types (
     gZipWith,
     collectNamedFields,
     NamedField (..),
+    HostPortRec (..),
+    ReplicaOfType (..),
+    Port,
 
     -- * Field Types
     RDBFileDir,
@@ -18,6 +22,7 @@ module Redis.Server.Config.Types (
     UseRDBCompression,
     GenRDBChecksum,
     RedisPort,
+    ReplicaOf,
 
     -- * Field Type Accessors
     ConfigFieldType,
@@ -25,6 +30,9 @@ module Redis.Server.Config.Types (
 ) where
 
 import Path
+import Rerefined
+import Rerefined.Predicate.Relational
+import Rerefined.Predicates.Operators
 
 import Control.Applicative (Const (..))
 import Control.Monad.Identity (Identity)
@@ -32,6 +40,8 @@ import Data.Data (Proxy (..))
 import Data.Monoid (Last)
 import Data.String (IsString (fromString))
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
+import Data.Word (Word16)
 import GHC.Base (Symbol, Type)
 import GHC.Generics (
     Generic (..),
@@ -43,37 +53,71 @@ import GHC.Generics (
  )
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Redis.Utils (ShowBS (..))
+import Rerefined.Predicate.Logical (And)
 import System.FilePath.Posix (dropTrailingPathSeparator)
 
-data ConfigField = ConfigField Symbol Type
+type data ConfigField = MkConfigField Symbol Type
 
 type family ConfigFieldName (k :: ConfigField) :: Symbol where
-    ConfigFieldName ('ConfigField name _) = name
+    ConfigFieldName (MkConfigField name _) = name
 
 type family ConfigFieldType (k :: ConfigField) :: Type where
-    ConfigFieldType ('ConfigField _ fieldType) = fieldType
+    ConfigFieldType (MkConfigField _ fieldType) = fieldType
 
 -- -------------------------------------------------------------------------- --
 --                         Config Field Types & Names                         --
 -- -------------------------------------------------------------------------- --
 
-type RDBFileDir = 'ConfigField "dir" RDBFileDirType
+type RDBFileDir = MkConfigField "dir" RDBFileDirType
+
+type RDBFilename = MkConfigField "dbfilename" RDBFilenameType
+
+type UseRDBCompression = MkConfigField "rdbcompression" Bool
+
+type GenRDBChecksum = MkConfigField "rdbchecksum" Bool
+
+type RedisPort = MkConfigField "port" Port
+
+type ReplicaOf = MkConfigField "replicaof" ReplicaOfType
+
+-- -------------------------------------------------------------------------- --
+data ReplicaOfType = NO_ONE | HostPort HostPortRec
+    deriving stock (Show, Eq, Generic)
+
+-- `portNum` instead of `port` to avoid name collision with the `port` field in `RedisConfigF`
+data HostPortRec = HostPortRec {host :: Text, portNum :: Port}
+    deriving stock (Show, Eq, Generic)
+
 type RDBFileDirType = SomeBase Dir
+
+{- | TCP port number. 'Word16' covers the upper bound (65535); port 0 can't be connected to, so it's excluded by our refinement.
+| We include the upper bound to avoid wraparound
+-}
+type Port = Refined PortRange Word16
+
+type PortRange = (And (CompareValue (.>=) Pos 1) (CompareValue (.<=) Pos 65535))
 
 instance ShowBS RDBFileDirType where
     showBs = fromString . dropTrailingPathSeparator . fromSomeDir
 
-type RDBFilename = 'ConfigField "dbfilename" RDBFilenameType
 type RDBFilenameType = Path Rel File
 
 instance ShowBS RDBFilenameType where
     showBs = fromString . toFilePath
 
-type UseRDBCompression = 'ConfigField "rdbcompression" Bool
+instance ShowBS ReplicaOfType where
+    showBs NO_ONE = "NO ONE"
+    showBs (HostPort x) = showBs x
 
-type GenRDBChecksum = 'ConfigField "rdbchecksum" Bool
+instance ShowBS HostPortRec where
+    showBs (HostPortRec host portNum) = encodeUtf8 host <> ":" <> showBs portNum
 
-type RedisPort = 'ConfigField "port" Int
+--- These more specific instances should be selected over the more generic `ShowBS (Refined p a)` and `Show (Refined p a)` instances. We use the `{-# OVERLAPPING #-}` pragma to ensure this.
+instance {-# OVERLAPPING #-} ShowBS Port where
+    showBs = fromString . show . unrefine
+
+instance {-# OVERLAPPING #-} Show Port where
+    show = show . unrefine
 
 -- -------------------------------------------------------------------------- --
 
@@ -87,6 +131,7 @@ data RedisConfigF (f :: Type -> Type) = RedisConfigF
     , useRDBCompression :: HKD f UseRDBCompression
     , genRdbChecksum :: HKD f GenRDBChecksum
     , port :: HKD f RedisPort
+    , replicaOf :: HKD f ReplicaOf
     }
     deriving stock (Generic)
 
@@ -99,6 +144,7 @@ deriving stock instance
     , Show (HKD f UseRDBCompression)
     , Show (HKD f GenRDBChecksum)
     , Show (HKD f RedisPort)
+    , Show (HKD f ReplicaOf)
     ) =>
     Show (RedisConfigF f)
 
@@ -108,6 +154,7 @@ deriving stock instance
     , Eq (HKD f UseRDBCompression)
     , Eq (HKD f GenRDBChecksum)
     , Eq (HKD f RedisPort)
+    , Eq (HKD f ReplicaOf)
     ) =>
     Eq (RedisConfigF f)
 
@@ -119,6 +166,7 @@ deriving via
         , Semigroup (HKD f UseRDBCompression)
         , Semigroup (HKD f GenRDBChecksum)
         , Semigroup (HKD f RedisPort)
+        , Semigroup (HKD f ReplicaOf)
         ) =>
         Semigroup (RedisConfigF f)
 
@@ -130,6 +178,7 @@ deriving via
         , Monoid (HKD f UseRDBCompression)
         , Monoid (HKD f GenRDBChecksum)
         , Monoid (HKD f RedisPort)
+        , Monoid (HKD f ReplicaOf)
         ) =>
         Monoid (RedisConfigF f)
 

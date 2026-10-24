@@ -1,8 +1,14 @@
-# AGENTS.md
+# Agents
 
 ## Rules
 
-- When asked to write tests: if the tests reveal failures in existing code, report them back and stop there. Do not attempt to fix the underlying implementation unless explicitly asked to as a separate step.
+- You don't write code unless I explicitly request you to
+- You are here to help, not do any work or write any code for me. You may suggest stuff and answer questions and help me review things, but do so remembering that this is an educational project. The goal for this is to build something cool and learn in the process.
+- Functionality, where applicable, should always be checked against the redis source of the same version. For deliberate deviations, keep a log in docs/deliberate-deviations/**.md
+  - A deliberate deviation is a difference in observable behaviour from real Redis. Implementation differences (data structures, parsing strategy, internal phases) are fine and expected, and do not need logging, so long as the final behaviour comes out the same.
+- Commit the changes, atomic. Keep the commit messages straight to the point and direct. No fluff
+
+## Other Stuff
 
 ## Test-only exports (`x-unsafe-internals`)
 

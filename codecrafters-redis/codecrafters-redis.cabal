@@ -245,6 +245,7 @@ test-suite codecrafters-redis-test
       Redis.RESPSpec
       Redis.Server.Config.Conf.LexerSpec
       Redis.Server.Config.ConfSpec
+      Redis.Server.Config.ReadersSpec
       Redis.Server.ConfigSpec
       Redis.Test
       Paths_codecrafters_redis

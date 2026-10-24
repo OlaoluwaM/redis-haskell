@@ -4,3 +4,4 @@
 !.env.example
 !.env.test
 codecrafters-redis/generated/BuildInfo.hs
+.direnv/

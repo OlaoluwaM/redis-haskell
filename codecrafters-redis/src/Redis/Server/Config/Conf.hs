@@ -4,6 +4,8 @@ module Redis.Server.Config.Conf (
     LoadConfigFileError (..),
 ) where
 
+import Data.HashMap.Strict qualified as HashMap
+import Data.List.NonEmpty qualified as NE
 import Effectful.Error.Static qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Effectful.FileSystem.IO.ByteString qualified as Eff
@@ -17,7 +19,7 @@ import Control.Exception (Exception (displayException))
 import Control.Monad.Except (liftEither, runExceptT)
 import Data.Attoparsec.Text (parseOnly)
 import Data.Bifunctor (second)
-import Data.Maybe (mapMaybe)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid (Last (..))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -28,7 +30,7 @@ import Options.Applicative (
     ReadM,
  )
 import Prettyprinter (Pretty (pretty), indent, vsep)
-import Redis.Server.Config.Conf.Lexer (RawRedisConfEntry (..))
+import Redis.Server.Config.Conf.Lexer (RawRedisConfEntriesMap (..))
 import Redis.Server.Config.Defaults (emptyPartialRedisConfig)
 import Redis.Server.Config.Types (RedisConfigF (..), getConfigFieldName)
 import Redis.Server.Metadata (RedisConfFilePath (..))
@@ -56,7 +58,8 @@ instance Exception LoadConfigFileError where
 loadRedisConfFile ::
     forall es.
     (Eff.FileSystem :> es, Eff.Error LoadConfigFileError :> es) =>
-    Maybe RedisConfFilePath -> Eff es RedisConfigFromConfigFile
+    Maybe RedisConfFilePath ->
+    Eff es RedisConfigFromConfigFile
 loadRedisConfFile Nothing = pure . RedisConfigFromConfigFile $ emptyPartialRedisConfig
 loadRedisConfFile (Just (RedisConfFilePath confFilePath)) = do
     let redisConfPath = Path.toFilePath confFilePath
@@ -68,10 +71,10 @@ loadRedisConfFile (Just (RedisConfFilePath confFilePath)) = do
             decodedConfFileContentsResult <- mapLeft UTF8DecodeError . decodeUtf8' <$> Eff.readFile redisConfPath
             confDocumentParseResult <- runExceptT $ do
                 decodedConfFileContents <- liftEither decodedConfFileContentsResult
-                parsedRawConfEntries <- liftEither . mapLeft LexerError $ parseOnly Lexer.confDocumentParser decodedConfFileContents
-                let combinedConfigFieldReadersM = mapMaybe lookupFieldReader parsedRawConfEntries
+                (RawRedisConfEntriesMap parsedRawConfEntries) <- liftEither . mapLeft LexerError $ parseOnly Lexer.confDocumentParser decodedConfFileContents
+                let combinedConfigFieldReadersM = HashMap.elems $ HashMap.mapMaybeWithKey lookupFieldReader parsedRawConfEntries
                 let parseFields = uncurry (runReadM @String) . second (.fieldValue)
-                -- NOTE: We could probably parallelize this operation
+                -- NOTE: We could parallelize this operation, but that probably wouldn't be worth it
                 parsedPartialConfigsPerEntry <- liftEither . mapLeft ParserErrors . catEithers . map parseFields $ combinedConfigFieldReadersM
                 pure $ mconcat parsedPartialConfigsPerEntry
 
@@ -100,6 +103,7 @@ configFieldSpecs =
             Const (getConfigFieldName @Config.GenRDBChecksum, (\v -> emptyPartialRedisConfig{genRdbChecksum = Last (Just v)}) <$> Readers.rdbChecksumReader)
         , port =
             Const (getConfigFieldName @Config.RedisPort, (\v -> emptyPartialRedisConfig{port = Last (Just v)}) <$> Readers.portReader)
+        , replicaOf = Const (getConfigFieldName @Config.ReplicaOf, (\v -> emptyPartialRedisConfig{replicaOf = Last (Just v)}) <$> Readers.replicaOfReader)
         }
 
 {-
@@ -107,6 +111,7 @@ configFieldSpecs =
 
     With this approach, field names, types, adding or removing fields is all backed by the type system, specifically through the configFieldSpecs binding above. Any change to RedisConfigF would need to be reflected here and this function would automatically be up to date
 
+    The (NonEmpty Text) parameter here represents potentially duplicate values for the given key. In most cases, redis handles this by picking the last instance, we have the lexer put that value (the last instance) first (as the head of the list) so getting it is straightforward. There are other cases where duplicate values for a key warrant different semantics than just taking the last instance. For those instance we can pattern match on the key or use a guards to implement the right behavior
 -}
-lookupFieldReader :: RawRedisConfEntry -> Maybe (ReadM Config.PartialRedisConfig, FieldValue)
-lookupFieldReader RawRedisConfEntry{key, value} = (,FieldValue . T.unpack $ value) <$> lookup key (Config.collectFieldSpecs configFieldSpecs)
+lookupFieldReader :: Text -> NonEmpty Text -> Maybe (ReadM Config.PartialRedisConfig, FieldValue)
+lookupFieldReader key values = let value = NE.head values in (,FieldValue . T.unpack $ value) <$> lookup key (Config.collectFieldSpecs configFieldSpecs)

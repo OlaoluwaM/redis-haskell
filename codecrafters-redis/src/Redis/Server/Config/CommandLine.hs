@@ -23,7 +23,7 @@ newtype RedisConfigFromCommandLine = RedisConfigFromCommandLine Config.PartialRe
 parserForCommandLineConfig :: Parser RedisConfigFromCommandLine
 parserForCommandLineConfig =
     RedisConfigFromCommandLine
-        <$> (RedisConfigF <$> rdbFileDirectoryParser <*> rdbFilenameParser <*> rdbCompressionParser <*> rdbChecksumParser <*> redisPortParser)
+        <$> (RedisConfigF <$> rdbFileDirectoryParser <*> rdbFilenameParser <*> rdbCompressionParser <*> rdbChecksumParser <*> redisPortParser <*> redisReplicaOfParser)
 
 {- | Parser for RDB directory setting
 This aligns with the default value for `dir` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L516
@@ -83,4 +83,20 @@ redisPortParser =
                     <> short 'p'
                     <> metavar "PORT_NUMBER"
                     <> help "Port number for the Redis server to listen on"
+                )
+
+-- {- | Parser for Redis replicaof setting
+-- This aligns with the default value for `replicaof` in the default redis.conf: https://github.com/redis/redis/blob/c66fbda23fa294a7710b89ad70c1aa168abcf84c/redis.conf#L539
+-- -}
+
+redisReplicaOfParser :: Parser (Last (ConfigFieldType Config.ReplicaOf))
+redisReplicaOfParser =
+    fmap Last $
+        optional $
+            option
+                Readers.replicaOfReader
+                ( long (getConfigFieldName @Config.ReplicaOf)
+                    <> short 'r'
+                    <> metavar "REPLICA_OF"
+                    <> help "Address and port of the master Redis server to replicate from, in the format <host> <port>, or 'NO ONE' to disable replication"
                 )

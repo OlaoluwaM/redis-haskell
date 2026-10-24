@@ -5,6 +5,8 @@ module Redis.Server.Config (
     commandLineConfigFilePath,
     RedisConfig,
     RedisConfigF (..),
+    ReplicaOfType (..),
+    HostPortRec (..),
 
     -- ** For testing
     mkCompleteRedisConfig,
@@ -50,7 +52,13 @@ import Redis.Server.Config.CommandLine (
  )
 import Redis.Server.Config.Conf (LoadConfigFileError (..), RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (DefaultRedisConfig (..))
-import Redis.Server.Config.Types (RedisConfig, RedisConfigF (..), gZipWith)
+import Redis.Server.Config.Types (
+    HostPortRec (..),
+    RedisConfig,
+    RedisConfigF (..),
+    ReplicaOfType (..),
+    gZipWith,
+ )
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Redis.Server.Version (redisVersion)
 
@@ -67,7 +75,8 @@ loadRedisConfig_ ::
     ( Eff.FileSystem :> es
     , Eff.Error LoadConfigFileError :> es
     ) =>
-    CommandLineConfig -> Eff es Config.RedisConfig
+    CommandLineConfig ->
+    Eff es Config.RedisConfig
 loadRedisConfig_ (CommandLineConfig confFilePath cliConfig) = mkCompleteRedisConfig cliConfig <$> Conf.loadRedisConfFile confFilePath
 
 {-# WARNING in "x-unsafe-internals" mkCompleteRedisConfig "This value is exported for testing purposes only" #-}
@@ -125,4 +134,3 @@ resolveRedisConfFilePath cwd parseResult = case parseResult of
         bimap (const @String $ "Invalid cwd: " <> cwd) (</> relPath) $ parseAbsDir cwd
   where
     hasValidConfigFilename = (== [relfile|redis.conf|]) . filename
-
