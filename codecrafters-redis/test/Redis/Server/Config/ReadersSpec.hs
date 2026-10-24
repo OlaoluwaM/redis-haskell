@@ -5,7 +5,11 @@ import Test.Hspec
 import Data.Either (isLeft)
 import Data.Foldable (for_)
 import Redis.Server.Config.Readers (portReader, replicaOfReader)
-import Redis.Server.Config.Types (HostPortRec (..), Port, ReplicaOfType (..))
+import Redis.Server.Config.Types (
+    HostPortRec (..),
+    Port,
+    ReplicaOfType (..),
+ )
 import Redis.Utils (runReadM)
 import Rerefined (unrefine)
 import Rerefined.Refine.TH (refineTH)

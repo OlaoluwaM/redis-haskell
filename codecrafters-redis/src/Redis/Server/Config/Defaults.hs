@@ -8,7 +8,13 @@ import Path
 
 import Data.Monoid (Last (..))
 import GHC.Generics (Generic)
-import Redis.Server.Config.Types (PartialRedisConfig, Port, RedisConfig, RedisConfigF (..), ReplicaOfType (NO_ONE))
+import Redis.Server.Config.Types (
+    PartialRedisConfig,
+    Port,
+    RedisConfig,
+    RedisConfigF (..),
+    ReplicaOfType (..),
+ )
 import Rerefined (refineTH)
 
 newtype DefaultRedisConfig = DefaultRedisConfig {redisConf :: RedisConfig}

@@ -23,7 +23,13 @@ import Path (
 import Prettyprinter (pretty)
 import Redis.Server.Config.Conf (LoadConfigFileError (..), RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (emptyPartialRedisConfig)
-import Redis.Server.Config.Types (HostPortRec (HostPortRec), PartialRedisConfig, Port, RedisConfigF (..), ReplicaOfType (..))
+import Redis.Server.Config.Types (
+    HostPortRec (..),
+    PartialRedisConfig,
+    Port,
+    RedisConfigF (..),
+    ReplicaOfType (..),
+ )
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Rerefined.Refine.TH (refineTH)
 import System.Directory (getCurrentDirectory)
@@ -76,8 +82,8 @@ exampleConfFiles =
             , genRdbChecksum = Last (Just False)
             }
         )
-    ,
-        -- Every directive is repeated; the last occurrence in the file must win
+    , -- Every directive is repeated; the last occurrence in the file must win
+
         ( "duplicate_keys"
         , emptyPartialRedisConfig
             { port = Last (Just ($$(refineTH 6381) :: Port))
