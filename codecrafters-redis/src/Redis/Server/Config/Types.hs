@@ -10,8 +10,6 @@ module Redis.Server.Config.Types (
     PartialRedisConfig,
     collectFieldSpecs,
     gZipWith,
-    collectNamedFields,
-    NamedField (..),
     HostPortRec (..),
     ReplicaOfType (..),
     Port,
@@ -48,7 +46,6 @@ import GHC.Generics (
     Generically (..),
     K1 (..),
     M1 (..),
-    Selector (selName),
     (:*:) (..),
  )
 import GHC.TypeLits (KnownSymbol, symbolVal)
@@ -233,42 +230,8 @@ instance (GZipWith f h l, GZipWith g i m) => GZipWith (f :*: g) (h :*: i) (l :*:
 instance GZipWith (K1 i x) (K1 i (Last x)) (K1 i x) where
     gZipWith fn (K1 x) (K1 y) = K1 (fn x y)
 
--- We're defining an existential type because named fields are going to be of different types. Basically we'd need a heterogeneous list which can only achieved using existentials
-data NamedField = forall a. (ShowBS a, Show a) => NamedField
-    { name :: Text
-    , val :: a
-    }
-
-deriving stock instance Show NamedField
-
-{-
-    Similar to GFieldSpecs, the purpose of GNamedFields is to traverse through the generic representation of a record and collect, in a list, field values with their corresponding field names.
--}
-class GNamedFields rep where
-    gNamedFields :: rep p -> [NamedField]
-
--- This instance is for traversing down into Metadata nodes that aren't parents to a leaf with record field value info (K1 node). Such nodes are usually ancestor nodes or the root node of a generic rep
-instance (GNamedFields f) => GNamedFields (M1 i c f) where
-    gNamedFields (M1 x) = gNamedFields x
-
-instance (GNamedFields f, GNamedFields g) => GNamedFields (f :*: g) where
-    gNamedFields (f :*: g) = gNamedFields f <> gNamedFields g
-
-{-
-    This instance is a more specific version of the one we have above. We've marked it as overlapping to tell the compiler to prefer it over the more generic M1 instance where applicable.
-
-    Whilst inspecting the generic rep of our RedisConfigF type, I noticed that some M1 nodes in the tree contained the field name of a record field in their `Meta` param slot. These M1 nodes were also all direct parents to leaf K1 nodes that contained the record field type information. Therefore, to get both the field name and the value we needed to match on that specific sub-tree of M1 node directly followed by a K1 leaf so we could access both info at once.
-
-    selName comes from the Selector type class to actually access the record field name
--}
-instance {-# OVERLAPPING #-} (Selector c, ShowBS x, Show x) => GNamedFields (M1 i c (K1 r x)) where
-    gNamedFields selectorMeta@(M1 (K1 x)) = [NamedField (fromString $ selName selectorMeta) x]
-
 collectFieldSpecs :: (GFieldSpecs a (Rep (RedisConfigF f))) => RedisConfigF f -> [a]
 collectFieldSpecs = gFieldSpecs . from
 
 getConfigFieldName :: forall (b :: ConfigField) a. (KnownSymbol (ConfigFieldName b), IsString a) => a
 getConfigFieldName = fromString $ symbolVal $ Proxy @(ConfigFieldName b)
-
-collectNamedFields :: (GNamedFields (Rep (RedisConfigF f))) => RedisConfigF f -> [NamedField]
-collectNamedFields = gNamedFields . from

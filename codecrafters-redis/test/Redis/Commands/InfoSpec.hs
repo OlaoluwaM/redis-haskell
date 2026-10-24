@@ -16,12 +16,12 @@ import Redis.Handler (handleCommandReq)
 import Redis.Helper (infoCmd, mkBulkString, mkCmdReqStr)
 import Redis.Server.Config (
     HostPortRec (..),
+    Port,
     RedisConfig,
     RedisConfigF (..),
     ReplicaOfType (..),
  )
 import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
-import Redis.Server.Config.Types (Port)
 import Redis.Server.Context (ServerContext (..))
 import Redis.Test (PassableTestContext (..), runTestServer)
 import Rerefined.Refine.TH (refineTH)

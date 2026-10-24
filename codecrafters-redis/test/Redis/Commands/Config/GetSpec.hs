@@ -13,9 +13,15 @@ import Redis.Commands.Config.Get (ConfigGetCmdArg (..))
 import Redis.Commands.Parser (Command (..), ConfigSubCommand (..), commandParser)
 import Redis.Handler (handleCommandReq)
 import Redis.Helper (mkBulkString, mkCmdReqStr)
-import Redis.Server.Config (RedisConfig, RedisConfigF (..))
-import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
-import Redis.Server.Config.Types (Port)
+import Redis.Server.Config (
+    Port,
+    RedisConfig,
+    RedisConfigF (..),
+ )
+import Redis.Server.Config.Defaults (
+    DefaultRedisConfig (..),
+    defaultRedisConfig,
+ )
 import Redis.Server.Context (ServerContext)
 import Redis.Test (PassableTestContext (..), runTestServer)
 import Redis.Utils (ShowBS (showBs))
@@ -138,12 +144,23 @@ spec_config_get_cmd_tests = do
                 result <- runConfigGet [mkBulkString "port"] defaultTestConfig{port = $$(refineTH 7000) :: Port}
                 result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [mkNonNullBulkString "port", mkNonNullBulkString "7000"])
 
+            it "should retrieve a specific config field by exact name (dir)" $ do
+                result <- runConfigGet [mkBulkString "dir"] defaultTestConfig{rdbFileDirPath = Abs [absdir|/tmp|]}
+                result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [mkNonNullBulkString "dir", mkNonNullBulkString "/tmp"])
+
             it "should retrieve multiple config fields by exact name" $ do
-                result <- runConfigGet [mkBulkString "port", mkBulkString "useRDBCompression"] defaultTestConfig
+                result <-
+                    runConfigGet
+                        [mkBulkString "dbfilename", mkBulkString "rdbcompression"]
+                        defaultTestConfig
+                            { useRDBCompression = False
+                            , rdbFilenamePath = [relfile|dump.rdb|]
+                            }
+
                 let expected =
-                        [ mkNonNullBulkString "port"
-                        , mkNonNullBulkString "6379"
-                        , mkNonNullBulkString "useRDBCompression"
+                        [ mkNonNullBulkString "dbfilename"
+                        , mkNonNullBulkString "dump.rdb"
+                        , mkNonNullBulkString "rdbcompression"
                         , mkNonNullBulkString "False"
                         ]
                 either expectationFailure (`shouldMatchList` expected) (parseConfigGetResult result)
@@ -151,27 +168,27 @@ spec_config_get_cmd_tests = do
             it "should match multiple fields sharing a glob prefix" $ do
                 result <- runConfigGet [mkBulkString "rdb*"] defaultTestConfig
                 let expected =
-                        [ mkNonNullBulkString "rdbFileDirPath"
-                        , mkNonNullBulkString "."
-                        , mkNonNullBulkString "rdbFilenamePath"
-                        , mkNonNullBulkString "dump.rdb"
+                        [ mkNonNullBulkString "rdbcompression"
+                        , mkNonNullBulkString "False"
+                        , mkNonNullBulkString "rdbchecksum"
+                        , mkNonNullBulkString "True"
                         ]
                 either expectationFailure (`shouldMatchList` expected) (parseConfigGetResult result)
 
             it "should return every field for the wildcard pattern '*'" $ do
                 result <- runConfigGet [mkBulkString "*"] defaultTestConfig
                 let expected =
-                        [ mkNonNullBulkString "rdbFileDirPath"
+                        [ mkNonNullBulkString "dir"
                         , mkNonNullBulkString "."
-                        , mkNonNullBulkString "rdbFilenamePath"
+                        , mkNonNullBulkString "dbfilename"
                         , mkNonNullBulkString "dump.rdb"
-                        , mkNonNullBulkString "useRDBCompression"
+                        , mkNonNullBulkString "rdbcompression"
                         , mkNonNullBulkString "False"
-                        , mkNonNullBulkString "genRdbChecksum"
+                        , mkNonNullBulkString "rdbchecksum"
                         , mkNonNullBulkString "True"
                         , mkNonNullBulkString "port"
                         , mkNonNullBulkString "6379"
-                        , mkNonNullBulkString "replicaOf"
+                        , mkNonNullBulkString "replicaof"
                         , mkNonNullBulkString "NO ONE"
                         ]
                 either expectationFailure (`shouldMatchList` expected) (parseConfigGetResult result)
@@ -181,10 +198,10 @@ spec_config_get_cmd_tests = do
                 let expected =
                         [ mkNonNullBulkString "port"
                         , mkNonNullBulkString "6379"
-                        , mkNonNullBulkString "rdbFileDirPath"
-                        , mkNonNullBulkString "."
-                        , mkNonNullBulkString "rdbFilenamePath"
-                        , mkNonNullBulkString "dump.rdb"
+                        , mkNonNullBulkString "rdbcompression"
+                        , mkNonNullBulkString "False"
+                        , mkNonNullBulkString "rdbchecksum"
+                        , mkNonNullBulkString "True"
                         ]
                 either expectationFailure (`shouldMatchList` expected) (parseConfigGetResult result)
 
@@ -202,8 +219,8 @@ spec_config_get_cmd_tests = do
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
         it "should not match when case differs (Redis semantics)" $ do
-            -- Pattern matching is case-sensitive; "PORT" doesn't match the real field "port"
-            result <- runConfigGet [mkBulkString "PORT"] defaultTestConfig
+            -- Pattern matching is case-sensitive; "DIR" doesn't match the real field "dir"
+            result <- runConfigGet [mkBulkString "DIR"] defaultTestConfig
             result `shouldBe` serializeRESPDataType (mkNonNullRESPArray [])
 
     describe "Edge Cases and Corner Cases" $ do
@@ -217,7 +234,7 @@ spec_config_get_cmd_tests = do
             let longFilenameStr = "very-long-rdb-filename-" <> replicate 200 'x' <> ".rdb"
             longFilename <- maybe (fail "Failed to parse long RDB filename") pure $ parseRelFile @Maybe longFilenameStr
 
-            result <- runConfigGet [mkBulkString "rdbFilenamePath"] defaultTestConfig{rdbFilenamePath = longFilename}
+            result <- runConfigGet [mkBulkString "dbfilename"] defaultTestConfig{rdbFilenamePath = longFilename}
 
-            let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "rdbFilenamePath", mkNonNullBulkString (showBs longFilename)]
+            let expected = serializeRESPDataType $ mkNonNullRESPArray [mkNonNullBulkString "dbfilename", mkNonNullBulkString (showBs longFilename)]
             result `shouldBe` expected

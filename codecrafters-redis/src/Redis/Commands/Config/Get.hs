@@ -5,6 +5,7 @@ module Redis.Commands.Config.Get (
 ) where
 
 import Redis.RESP
+import Redis.Server.Config
 
 import Data.HashMap.Strict qualified as HashMap
 import Effectful.Concurrent.STM qualified as STMEff
@@ -13,6 +14,8 @@ import Effectful.Reader.Static qualified as ReaderEff
 import Control.Exception (Exception (displayException))
 import Data.Aeson (ToJSON (..))
 import Data.Bifunctor (Bifunctor (first))
+import Data.ByteString (ByteString)
+import Data.Functor.Const (Const (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Effectful (Eff)
@@ -20,8 +23,7 @@ import GHC.Generics (Generic)
 import Optics (view)
 import Redis.Effect.Communication (sendMessage)
 import Redis.Effects (RedisClientCommunication, RedisServerConfig)
-import Redis.Server.Config.Types (NamedField (..), collectNamedFields)
-import Redis.Utils (ShowBS (showBs))
+import Redis.Utils (ShowBS (..))
 import System.FilePath.Glob (compile, match)
 
 -- https://redis.io/docs/latest/commands/config-get/
@@ -34,19 +36,35 @@ mkConfigGetCmdArg :: (MonadFail m) => [BulkString] -> m ConfigGetCmdArg
 mkConfigGetCmdArg [] = fail "GET command requires an argument"
 mkConfigGetCmdArg configsToGet = either (fail . displayException) (pure . ConfigGetCmdArg) $ traverse decodeUtf8BulkString' configsToGet
 
+mkRedisConfigWithUpstreamKey :: RedisConfig -> RedisConfigF (Const (Text, ByteString))
+mkRedisConfigWithUpstreamKey config =
+    RedisConfigF
+        { useRDBCompression = Const (getConfigFieldName @UseRDBCompression, showBs config.useRDBCompression)
+        , replicaOf = Const (getConfigFieldName @ReplicaOf, showBs config.replicaOf)
+        , rdbFilenamePath =
+            Const
+                ( getConfigFieldName @RDBFilename
+                , showBs config.rdbFilenamePath
+                )
+        , rdbFileDirPath = Const (getConfigFieldName @RDBFileDir, showBs config.rdbFileDirPath)
+        , port = Const (getConfigFieldName @RedisPort, showBs config.port)
+        , genRdbChecksum = Const (getConfigFieldName @GenRDBChecksum, showBs config.genRdbChecksum)
+        }
+
 handleConfigGet ::
     forall r es.
     (RedisClientCommunication r es, RedisServerConfig r es) =>
-    ConfigGetCmdArg -> Eff es ()
+    ConfigGetCmdArg ->
+    Eff es ()
 handleConfigGet (ConfigGetCmdArg configOptionPatternsToGet) = do
     env <- ReaderEff.ask @r
 
     let socket = view #clientSocket env
     let serverConfigRef = view #serverConfigRef env
 
-    serverConfig <- STMEff.readTVarIO serverConfigRef
+    serverConfig <- mkRedisConfigWithUpstreamKey <$> STMEff.readTVarIO serverConfigRef
 
-    let serverConfigMap = HashMap.fromList $ map (\(NamedField k v) -> (k, showBs v)) $ collectNamedFields serverConfig
+    let serverConfigMap = HashMap.fromList $ collectFieldSpecs serverConfig
     let normalizedConfigGetOptionPatternsToGet = map (compile . T.unpack) configOptionPatternsToGet
 
     let filteredMap = HashMap.filterWithKey (\settingKey _ -> let settingKeyStr = T.unpack settingKey in any (`match` settingKeyStr) normalizedConfigGetOptionPatternsToGet) serverConfigMap

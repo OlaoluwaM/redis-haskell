@@ -3,10 +3,7 @@ module Redis.Server.Config (
     commandlineConfigParser,
     CommandLineConfig,
     commandLineConfigFilePath,
-    RedisConfig,
-    RedisConfigF (..),
-    ReplicaOfType (..),
-    HostPortRec (..),
+    module X,
 
     -- ** For testing
     mkCompleteRedisConfig,
@@ -20,7 +17,6 @@ import Effectful.Error.Static qualified as Eff
 import Effectful.FileSystem qualified as Eff
 import Redis.Server.Config.Conf qualified as Conf
 import Redis.Server.Config.Defaults qualified as Defaults
-
 import Redis.Server.Config.Types qualified as Config
 
 import Data.Bifunctor (Bifunctor (bimap))
@@ -52,12 +48,21 @@ import Redis.Server.Config.CommandLine (
  )
 import Redis.Server.Config.Conf (LoadConfigFileError (..), RedisConfigFromConfigFile (..))
 import Redis.Server.Config.Defaults (DefaultRedisConfig (..))
-import Redis.Server.Config.Types (
+import Redis.Server.Config.Types as X (
+    GenRDBChecksum,
     HostPortRec (..),
+    Port,
+    RDBFileDir,
+    RDBFilename,
     RedisConfig,
     RedisConfigF (..),
+    RedisPort,
+    ReplicaOf,
     ReplicaOfType (..),
+    UseRDBCompression,
+    collectFieldSpecs,
     gZipWith,
+    getConfigFieldName,
  )
 import Redis.Server.Metadata (RedisConfFilePath (..))
 import Redis.Server.Version (redisVersion)
