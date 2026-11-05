@@ -366,7 +366,7 @@ mediumStringLenCutoff = fromInteger $ natVal @FourteenBitUpperBound Proxy
 longStringLenCutoff :: (Num a) => a
 longStringLenCutoff = fromInteger $ natVal @ThirtyTwoBitUpperBound Proxy
 
--- https://github.com/redis/redis/blob/unstable/src/rdb.c#L445, attempts integer encoding for potential integer strings
+-- https://github.com/redis/redis/blob/7.4.0/src/rdb.c#L438-L445, attempts integer encoding for potential integer strings
 -- We do not need the random cut off at (len <= 11) since we can already check to determine whether a byte sequence is a number by attempting to parse it as such. Arbitrary length cutoffs become redundant
 toRDBStringOrIntVal :: BS.ByteString -> RDBStringOrIntVal
 toRDBStringOrIntVal byteStr
