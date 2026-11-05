@@ -39,6 +39,7 @@ library
       Redis.Commands.Set
       Redis.Effect.Communication
       Redis.Effect.Logging
+      Redis.Effect.Random
       Redis.Effect.Time
       Redis.Effects
       Redis.Handler
@@ -141,6 +142,7 @@ library
     , path
     , pretty-simple
     , prettyprinter
+    , random
     , rerefined
     , safe
     , safe-exceptions
