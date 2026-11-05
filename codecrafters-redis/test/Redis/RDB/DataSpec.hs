@@ -1,6 +1,7 @@
 module Redis.RDB.DataSpec where
 
 import Redis.RDB.Data
+import Test.Hspec
 import Test.Tasty
 
 import Data.ByteString qualified as BSC
@@ -8,6 +9,7 @@ import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
+import Data.Foldable (for_)
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Word (Word32)
 import Redis.RDB.Binary (decodeOrFail, encode)
@@ -120,3 +122,34 @@ timestampEdgeCasesRoundtrip = H.withTests 10 $ H.property $ do
 
     mapM_ testTimestampS criticalTimestampsS
     mapM_ testTimestampMS criticalTimestampsMS
+
+data RDBEncodingKind = AsInt | AsString
+    deriving stock (Eq, Show)
+
+spec_rdb_string_or_int_encoding_tests :: Spec
+spec_rdb_string_or_int_encoding_tests = do
+    -- The case names below contain double quotes (from `show input`), which can't be matched by tasty's `-p` filter when passed through `stack test --ta`. This describe block gives the cases a quote-free group name to filter on, e.g. `--ta '-p "toRDBStringOrIntVal encoding"'`
+    describe "toRDBStringOrIntVal encoding" $ do
+        for_
+            [ ("-1" :: BSC.ByteString, AsInt)
+            , ("0", AsInt)
+            , ("-0", AsString)
+            , ("+0", AsString)
+            , ("abcd", AsString)
+            , ("2147483647", AsInt) -- The maximum value for a 32-bit signed integer is 2,147,483,647. So this value should be encoded as an integer in the RDB file.
+            , ("2147483648", AsString) -- The maximum value for a 32-bit signed integer is 2,147,483,647. This value goes beyond that maximum, so it should be encoded as a string in the RDB file.
+            , ("-11", AsInt)
+            , ("+5", AsString)
+            , ("+0034", AsString)
+            , ("00", AsString)
+            , ("054", AsString)
+            , ("-04", AsString)
+            , ("-005", AsString)
+            , ("+032", AsString)
+            , ("+0042", AsString)
+            ]
+            $ \(input, expectedKind) -> it ("encodes " <> show input <> " " <> show expectedKind) $ do
+                let actualKind = case toRDBStringOrIntVal input of
+                        MkRDBInt _ -> AsInt
+                        MkRDBString _ -> AsString
+                actualKind `shouldBe` expectedKind
