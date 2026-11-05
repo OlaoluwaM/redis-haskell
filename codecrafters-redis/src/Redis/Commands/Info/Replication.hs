@@ -1,6 +1,3 @@
-{- HLINT ignore "Redundant if" -}
--- TODO Remove this when slave support is implemented and the connectedSlaves field is populated correctly for both master and slave roles.
-
 module Redis.Commands.Info.Replication (
     genReplicationInfoSectionStr,
 ) where
@@ -19,10 +16,13 @@ import Redis.Effects (RedisServerConfig)
 import Redis.Server.Config (RedisConfigF (..), ReplicaOfType (NO_ONE))
 
 data ReplicationInfo = ReplicationInfo
-    { role :: ReplicationRole -- "master" or "slave"
-    , connectedSlaves :: Word8 -- For master, the number of connected slaves. For slave, the number of connected slaves is always 0 since slaves can't have slaves connected to them
-    , masterReplId :: Maybe Text -- For slave, the replication ID of its master. For master, this field is always Nothing since masters don't have a master above them
-    , masterReplOffset :: Maybe Word -- For slave, the replication offset of its master. For master, this field is always Nothing since masters don't have a master above them
+    { role :: ReplicationRole
+    , connectedSlaves :: Word8
+    -- ^ For master, the number of connected slaves. For slave, the number of connected slaves is often 0, but redis does support slaves having slaves (chained replication)
+    , masterReplId :: Text
+    -- ^ master replid is short for master replication Id. It is also just called a "replid". It is a pseudo random hexadecimal string (all lowercase) of 40 characters. It is generated once per server startup. All redis servers have a replid. Masters get to keep theirs, for the most part, while slaves take on the replid of their masters upon the completion of a full sync. A master and slaves replid changes whenever a new replication history is started.
+    , masterReplOffset :: Word
+    -- ^ This field has two meaning. On a master it represents how many bytes of replication stream the master has written in the current replication log. For a slave, this value refers to the number of bytes of the master's replication history that the slave has consumed/processed
     }
 
 data ReplicationRole = Master | Slave
@@ -39,14 +39,13 @@ mkReplicationInfo =
 
         let role = if redisConfig.replicaOf == NO_ONE then Master else Slave
 
-        -- Always 0 if role is Slave
         let connectedSlaves = 0
         pure $
             ReplicationInfo
                 { role = role
                 , connectedSlaves = connectedSlaves
-                , masterReplId = Nothing
-                , masterReplOffset = Nothing
+                , masterReplId = ""
+                , masterReplOffset = 0
                 }
 
 mkReplicationInfoText :: ReplicationInfo -> Text
@@ -55,7 +54,7 @@ mkReplicationInfoText info =
         <> mconcat
             [ formatToInfoSectionField "role" (T.toLower . fromString . show $ info.role)
             , formatToInfoSectionField "connected_slaves" (fromString . show $ info.connectedSlaves)
-            , formatToInfoSectionField "master_replid" (T.toLower . fromString . show $ info.masterReplId)
+            , formatToInfoSectionField "master_replid" info.masterReplId
             , formatToInfoSectionField "master_repl_offset" (T.toLower . fromString . show $ info.masterReplOffset)
             ]
 

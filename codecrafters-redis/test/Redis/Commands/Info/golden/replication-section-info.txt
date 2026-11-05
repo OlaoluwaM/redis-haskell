@@ -1,7 +1,7 @@
-$99
+$86
 # Replication
 role:master
 connected_slaves:0
-master_replid:nothing
-master_repl_offset:nothing
+master_replid:
+master_repl_offset:0
 
