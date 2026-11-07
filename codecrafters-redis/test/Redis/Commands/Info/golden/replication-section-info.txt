@@ -1,7 +1,7 @@
-$86
+$94
 # Replication
 role:master
 connected_slaves:0
-master_replid:
+master_replid:<MASKED>
 master_repl_offset:0
 

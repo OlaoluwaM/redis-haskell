@@ -18,6 +18,8 @@ Eff.makeEffect ''Random
 
 runRandomIO :: (IOE :> es) => Eff (Random ': es) a -> Eff es a
 runRandomIO = Eff.interpret_ $ \case
+    {- `globalStdGen` over `initStdGen`: it is a single generator for the whole process, updated atomically, so all threads draw from one stream without us passing a generator around. `initStdGen` would mean either re-seeding on every call or carrying the generator in thread-local `State`, where forked threads could repeat values. -}
+
     GenRandom -> liftIO $ Random.uniformM Random.globalStdGen
     GenRandomR range -> liftIO $ Random.uniformRM range Random.globalStdGen
 

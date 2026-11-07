@@ -249,6 +249,7 @@ test-suite codecrafters-redis-test
       Redis.Server.Config.ConfSpec
       Redis.Server.Config.ReadersSpec
       Redis.Server.ConfigSpec
+      Redis.Server.MetadataSpec
       Redis.Test
       Paths_codecrafters_redis
   autogen-modules:
