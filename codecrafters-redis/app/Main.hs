@@ -48,7 +48,7 @@ import Redis.Server.Config (
     loadRedisConfig,
  )
 import Redis.Server.Context (ServerConfigRef, ServerContext (..))
-import Redis.Server.Metadata (ServerMetadata (..))
+import Redis.Server.Metadata (ServerMetadata (..), genReplId)
 import System.Directory (getCurrentDirectory)
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stderr, stdout)
 
@@ -85,11 +85,14 @@ main = do
 
         startupTime <- getCurrentTime
 
+        replIdRef <- newTVarIO =<< genReplId
+
         let serverMetadata =
                 ServerMetadata
                     { startTime = startupTime
                     , configFilePath = configFilePathM
                     , environment = environment
+                    , replIdRef
                     }
 
         runTCPServer Nothing port logger (handleRedisClientConnection initialServerStateRef redisServerConfigRef logger serverMetadata)

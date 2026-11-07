@@ -1,4 +1,4 @@
-$841
+$836
 # Server
 redis_version:7.4.8
 redis_git_sha1:<MASKED>
@@ -38,8 +38,8 @@ io_threads_active:1
 # Replication
 role:master
 connected_slaves:0
-master_replid:nothing
-master_repl_offset:nothing
+master_replid:<MASKED>
+master_repl_offset:0
 
 # CPU
 

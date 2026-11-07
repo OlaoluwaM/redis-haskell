@@ -366,19 +366,19 @@ mediumStringLenCutoff = fromInteger $ natVal @FourteenBitUpperBound Proxy
 longStringLenCutoff :: (Num a) => a
 longStringLenCutoff = fromInteger $ natVal @ThirtyTwoBitUpperBound Proxy
 
--- https://github.com/redis/redis/blob/unstable/src/rdb.c#L445, attempts integer encoding for potential integer strings
--- We do not need the random cut off at (len <= 11) since we can already check to determine whether a byte sequence is number by attempting to parse it as such. Arbitrary length cutoffs become redundant
+-- https://github.com/redis/redis/blob/7.4.0/src/rdb.c#L438-L445, attempts integer encoding for potential integer strings
+-- We do not need the random cut off at (len <= 11) since we can already check to determine whether a byte sequence is a number by attempting to parse it as such. Arbitrary length cutoffs become redundant
 toRDBStringOrIntVal :: BS.ByteString -> RDBStringOrIntVal
 toRDBStringOrIntVal byteStr
+    | isValidNumString byteStr = toRDBStringOrIntVal_ byteStr
+    | otherwise = MkRDBString . toRDBString $ byteStr
+
+toRDBStringOrIntVal_ :: BS.ByteString -> RDBStringOrIntVal
+toRDBStringOrIntVal_ byteStr
     | Just num <- tryParseAsInt8 byteStr = MkRDBInt (MkRDBInt8 (RDBInt8 num))
     | Just num <- tryParseAsInt16 byteStr = MkRDBInt (MkRDBInt16 (RDBInt16 num))
     | Just num <- tryParseAsInt32 byteStr = MkRDBInt (MkRDBInt32 (RDBInt32 num))
-    -- These uses of `unsafeRefine` are safe because the guard conditions ensure that the `byteStr` is valid for each corresponding case
-    | isRight (refine @ShortString byteStr) = MkRDBString (RDBShortString (unsafeRefine byteStr))
-    | isRight (refine @MediumString byteStr) = MkRDBString (RDBMediumString (unsafeRefine byteStr))
-    | isRight (refine @LongString byteStr) = MkRDBString (RDBLongString (unsafeRefine byteStr))
-    -- Using `unsafeRefine` here is safe because the guards above ensure that byteStr is not a stringified number and that its size is within the bounds of SixtyFourBitLengthPrefixBounds, in other words, greater than ThirtyTwoBitUpperBound
-    | otherwise = MkRDBString (RDBExtraLongString (unsafeRefine byteStr))
+    | otherwise = MkRDBString . toRDBString $ byteStr
 
 toRDBString :: BS.ByteString -> RDBString
 toRDBString byteStr
@@ -412,6 +412,14 @@ fromRDBLengthPrefix = \case
     RDBLengthPrefix14 num -> fromIntegral . unrefine $ num
     RDBLengthPrefix32 num -> fromIntegral . unrefine $ num
     RDBLengthPrefix64 num -> fromIntegral . unrefine $ num
+
+-- | These conditions are adapted from the rules redis uses when determining whether a number string should be parsed into a number at all. See `string2ll` (https://github.com/redis/redis/blob/7.4.0/src/util.c#L436-L500), which `rdbTryIntegerEncoding` (https://github.com/redis/redis/blob/7.4.0/src/rdb.c#L322) relies on. It only accepts strings that come back unchanged when the number is turned back into a string, so no leading '+', no leading zeros (except "0" itself), and no "-0"
+isValidNumString :: BS.ByteString -> Bool
+isValidNumString v =
+    let startsWithSignedZero = "-0" `BS.isPrefixOf` v
+        hasLeadingPlusSign = "+" `BS.isPrefixOf` v
+        startsWith0 = "0" `BS.isPrefixOf` v && BS.length v > 1 -- We check that the length is greater than 1 because "0" is a valid number string, but "0123" is not
+     in not (startsWithSignedZero || hasLeadingPlusSign || startsWith0)
 
 tryParseAsInt8 :: BS.ByteString -> Maybe Int8
 tryParseAsInt8 byteStr = do

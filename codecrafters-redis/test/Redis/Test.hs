@@ -17,8 +17,6 @@ import Redis.Effect.Logging qualified as Eff
 import Redis.Effect.Time qualified as Eff
 
 import Blammo.Logging (Logger)
-import Redis.Server.Config (RedisConfig)
-import Redis.Server.Config.Defaults (defaultRedisConfig, DefaultRedisConfig (..))
 import Blammo.Logging.LogSettings (defaultLogSettings)
 import Control.Concurrent.STM (atomically, newTVarIO)
 import Data.ByteString (ByteString)
@@ -37,8 +35,16 @@ import Network.Socket (
     socket,
  )
 import Redis.Effects (ServerEffects)
+import Redis.Server.Config (RedisConfig)
+import Redis.Server.Config.Defaults (DefaultRedisConfig (..), defaultRedisConfig)
 import Redis.Server.Context (ServerContext (..))
-import Redis.Server.Metadata (Environment (..), RedisConfFilePath, ServerMetadata (..))
+import Redis.Server.Metadata (
+    Environment (..),
+    RedisConfFilePath,
+    ReplIdRef,
+    ServerMetadata (..),
+    genReplId,
+ )
 import Redis.ServerState (ServerState (..), genInitialServerStateEff)
 
 data PassableTestContext = PassableTestContext
@@ -61,10 +67,12 @@ runTestServer action testContext =
         serverConfig <- newTVarIO . fromMaybe defaultRedisConfig.redisConf $ testContext.config
 
         now <- getCurrentTime
-        let defaultServerMetadata = ServerMetadata{startTime = now, configFilePath = Nothing, environment = TEST}
+        replIdRef <- newTVarIO =<< genReplId
+
+        let defaultServerMetadata = ServerMetadata{startTime = now, configFilePath = Nothing, environment = TEST, replIdRef}
 
         let serverState = fromMaybe initialServerState testContext.serverState
-        let serverMetadata = maybe defaultServerMetadata fromTestServerMetadata testContext.metadata
+        let serverMetadata = maybe defaultServerMetadata (`fromTestServerMetadata` replIdRef) testContext.metadata
 
         logger <- Blammo.newTestLogger defaultLogSettings
         let env = ServerContext loopbackSocket serverState serverConfig serverMetadata
@@ -82,12 +90,13 @@ runTestServer action testContext =
             . Eff.runFileSystem
             . ReaderEff.runReader env
 
-    fromTestServerMetadata :: TestServerMetadata -> ServerMetadata
-    fromTestServerMetadata TestServerMetadata{testStartTime, testConfigFilePath} =
+    fromTestServerMetadata :: TestServerMetadata -> ReplIdRef -> ServerMetadata
+    fromTestServerMetadata TestServerMetadata{testStartTime, testConfigFilePath} replIdRef =
         ServerMetadata
             { startTime = testStartTime
             , configFilePath = testConfigFilePath
             , environment = TEST
+            , replIdRef
             }
 
 mkLoopbackSocket :: IO Socket

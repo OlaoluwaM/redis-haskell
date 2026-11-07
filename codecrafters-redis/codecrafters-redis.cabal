@@ -39,6 +39,7 @@ library
       Redis.Commands.Set
       Redis.Effect.Communication
       Redis.Effect.Logging
+      Redis.Effect.Random
       Redis.Effect.Time
       Redis.Effects
       Redis.Handler
@@ -141,6 +142,7 @@ library
     , path
     , pretty-simple
     , prettyprinter
+    , random
     , rerefined
     , safe
     , safe-exceptions
@@ -247,6 +249,7 @@ test-suite codecrafters-redis-test
       Redis.Server.Config.ConfSpec
       Redis.Server.Config.ReadersSpec
       Redis.Server.ConfigSpec
+      Redis.Server.MetadataSpec
       Redis.Test
       Paths_codecrafters_redis
   autogen-modules:

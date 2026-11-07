@@ -134,6 +134,7 @@ library:
     - parser-combinators
     - path
     - prettyprinter
+    - random
     - rerefined
     - safe
     - safe-exceptions
