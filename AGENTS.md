@@ -7,7 +7,7 @@
 - Functionality, where applicable, should always be checked against the redis source of the same version. For deliberate deviations, keep a log in docs/deliberate-deviations/**.md
   - A deliberate deviation is a difference in observable behaviour from real Redis. Implementation differences (data structures, parsing strategy, internal phases) are fine and expected, and do not need logging, so long as the final behaviour comes out the same.
 - Commit the changes, atomic. Keep the commit messages straight to the point and direct. No fluff
-- No need to run tests unless I explicitly ask you to. You may suggest tests to run, but do not run them unless I ask you to.
+- In this repo, the word "upstream" or "redis" refers to the official redis source code, not this project. The word "this project" or "this repo" refers to this project, not upstream.
 
 ## Other Stuff
 
